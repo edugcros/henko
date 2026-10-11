@@ -42,6 +42,8 @@ import {
   updateTenantAiPolicy,
   getUsdRate,
   updateUsdRate,
+  getPlatformMarginReport,
+  updateTenantStatus,
 } from '../services/platformService'
 
 const formatUsd = value =>
@@ -329,6 +331,203 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
  * información a la vista. Separarlas obligaría a dos viajes para "bajale el
  * tope, y si sigue así apagalo".
  */
+/**
+ * El margen de un comercio, en pesos y en porcentaje.
+ *
+ * POR QUÉ LOS DOS NÚMEROS Y NO UNO
+ *
+ * Un comercio que deja $8.000 sobre un plan de $10.000 y otro que deja $8.000
+ * sobre uno de $40.000 son negocios completamente distintos, y en la columna de
+ * pesos se ven idénticos. El porcentaje es lo que permite ordenarlos y decidir
+ * si un plan está mal puesto.
+ *
+ * `null` no es cero: quiere decir que el plan no tiene precio cargado, así que
+ * no hay ingreso contra el que restar. Mostrar un cero ahí se leería como "no
+ * deja nada", que es una afirmación sobre el negocio que nadie hizo.
+ */
+function MargenDelComercio({ margen }) {
+  if (!margen) {
+    return (
+      <Tooltip title="Este comercio no aparece en el reporte de margen">
+        <Typography variant="body2" color="text.disabled">
+          —
+        </Typography>
+      </Tooltip>
+    )
+  }
+
+  if (margen.estimatedMarginArs === null) {
+    return (
+      <Tooltip title="El plan de este comercio no tiene precio cargado, así que no hay ingreso contra el que restar el costo">
+        <Typography variant="body2" color="text.disabled">
+          sin precio
+        </Typography>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600 }}
+        color={margen.unprofitable ? 'error.main' : 'success.main'}
+      >
+        {formatArs(margen.estimatedMarginArs)}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {margen.marginPercent === null ? 'sobre plan sin precio' : `${margen.marginPercent}%`}
+        {/* Cuesta más de lo que paga: la única fila sobre la que hay que hacer
+            algo, y sin marcarla se pierde entre las demás. */}
+        {margen.unprofitable && ' · pierde plata'}
+      </Typography>
+    </>
+  )
+}
+
+/**
+ * Suspender el comercio entero, o reactivarlo.
+ *
+ * QUÉ HACE Y QUÉ NO
+ *
+ * Mueve el estado del comercio. NO borra nada: productos, órdenes, clientes e
+ * historial de facturación quedan intactos, y se puede volver atrás en un clic.
+ *
+ * El corte ya estaba implementado: tenantMiddleware resuelve únicamente
+ * comercios activos, así que un suspendido deja de responder tanto en su tienda
+ * como en su panel.
+ *
+ * POR QUÉ SUSPENDER Y NO BORRAR
+ *
+ * El caso que motiva esta pantalla es un comercio que cuesta más de lo que
+ * paga, y para eso frenarlo alcanza. Borrarlo sería irreversible justo con los
+ * datos que harían falta si después discute un cobro o reclama. Es la decisión
+ * que se puede deshacer, y para algo que le corta el servicio a alguien que
+ * paga, poder deshacerla vale más que ahorrar espacio.
+ */
+function SuspensionDelComercio({ row, onSaved, onClose }) {
+  const [abierto, setAbierto] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  // El reporte de gasto no trae el estado del comercio, así que lo que se sabe
+  // acá es lo que el margen informó. Sin ese dato se asume activo: ofrecer
+  // "suspender" sobre un comercio ya suspendido es un error recuperable, y el
+  // backend lo deja en el mismo estado.
+  const estaSuspendido = row?.tenantStatus === 'suspended'
+
+  const aplicar = async () => {
+    if (!estaSuspendido && !motivo.trim()) {
+      setError('Indicá por qué se suspende. Queda con tu email, por si el comercio reclama.')
+      return
+    }
+
+    setGuardando(true)
+    setError('')
+
+    try {
+      await updateTenantStatus({
+        tenantId: row.tenantId,
+        suspended: !estaSuspendido,
+        reason: motivo.trim(),
+      })
+      setAbierto(false)
+      await onSaved?.()
+      onClose?.()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo cambiar el estado del comercio.')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <>
+      <Paper variant="outlined" sx={{ p: 2, mt: 2, borderColor: 'error.light' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          {estaSuspendido ? 'Comercio suspendido' : 'Suspender el comercio entero'}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          {estaSuspendido
+            ? 'Hoy no puede vender ni entrar a su panel. Sus datos están intactos y se reactiva en un clic.'
+            : 'Deja de vender y de entrar a su panel. No se borra nada: productos, órdenes, clientes e historial quedan intactos, y se puede volver atrás.'}
+        </Typography>
+
+        <Button
+          variant="outlined"
+          color={estaSuspendido ? 'success' : 'error'}
+          onClick={() => {
+            setMotivo('')
+            setError('')
+            setAbierto(true)
+          }}
+        >
+          {estaSuspendido ? 'Reactivar el comercio' : 'Suspender el comercio'}
+        </Button>
+      </Paper>
+
+      <Dialog open={abierto} onClose={() => setAbierto(false)} fullWidth maxWidth="xs">
+        <DialogTitle>
+          {estaSuspendido ? '¿Reactivar el comercio?' : '¿Suspender el comercio?'}
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity={estaSuspendido ? 'success' : 'warning'} sx={{ mb: 2 }}>
+            {estaSuspendido ? (
+              <>
+                <strong>{row?.name}</strong> vuelve a vender y a poder entrar a su panel.
+              </>
+            ) : (
+              <>
+                <strong>{row?.name}</strong> deja de vender y de poder entrar a su panel, desde
+                ahora. No se borra nada y se puede revertir.
+              </>
+            )}
+          </Alert>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          {/* Sólo al suspender: volver a habilitar a alguien no hay que
+              defenderlo ante nadie. */}
+          {!estaSuspendido && (
+            <TextField
+              label="Por qué se suspende"
+              fullWidth
+              multiline
+              minRows={2}
+              value={motivo}
+              onChange={event => setMotivo(event.target.value)}
+              placeholder="Ej.: cuesta más de lo que paga desde junio y no respondió los avisos"
+              helperText="Queda con tu email y la fecha. Es lo que te va a permitir responder si el comercio reclama."
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAbierto(false)} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color={estaSuspendido ? 'success' : 'error'}
+            onClick={aplicar}
+            disabled={guardando}
+          >
+            {guardando ? (
+              <CircularProgress size={22} />
+            ) : (
+              <span>{estaSuspendido ? 'Reactivar' : 'Suspender'}</span>
+            )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  )
+}
+
 /** A partir de cuántos días un tipo de cambio deja de ser confiable. */
 const DIAS_PARA_AVISAR = 15
 
@@ -635,6 +834,17 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
             {error}
           </Alert>
         )}
+
+        {/* SUSPENDER EL COMERCIO ENTERO: aparte de todo lo de arriba.
+
+            Va en su propio bloque, abajo, y con su propio botón, porque es una
+            decisión de otra naturaleza. Lo de arriba acota o apaga la IA y el
+            comercio sigue vendiendo; esto lo deja sin tienda y sin panel.
+
+            Si compartiera el botón "Guardar" con el resto, alguien que vino a
+            ajustar una fracción podría cortarle el servicio a un comercio que
+            paga sin haberlo decidido. */}
+        <SuspensionDelComercio row={row} onSaved={onSaved} onClose={onClose} />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
@@ -651,6 +861,10 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
 function ContenidoDelGasto({ fx, onFxSaved }) {
   const { dinero } = useDinero()
   const [loading, setLoading] = useState(true)
+  // El margen por comercio. Es el MISMO reporte que la pantalla de margen, no
+  // un calculo nuevo: dos calculos del mismo numero terminarian dando cifras
+  // distintas para el mismo comercio en dos pantallas del mismo panel.
+  const [margen, setMargen] = useState([])
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState(null)
@@ -667,8 +881,19 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
     setForbidden(false)
 
     try {
-      const data = await getPlatformAiSpend()
-      if (!signal?.cancelled) setReport(data)
+      const [gasto, reporteMargen] = await Promise.allSettled([
+        getPlatformAiSpend(),
+        getPlatformMarginReport(),
+      ])
+
+      if (signal?.cancelled) return
+
+      if (gasto.status === 'rejected') throw gasto.reason
+
+      setReport(gasto.value)
+      // Si falla el margen, la columna queda en guiones y el resto de la
+      // pantalla sirve igual. Al reves no: sin gasto no hay nada que mirar.
+      setMargen(reporteMargen.status === 'fulfilled' ? reporteMargen.value?.tenants || [] : [])
     } catch (err) {
       if (signal?.cancelled) return
 
@@ -730,6 +955,10 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
     settingHistory,
   } = report
   const percent = consumption.percentUsed
+
+  // Indexado por comercio: recorrer el array del margen por cada fila de la
+  // tabla seria cuadratico, y con cientos de comercios eso se nota.
+  const margenPorComercio = new Map(margen.map(fila => [String(fila.tenantId), fila]))
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1100, mx: 'auto' }}>
@@ -897,10 +1126,18 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
           error posible acá, porque el cambio se aplicaría sobre el equivocado. */}
       {governing && (
         <TenantPolicyDialog
-          row={governing}
+          // El estado del comercio sale del reporte de margen y no del de
+          // gasto, que no lo trae. Sin él el diálogo no puede saber si ofrecer
+          // "suspender" o "reactivar".
+          row={{
+            ...governing,
+            tenantStatus: margenPorComercio.get(governing.tenantId)?.status || 'active',
+          }}
           budget={budget}
           onClose={() => setGoverning(null)}
-          onSaved={setReport}
+          // Al suspender hay que recargar las dos cosas: el gasto por el
+          // cambio de política, y el margen porque de ahí sale el estado.
+          onSaved={load}
         />
       )}
 
@@ -964,6 +1201,20 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                 <TableRow>
                   <TableCell>Comercio</TableCell>
                   <TableCell align="right">Paga HENKO</TableCell>
+                  {/* EL MARGEN, AL LADO DEL COSTO.
+
+                      Vivía en otra pantalla, y ésa es la razón por la que no
+                      servía: la decisión que esta tabla habilita —acotar,
+                      pausar, suspender— se toma comparando lo que un comercio
+                      cuesta contra lo que paga, y con los dos números en
+                      pantallas distintas hay que recordar uno mientras se mira
+                      el otro.
+
+                      No se recalcula nada: es el mismo reporte de margen de
+                      siempre, unido por tenantId. Dos cálculos del mismo número
+                      terminarían dando cifras distintas para el mismo
+                      comercio. */}
+                  <TableCell align="right">Margen</TableCell>
                   <TableCell align="right">Tokens</TableCell>
                   <TableCell align="right">De su parte</TableCell>
                   <TableCell align="right">Operaciones</TableCell>
@@ -1028,6 +1279,9 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                           {dinero(row.tenantProviderCostUsd)} con su key
                         </Typography>
                       )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <MargenDelComercio margen={margenPorComercio.get(row.tenantId)} />
                     </TableCell>
                     <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
                     <TableCell align="right">

@@ -19,6 +19,7 @@ import {
   updatePlanPrice,
   getUsdRate,
   updateUsdRate,
+  updateTenantStatus,
 } from '../controller/platformCtrl.js'
 
 const router = express.Router()
@@ -49,5 +50,10 @@ router.put('/plan-prices', updatePlanPrice)
 // con un dólar viejo.
 router.get('/usd-rate', getUsdRate)
 router.put('/usd-rate', updateUsdRate)
+
+// Suspender o reactivar un comercio ENTERO. No borra nada: el corte ya lo
+// aplica tenantMiddleware, que resuelve unicamente comercios con status
+// 'active'. Esto solo mueve la perilla, y deja el motivo y el autor en la fila.
+router.put('/tenant/:tenantId/status', updateTenantStatus)
 
 export default router

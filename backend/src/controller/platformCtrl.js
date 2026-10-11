@@ -6,6 +6,8 @@
 
 import expressAsyncHandler from 'express-async-handler'
 import mongoose from 'mongoose'
+import Tenant from '../models/tenantModel.js'
+import logger from '../../config/logger.js'
 import { getPlatformMarginReport } from '../services/platform/platformMarginService.js'
 import { getPlatformSpendSnapshot } from '../services/ai/aiSpendReportService.js'
 import { isValidPeriod } from '../services/ai/aiPeriod.js'
@@ -475,12 +477,128 @@ export const updateUsdRate = expressAsyncHandler(async (req, res) => {
   })
 })
 
+/**
+ * PUT /api/platform/tenant/:tenantId/status
+ *
+ * Suspende o reactiva un comercio entero.
+ *
+ * QUÉ HACE Y QUÉ NO HACE
+ *
+ * Mueve `status` entre 'active' y 'suspended'. No borra NADA: los productos,
+ * las órdenes, los clientes y el historial de facturación quedan intactos.
+ *
+ * El corte ya estaba implementado y no hace falta nada más: tenantMiddleware
+ * resuelve únicamente comercios con status 'active', así que un suspendido deja
+ * de responder tanto en su tienda como en su panel. Esto solo mueve la perilla.
+ *
+ * POR QUÉ SUSPENDER Y NO BORRAR
+ *
+ * El caso que motiva esta pantalla es un comercio que cuesta más de lo que
+ * paga, y para eso frenarlo alcanza. Borrarlo sería irreversible justo con los
+ * datos que harían falta si después discute un cobro o reclama. El enum del
+ * modelo ya tiene 'deleted' para el día que haya un pedido concreto de baja de
+ * datos; eso es otra operación y merece su propia confirmación.
+ */
+export const updateTenantStatus = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = req.params
+  const { suspended, reason } = req.body || {}
+
+  if (!mongoose.Types.ObjectId.isValid(String(tenantId || ''))) {
+    return res.status(400).json({ success: false, message: 'Comercio inválido.' })
+  }
+
+  if (typeof suspended !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá si el comercio queda suspendido (true) o activo (false).',
+    })
+  }
+
+  const cleanReason = String(reason || '').trim()
+
+  // Se exige motivo para suspender y no para reactivar: frenar a un comercio
+  // que paga es lo que alguien va a discutir después, y sin motivo ni autor no
+  // hay con qué responder. Volver a habilitarlo no necesita defensa.
+  if (suspended && !cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se suspende el comercio.',
+    })
+  }
+
+  // Lectura con lean y escritura con findByIdAndUpdate: las dos esquivan el
+  // hook pre('save') del modelo a propósito.
+  //
+  // normalizeTenant recorre this.domains, así que un documento cargado con
+  // select parcial lo hace explotar con "Cannot read properties of undefined
+  // (reading 'filter')" al guardar. Cargar el documento completo lo evitaría,
+  // pero haría que un cambio de estado dispare además la normalización entera
+  // de dominios — efectos que nadie pidió en una operación que mueve un campo.
+  const tenant = await Tenant.findById(tenantId)
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:suspension-de-comercio' })
+    .select('name status')
+    .lean()
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
+
+  // Un comercio ya borrado no se reactiva desde acá: esa es una decisión
+  // distinta y esta pantalla no es el lugar para tomarla sin querer.
+  if (tenant.status === 'deleted') {
+    return res.status(409).json({
+      success: false,
+      message: 'El comercio está dado de baja. Reactivarlo no se hace desde esta pantalla.',
+    })
+  }
+
+  const estadoAnterior = tenant.status
+
+  // Al reactivar se limpian los tres campos: un comercio activo con un motivo
+  // de suspensión colgado se lee como si siguiera suspendido.
+  const cambios = {
+    status: suspended ? 'suspended' : 'active',
+    suspendedAt: suspended ? new Date() : null,
+    suspendedReason: suspended ? cleanReason.slice(0, 500) : null,
+    suspendedByEmail: suspended ? req.user?.email || null : null,
+  }
+
+  const actualizado = await Tenant.findByIdAndUpdate(tenantId, { $set: cambios }, { new: true })
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:suspension-de-comercio' })
+    .select('name status suspendedAt suspendedReason suspendedByEmail')
+    .lean()
+
+  // Nivel warn y no info: cortarle el servicio a un comercio que paga es un
+  // evento que alguien va a querer encontrar en los logs sin filtrar ruido.
+  logger.warn('[PLATAFORMA] Estado de comercio cambiado', {
+    tenantId: String(actualizado._id),
+    nombre: actualizado.name,
+    de: estadoAnterior,
+    a: actualizado.status,
+    porEmail: req.user?.email || null,
+    motivo: actualizado.suspendedReason,
+  })
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      tenantId: String(actualizado._id),
+      name: actualizado.name,
+      status: actualizado.status,
+      suspendedAt: actualizado.suspendedAt,
+      suspendedReason: actualizado.suspendedReason,
+      suspendedByEmail: actualizado.suspendedByEmail,
+    },
+  })
+})
+
 export default {
   getMarginReport,
   getAiSpendReport,
   updateAiBudget,
   getUsdRate,
   updateUsdRate,
+  updateTenantStatus,
   getPlanPrices,
   updatePlanPrice,
 }

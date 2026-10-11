@@ -36,6 +36,7 @@ const { default: AiConsumptionLedger, LEDGER_EVENT } =
   await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { getPlatformMarginReport } = await import('../services/platform/platformMarginService.js')
+const { updateTenantStatus } = await import('../controller/platformCtrl.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const PERIODO = getCurrentPeriod()
@@ -203,5 +204,116 @@ describe('qué se puede hacer con el reporte', () => {
     expect(totals.unprofitableLossArs).toBe(-15000)
     // Y el total sigue siendo la suma de los dos: 39.000 − 15.000.
     expect(totals.totalEstimatedMarginArs).toBe(24000)
+  })
+})
+
+// Suspender un comercio: lo unico que esta pantalla puede hacerle a un negocio
+// que paga, y por eso lo unico que tiene que estar bien atado.
+//
+// NO BORRA NADA, a proposito. El caso que motiva la funcion es un comercio que
+// cuesta mas de lo que paga, y para eso frenarlo alcanza. Borrarlo seria
+// irreversible justo con los datos que harian falta si despues discute un cobro.
+//
+// El corte ya lo aplica tenantMiddleware, que resuelve unicamente comercios con
+// status 'active'. Esto solo mueve la perilla.
+describe('suspension de comercio', () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  const pedir = async (tenantId, cuerpo, email = 'dueno@henko.test') => {
+    const req = { params: { tenantId: String(tenantId) }, body: cuerpo, user: { email } }
+    const res = respuesta()
+
+    await updateTenantStatus(req, res, err => {
+      if (err) throw err
+    })
+
+    return res
+  }
+
+  beforeEach(async () => {
+    await crearComercio(CARO, { name: 'Caro', plan: 'starter' })
+  })
+
+  test('suspender deja el motivo y el autor en la fila', async () => {
+    const res = await pedir(CARO, { suspended: true, reason: 'Cuesta mas de lo que paga' })
+
+    expect(res.statusCode).toBe(200)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('suspended')
+    // Sin motivo ni autor no hay con que responder cuando el comercio reclame.
+    expect(tenant.suspendedReason).toBe('Cuesta mas de lo que paga')
+    expect(tenant.suspendedByEmail).toBe('dueno@henko.test')
+    expect(tenant.suspendedAt).toBeInstanceOf(Date)
+  })
+
+  test('no se puede suspender sin decir por que', async () => {
+    const res = await pedir(CARO, { suspended: true })
+
+    expect(res.statusCode).toBe(400)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('active')
+  })
+
+  test('reactivar limpia el motivo, que si no se lee como si siguiera suspendido', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+    const res = await pedir(CARO, { suspended: false })
+
+    expect(res.statusCode).toBe(200)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('active')
+    expect(tenant.suspendedReason).toBeNull()
+    expect(tenant.suspendedAt).toBeNull()
+    expect(tenant.suspendedByEmail).toBeNull()
+  })
+
+  test('reactivar no necesita motivo: volver a habilitar no hay que defenderlo', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+
+    expect((await pedir(CARO, { suspended: false })).statusCode).toBe(200)
+  })
+
+  test('suspender NO borra nada del comercio', async () => {
+    await pedir(CARO, { suspended: true, reason: 'prueba' })
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    // Lo que haria falta si el comercio reclama o discute un cobro.
+    expect(tenant.name).toBe('Caro')
+    expect(tenant.plan).toBe('starter')
+    expect(tenant.createdAt).toBeInstanceOf(Date)
+  })
+
+  test('un comercio dado de baja no se reactiva desde aca', async () => {
+    await Tenant.collection.updateOne({ _id: CARO }, { $set: { status: 'deleted' } })
+
+    const res = await pedir(CARO, { suspended: false })
+
+    // Es otra decision y esta pantalla no es el lugar para tomarla sin querer.
+    expect(res.statusCode).toBe(409)
+  })
+
+  test('un id que no es un comercio no pasa', async () => {
+    expect((await pedir('no-es-un-id', { suspended: true, reason: 'x' })).statusCode).toBe(400)
+  })
+
+  test('hace falta decir si queda suspendido o activo', async () => {
+    expect((await pedir(CARO, { reason: 'x' })).statusCode).toBe(400)
   })
 })

@@ -121,3 +121,20 @@ export const updateUsdRate = async ({ rate, reason }) => {
 
   return unwrap(response)
 }
+
+/**
+ * Suspende o reactiva un comercio ENTERO.
+ *
+ * No borra nada: mueve `status` entre 'active' y 'suspended'. El corte lo aplica
+ * tenantMiddleware, que resuelve únicamente comercios activos, así que un
+ * suspendido deja de responder tanto en su tienda como en su panel — y sus
+ * productos, órdenes, clientes e historial quedan intactos.
+ *
+ * Distinto de updateTenantAiPolicy({ suspended }), que corta SOLO la IA y deja
+ * al comercio vendiendo.
+ */
+export const updateTenantStatus = async ({ tenantId, suspended, reason }) => {
+  const response = await api.put(`/platform/tenant/${tenantId}/status`, { suspended, reason })
+
+  return unwrap(response)
+}

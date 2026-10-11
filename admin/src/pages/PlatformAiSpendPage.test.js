@@ -21,6 +21,8 @@ const mockUpdateBudget = jest.fn()
 const mockUpdateTenantPolicy = jest.fn()
 const mockGetUsdRate = jest.fn()
 const mockUpdateUsdRate = jest.fn()
+const mockGetMargin = jest.fn()
+const mockUpdateTenantStatus = jest.fn()
 
 // Mil pesos por dólar: elegido para que las conversiones se puedan verificar a
 // ojo en las aserciones (USD 1,23 → $1.230) en lugar de arrastrar la cuenta.
@@ -45,7 +47,11 @@ jest.unstable_mockModule('../services/platformService', () => ({
   // montos no dependan de una cotización.
   getUsdRate: mockGetUsdRate,
   updateUsdRate: mockUpdateUsdRate,
-  getPlatformMarginReport: jest.fn(),
+  // El margen por comercio: la pantalla lo une al gasto por tenantId para que
+  // "cuánto cuesta" y "cuánto paga" se vean en la misma fila.
+  getPlatformMarginReport: mockGetMargin,
+  // Suspender el comercio ENTERO, distinto de pausarle sólo la IA.
+  updateTenantStatus: mockUpdateTenantStatus,
   default: {},
 }))
 
@@ -114,11 +120,32 @@ const pesos = usd => {
 // ya cargo" en casi todas las pruebas.
 const GASTO_DEL_MES = 33.12
 
+// El margen del comercio de la fixture: 'Moto Norte', con tenantId 't1'.
+//
+// Un comercio rentable por defecto. Las pruebas que miran el caso que pierde
+// plata, o el que no tiene precio de plan, lo pisan.
+const MARGEN = {
+  tenants: [
+    {
+      tenantId: 't1',
+      name: 'Moto Norte',
+      plan: 'pro',
+      status: 'active',
+      planPriceArs: 40000,
+      aiCostArs: 12500,
+      estimatedMarginArs: 27500,
+      marginPercent: 68.8,
+      unprofitable: false,
+    },
+  ],
+}
+
 beforeEach(() => {
   jest.clearAllMocks()
   // Con cambio cargado por defecto: es el estado normal de la pantalla. Las
   // pruebas que miran el caso sin cargar lo pisan.
   mockGetUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
+  mockGetMargin.mockResolvedValue(MARGEN)
 })
 
 test('muestra el gasto del mes y qué lo consume', async () => {
@@ -747,6 +774,165 @@ describe('tipo de cambio', () => {
 
     await waitFor(() =>
       expect(mockUpdateUsdRate).toHaveBeenCalledWith({ rate: 1650, reason: 'MEP del 11/10' }),
+    )
+  })
+})
+
+// El REPORT por defecto NO trae byTenant: la tabla de comercios solo aparece
+// cuando una prueba lo pasa como override. Esta fila es la de esas pruebas, con
+// el mismo tenantId que MARGEN para que el join por comercio tenga con que unir.
+const UN_COMERCIO = [
+  {
+    tenantId: 't1',
+    name: 'Moto Norte',
+    plan: 'pro',
+    tokens: 4_000_000,
+    operations: 900,
+    toolCalls: 40,
+    platformCostUsd: 12.5,
+    tenantProviderCostUsd: 12.5,
+    keySources: ['platform'],
+    tokenCap: 5_000_000,
+    percentOfCap: 80,
+    percentOfPlatformUsd: 25,
+  },
+]
+
+// El margen al lado del costo, en la misma fila.
+//
+// Vivía en otra pantalla, y ésa es la razón por la que no servía: la decisión
+// que esta tabla habilita —acotar, pausar, suspender— se toma comparando lo que
+// un comercio cuesta contra lo que paga, y con los dos números en pantallas
+// distintas hay que recordar uno mientras se mira el otro.
+//
+// No se recalcula nada: es el mismo reporte de margen, unido por tenantId. Dos
+// cálculos del mismo número terminarían dando cifras distintas para el mismo
+// comercio en dos pantallas del mismo panel.
+describe('margen por comercio', () => {
+  test('muestra el margen en pesos y en porcentaje', async () => {
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText(/27\.500/)).toBeInTheDocument())
+
+    // El porcentaje importa tanto como los pesos: $8.000 sobre un plan de
+    // $10.000 y $8.000 sobre uno de $40.000 se ven idénticos en pesos y son
+    // negocios distintos.
+    expect(screen.getByText(/68,8%|68\.8%/)).toBeInTheDocument()
+  })
+
+  test('marca al comercio que cuesta más de lo que paga', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [
+        {
+          ...MARGEN.tenants[0],
+          estimatedMarginArs: -5000,
+          marginPercent: -12.5,
+          unprofitable: true,
+        },
+      ],
+    })
+    load({ byTenant: UN_COMERCIO })
+
+    // Es la única fila sobre la que hay que hacer algo, y sin marcarla se pierde
+    // entre las demás.
+    await waitFor(() => expect(screen.getByText(/pierde plata/)).toBeInTheDocument())
+  })
+
+  test('un plan sin precio no muestra cero, que se leería como "no deja nada"', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [
+        { ...MARGEN.tenants[0], planPriceArs: null, estimatedMarginArs: null, marginPercent: null },
+      ],
+    })
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText('sin precio')).toBeInTheDocument())
+  })
+
+  test('si falla el margen la pantalla sigue sirviendo', async () => {
+    // Al revés no: sin gasto no hay nada que mirar. Pero sin margen el resto de
+    // la pantalla contesta igual, así que la columna queda en guiones.
+    mockGetMargin.mockRejectedValue(new Error('sin red'))
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+  })
+})
+
+// Suspender el comercio entero: lo único que esta pantalla puede hacerle a un
+// negocio que paga.
+//
+// NO BORRA NADA, a propósito. Frenar a un comercio que cuesta más de lo que paga
+// alcanza para el caso; borrarlo sería irreversible justo con los datos que
+// harían falta si después discute un cobro.
+describe('suspensión del comercio', () => {
+  const abrirComercio = async user => {
+    load({ byTenant: UN_COMERCIO })
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+  }
+
+  test('avisa que no se borra nada antes de confirmar', async () => {
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+
+    // Lo que hace falta saber para decidir sin miedo.
+    await waitFor(() =>
+      expect(screen.getByText(/No se borra nada y se puede revertir/)).toBeInTheDocument(),
+    )
+  })
+
+  test('no suspende sin motivo', async () => {
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+    await user.click(screen.getByRole('button', { name: /^suspender$/i }))
+
+    // Sin motivo ni autor no hay con qué responder si el comercio reclama.
+    await waitFor(() => expect(screen.getByText(/Indicá por qué se suspende/)).toBeInTheDocument())
+    expect(mockUpdateTenantStatus).not.toHaveBeenCalled()
+  })
+
+  test('suspende con su motivo', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantStatus.mockResolvedValue({ status: 'suspended' })
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /suspender el comercio/i }))
+    await user.type(screen.getByLabelText(/por qué se suspende/i), 'Cuesta más de lo que paga')
+    await user.click(screen.getByRole('button', { name: /^suspender$/i }))
+
+    await waitFor(() =>
+      expect(mockUpdateTenantStatus).toHaveBeenCalledWith({
+        tenantId: 't1',
+        suspended: true,
+        reason: 'Cuesta más de lo que paga',
+      }),
+    )
+  })
+
+  test('a un comercio ya suspendido se le ofrece reactivar, y sin pedir motivo', async () => {
+    mockGetMargin.mockResolvedValue({
+      tenants: [{ ...MARGEN.tenants[0], status: 'suspended' }],
+    })
+    mockUpdateTenantStatus.mockResolvedValue({ status: 'active' })
+
+    const user = userEvent.setup()
+    await abrirComercio(user)
+
+    await user.click(screen.getByRole('button', { name: /reactivar el comercio/i }))
+    await user.click(screen.getByRole('button', { name: /^reactivar$/i }))
+
+    // Volver a habilitar a alguien no hay que defenderlo ante nadie.
+    await waitFor(() =>
+      expect(mockUpdateTenantStatus).toHaveBeenCalledWith({
+        tenantId: 't1',
+        suspended: false,
+        reason: '',
+      }),
     )
   })
 })

@@ -233,6 +233,22 @@ const tenantSchema = new Schema(
       index: true,
     },
 
+    /**
+     * Por qué, cuándo y quién suspendió este comercio.
+     *
+     * El estado solo no alcanza. Suspender a un comercio que paga es una
+     * decisión que alguien va a discutir —puede ser el comercio mismo, puede ser
+     * uno dentro de dos meses sin recordar nada— y sin motivo ni autor no hay
+     * con qué responder. Es el mismo criterio que los precios de los planes y el
+     * tipo de cambio: la decisión queda con su justificación al lado.
+     *
+     * Se limpian al reactivar: un comercio activo con un motivo de suspensión
+     * colgado se lee como si estuviera suspendido.
+     */
+    suspendedAt: { type: Date, default: null },
+    suspendedReason: { type: String, default: null, trim: true },
+    suspendedByEmail: { type: String, default: null, trim: true },
+
     plan: {
       type: String,
       // Solo dos planes, y los dos se pagan. `free` y `enterprise` se sacaron.
