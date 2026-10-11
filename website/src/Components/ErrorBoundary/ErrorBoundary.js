@@ -15,6 +15,49 @@ import './ErrorBoundary.css'
 // usuario recarga enseguida (que es lo que hace el botón de abajo).
 let yaReportado = false
 
+// La ruta del crash termina en los logs del hosting, que son durables, y hay
+// rutas que llevan credenciales usables en la URL: /reset-password/:token tiene
+// el token de reseteo en el path y /verify-email?token=... en la consulta.
+// Mandarla cruda copiaba esas credenciales al log, donde después las ve
+// cualquiera con acceso al panel. Para depurar sirve la FORMA de la ruta, no el
+// valor del token.
+//
+// Se recorta por forma y no por lista de rutas conocidas: una ruta nueva con un
+// token en la URL no debería filtrar nada por el solo hecho de ser nueva.
+//
+// Pero recortar de más también cuesta: si /product/zapatillas-running-azules
+// llega como /product/***, el reporte deja de decir qué página se rompió. Lo
+// que separa un token de un slug es el guión —los slugs separan palabras, los
+// tokens son un bloque— más el largo.
+const HEX_LARGO = /^[a-f0-9]{24,}$/i // ObjectIds de Mongo y tokens en hexa
+const BLOQUE_OPACO = /^[A-Za-z0-9_]{20,}$/ // un bloque sin palabras separadas
+const DEMASIADO_LARGO = /^[A-Za-z0-9_-]{40,}$/ // JWT o base64url, con guiones o sin
+
+const esOpaco = parte =>
+  HEX_LARGO.test(parte) || BLOQUE_OPACO.test(parte) || DEMASIADO_LARGO.test(parte)
+
+export const rutaSegura = () => {
+  try {
+    const camino = String(window.location.pathname || '/')
+      .split('/')
+      .map(parte => (esOpaco(parte) ? '***' : parte))
+      .join('/')
+
+    // Se conservan los nombres de los parámetros y se descartan TODOS los
+    // valores. El nombre dice qué venía en la URL —que es la pista útil—; el
+    // valor es exactamente lo que no puede salir. Sin lista de claves
+    // sensibles: cualquier lista se queda corta con el próximo parámetro.
+    const claves = [...new URLSearchParams(window.location.search).keys()]
+    const consulta = claves.length ? `?${claves.map(c => `${c}=***`).join('&')}` : ''
+
+    return `${camino}${consulta}`
+  } catch {
+    // Nunca vale la pena arriesgar un segundo error acá, ni mandar la URL sin
+    // recortar como alternativa.
+    return '(ruta no disponible)'
+  }
+}
+
 const reportarCrash = (error, info) => {
   // Un crash en bucle re-renderiza y volvería a reportar: con el primero
   // alcanza para entender la falla.
@@ -49,7 +92,7 @@ const reportarCrash = (error, info) => {
         message: error?.message || String(error),
         stack: error?.stack || '',
         componentStack: info?.componentStack || '',
-        route: `${window.location.pathname}${window.location.search}`,
+        route: rutaSegura(),
         authenticated: autenticado,
       }),
       // Si el reporte falla no hay nada que hacer: lo que el usuario ve ya

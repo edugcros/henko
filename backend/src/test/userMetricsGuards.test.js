@@ -448,17 +448,36 @@ describe('métricas · reporte de crash del frontend', () => {
     expect(espia).not.toHaveBeenCalled()
   })
 
-  test('reporta igual cuando el tenant no se pudo resolver', async () => {
-    // Este es el caso que más importa: que el dominio no resuelva a ningún
-    // comercio es en sí una causa probable del crash. Exigir tenant acá
-    // descartaría justamente el reporte que explica la falla.
+  test('el handler tolera que no haya tenant y loguea igual', async () => {
     const res = await reportar(
       { message: 'Tenant no resuelto', route: '/' },
-      { tenantId: undefined, headers: { 'user-agent': 'jest' } },
+      { tenantId: undefined, headers: { host: 'desconocida.test', 'user-agent': 'jest' } },
     )
 
     expect(res.statusCode).toBe(204)
     expect(loQueSeLogueo().tenantId).toBe('')
+    // El dominio alcanza para saber de qué tienda vino el crash.
+    expect(loQueSeLogueo().tenantDominio).toBe('desconocida.test')
+  })
+
+  test('la ruta NO pasa por resolveTenantByDomain, que cortaría con 404', async () => {
+    // Esta prueba existe por un error concreto: la ruta se montó con
+    // resolveTenantByDomain creyendo que sólo adjuntaba el comercio. Ante un
+    // dominio desconocido o inactivo ese middleware contesta 404 y no llama a
+    // next(), así que en el único escenario que este endpoint existe para
+    // diagnosticar —el dominio que no resuelve— el reporte se perdía. Que el
+    // handler tolere la falta de tenant (prueba de arriba) no sirve de nada si
+    // la request nunca llega.
+    const router = (await import('../routes/userMetricsRoutes.js')).default
+
+    const capa = router.stack.find(c => c.route?.path === '/client-error')
+
+    expect(capa).toBeDefined()
+
+    const manejadores = capa.route.stack.map(s => s.name)
+
+    expect(manejadores).not.toContain('resolveTenantByDomain')
+    expect(manejadores).not.toContain('requireTenant')
   })
 
   test('recorta un stack gigante en lugar de volcarlo entero al log', async () => {
