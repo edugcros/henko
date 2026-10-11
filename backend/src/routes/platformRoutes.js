@@ -20,6 +20,7 @@ import {
   getUsdRate,
   updateUsdRate,
   updateTenantStatus,
+  deleteTenant,
 } from '../controller/platformCtrl.js'
 
 const router = express.Router()
@@ -55,5 +56,14 @@ router.put('/usd-rate', updateUsdRate)
 // aplica tenantMiddleware, que resuelve unicamente comercios con status
 // 'active'. Esto solo mueve la perilla, y deja el motivo y el autor en la fila.
 router.put('/tenant/:tenantId/status', updateTenantStatus)
+
+// Baja del comercio. Verbo distinto y ruta distinta de la suspension a
+// proposito: es la unica operacion de esta pantalla que no se deshace con un
+// clic, y compartir endpoint con algo reversible invita a confundirlas.
+//
+// NO borra el libro de consumo de IA: esas filas registran lo que HENKO pago, y
+// sin ellas el gasto mensual de la plataforma dejaria de cuadrar con lo que
+// facturo Google.
+router.delete('/tenant/:tenantId', deleteTenant)
 
 export default router

@@ -36,7 +36,9 @@ const { default: AiConsumptionLedger, LEDGER_EVENT } =
   await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { getPlatformMarginReport } = await import('../services/platform/platformMarginService.js')
-const { updateTenantStatus, getUsdRate } = await import('../controller/platformCtrl.js')
+const { updateTenantStatus, getUsdRate, deleteTenant } = await import(
+  '../controller/platformCtrl.js',
+)
 const { default: PlatformAiSetting, PLATFORM_AI_SETTINGS } = await import(
   '../models/platformAiSettingModel.js',
 )
@@ -408,5 +410,132 @@ describe('procedencia del tipo de cambio', () => {
 
     expect(data.source).toBe('panel')
     expect(data.ageDays).toBe(30)
+  })
+})
+
+// Dar de baja un comercio: la unica operacion de esta pantalla que no se
+// deshace con un clic.
+//
+// QUE BORRA Y QUE NO
+//
+// Pone status en 'deleted', lo que lo saca de toda operacion y del reporte de
+// margen. NO borra el libro de consumo de IA, y eso es a proposito: esas filas
+// registran lo que HENKO PAGO. Si desaparecieran, el gasto mensual de la
+// plataforma dejaria de cuadrar con lo que facturo Google y el historial del
+// disyuntor quedaria mal.
+describe('baja de comercio', () => {
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  const borrar = async (tenantId, cuerpo, email = 'dueno@henko.test') => {
+    const req = { params: { tenantId: String(tenantId) }, body: cuerpo, user: { email } }
+    const res = respuesta()
+
+    await deleteTenant(req, res, err => {
+      if (err) throw err
+    })
+
+    return res
+  }
+
+  beforeEach(async () => {
+    await crearComercio(CARO, { name: 'Caro', plan: 'starter' })
+  })
+
+  test('da de baja y deja el motivo y el autor', async () => {
+    const res = await borrar(CARO, { confirmName: 'Caro', reason: 'Pidio la baja' })
+
+    expect(res.statusCode).toBe(200)
+
+    const tenant = await Tenant.collection.findOne({ _id: CARO })
+
+    expect(tenant.status).toBe('deleted')
+    expect(tenant.suspendedReason).toBe('Pidio la baja')
+    expect(tenant.suspendedByEmail).toBe('dueno@henko.test')
+  })
+
+  test('sin el nombre exacto no borra', async () => {
+    const res = await borrar(CARO, { confirmName: 'caro', reason: 'x' })
+
+    // Minusculas no alcanza: el punto es que quien confirma haya MIRADO el
+    // nombre, no que adivine una forma aproximada.
+    expect(res.statusCode).toBe(400)
+    expect((await Tenant.collection.findOne({ _id: CARO })).status).toBe('active')
+  })
+
+  test('sin nombre tampoco', async () => {
+    expect((await borrar(CARO, { reason: 'x' })).statusCode).toBe(400)
+    expect((await Tenant.collection.findOne({ _id: CARO })).status).toBe('active')
+  })
+
+  test('sin motivo tampoco', async () => {
+    expect((await borrar(CARO, { confirmName: 'Caro' })).statusCode).toBe(400)
+    expect((await Tenant.collection.findOne({ _id: CARO })).status).toBe('active')
+  })
+
+  test('no se puede dar de baja dos veces', async () => {
+    await borrar(CARO, { confirmName: 'Caro', reason: 'x' })
+
+    expect((await borrar(CARO, { confirmName: 'Caro', reason: 'x' })).statusCode).toBe(409)
+  })
+
+  test('el libro de consumo NO se borra: registra lo que HENKO pago', async () => {
+    await asentar({ tenantId: CARO, costUsd: 3.5 })
+    await borrar(CARO, { confirmName: 'Caro', reason: 'x' })
+
+    // Si estas filas desaparecieran, el gasto mensual de la plataforma dejaria
+    // de cuadrar con lo que facturo Google.
+    const filas = await AiConsumptionLedger.collection.countDocuments({ tenantId: CARO })
+
+    expect(filas).toBe(1)
+  })
+
+  test('un comercio dado de baja sale del reporte de margen', async () => {
+    await asentar({ tenantId: CARO, costUsd: 3.5 })
+    await borrar(CARO, { confirmName: 'Caro', reason: 'x' })
+
+    const { tenants } = await getPlatformMarginReport(PERIODO)
+
+    expect(tenants.find(t => String(t.tenantId) === String(CARO))).toBeUndefined()
+  })
+
+  test('pero sigue en el reporte de gasto, marcado', async () => {
+    await asentar({ tenantId: CARO, costUsd: 3.5 })
+    await borrar(CARO, { confirmName: 'Caro', reason: 'x' })
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const filas = await getPeriodSpendByTenant(PERIODO)
+    const fila = filas.find(f => String(f.tenantId) === String(CARO))
+
+    // El gasto ocurrio: la fila tiene que seguir. Lo que hace falta es que la
+    // pantalla pueda distinguirla de una sobre la que se puede actuar.
+    expect(fila).toBeDefined()
+    expect(fila.tenantStatus).toBe('deleted')
+    expect(fila.tenantGone).toBe(false)
+  })
+
+  test('un comercio borrado a mano de la base se marca como ausente', async () => {
+    // Es el estado en el que queda si alguien lo borra directo de Mongo en
+    // lugar de usar esta pantalla: el libro queda sin documento al que unir.
+    await asentar({ tenantId: CARO, costUsd: 3.5 })
+    await Tenant.collection.deleteOne({ _id: CARO })
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const filas = await getPeriodSpendByTenant(PERIODO)
+    const fila = filas.find(f => String(f.tenantId) === String(CARO))
+
+    expect(fila).toBeDefined()
+    expect(fila.tenantGone).toBe(true)
+    expect(fila.name).toBe('(comercio eliminado)')
   })
 })

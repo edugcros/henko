@@ -441,6 +441,30 @@ export const getPeriodSpendByTenant = async period => {
       tenantId,
       name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
       plan: tenant?.plan || null,
+
+      /**
+       * Si el comercio todavía existe, y en qué estado.
+       *
+       * POR QUÉ UN COMERCIO BORRADO SIGUE APARECIENDO ACÁ
+       *
+       * Este reporte no se arma desde la lista de comercios: se arma desde el
+       * LIBRO. Y el libro tiene las filas de todas formas, porque esa plata
+       * HENKO ya la pagó. Borrar al comercio no deshace el gasto: si la fila
+       * desapareciera, el total de la plataforma dejaría de cuadrar con lo que
+       * facturó Google y el historial del disyuntor quedaría mal.
+       *
+       * O sea que la fila tiene que seguir, y lo que hace falta es que la
+       * pantalla pueda distinguirla: un comercio borrado es HISTORIA, no una
+       * fila sobre la que se pueda acotar, pausar ni suspender. Sin este dato
+       * la tabla le ofrecía "Gobernar" a un comercio que ya no existe.
+       *
+       * `tenantGone` es distinto de `tenantStatus: 'deleted'`: el primero es un
+       * documento que no está en la base —alguien lo borró a mano— y el segundo
+       * es una baja hecha desde el panel, que deja el documento con su motivo.
+       */
+      tenantGone: !tenant,
+      tenantStatus: tenant?.status || null,
+
       tokens,
       toolCalls: fila.toolCalls || 0,
       operations: fila.operations || 0,

@@ -618,6 +618,123 @@ export const updateTenantStatus = expressAsyncHandler(async (req, res) => {
   })
 })
 
+/**
+ * DELETE /api/platform/tenant/:tenantId
+ *
+ * Da de baja un comercio.
+ *
+ * QUÉ BORRA Y QUÉ NO
+ *
+ * Pone `status` en 'deleted'. Eso lo saca de toda operación —tenantMiddleware
+ * resuelve únicamente comercios activos, así que deja de responder su tienda y
+ * su panel, y sus dominios dejan de resolver— y lo saca del reporte de margen,
+ * que ya filtra los borrados.
+ *
+ * NO borra el libro de consumo de IA, y eso es a propósito: esas filas son el
+ * registro de lo que HENKO PAGÓ. Si desaparecieran, el gasto mensual de la
+ * plataforma dejaría de cuadrar con lo que facturó Google y el historial del
+ * disyuntor quedaría mal. El comercio sigue apareciendo en el reporte de gasto
+ * marcado como dado de baja, que es lo correcto: el gasto ocurrió.
+ *
+ * Tampoco borra órdenes ni facturación, por el mismo motivo y porque es
+ * documentación que hay que poder mostrar si alguien discute un cobro.
+ *
+ * POR QUÉ PIDE EL NOMBRE ESCRITO
+ *
+ * Es la única operación de esta pantalla que no se deshace con un clic. Un
+ * botón de confirmación se aprieta por inercia; escribir el nombre obliga a
+ * mirar cuál comercio es. Mismo criterio que usan las plataformas para borrar
+ * un repositorio.
+ */
+export const deleteTenant = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = req.params
+  const { confirmName, reason } = req.body || {}
+
+  if (!mongoose.Types.ObjectId.isValid(String(tenantId || ''))) {
+    return res.status(400).json({ success: false, message: 'Comercio inválido.' })
+  }
+
+  const cleanReason = String(reason || '').trim()
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se da de baja el comercio.',
+    })
+  }
+
+  const tenant = await Tenant.findById(tenantId)
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:baja-de-comercio' })
+    .select('name status')
+    .lean()
+
+  if (!tenant) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
+
+  if (tenant.status === 'deleted') {
+    return res.status(409).json({
+      success: false,
+      message: 'El comercio ya está dado de baja.',
+    })
+  }
+
+  // La comparación es exacta salvo espacios al borde. No se normaliza de más
+  // —ni acentos ni mayúsculas— porque el punto es que quien confirma haya
+  // mirado el nombre, no que adivine una forma aproximada.
+  if (String(confirmName || '').trim() !== tenant.name) {
+    return res.status(400).json({
+      success: false,
+      message: `Para confirmar, escribí el nombre exacto del comercio: ${tenant.name}`,
+    })
+  }
+
+  const actualizado = await Tenant.findByIdAndUpdate(
+    tenantId,
+    {
+      $set: {
+        status: 'deleted',
+        // Se reusan los campos de suspensión en lugar de agregar otros tres:
+        // responden la misma pregunta —por qué, cuándo y quién dejó a este
+        // comercio fuera de servicio— y el estado ya distingue los dos casos.
+        suspendedAt: new Date(),
+        suspendedReason: cleanReason.slice(0, 500),
+        suspendedByEmail: req.user?.email || null,
+      },
+    },
+    { new: true },
+  )
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:baja-de-comercio' })
+    .select('name status suspendedAt suspendedReason suspendedByEmail')
+    .lean()
+
+  if (!actualizado) {
+    return res.status(404).json({ success: false, message: 'El comercio no existe.' })
+  }
+
+  // Nivel warn, igual que la suspensión: es el evento que alguien va a buscar
+  // en los logs cuando pregunte qué pasó con un comercio.
+  logger.warn('[PLATAFORMA] Comercio dado de baja', {
+    tenantId: String(actualizado._id),
+    nombre: actualizado.name,
+    porEmail: req.user?.email || null,
+    motivo: actualizado.suspendedReason,
+    nota: 'El libro de consumo de IA NO se borra: registra lo que HENKO pagó.',
+  })
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      tenantId: String(actualizado._id),
+      name: actualizado.name,
+      status: actualizado.status,
+      deletedAt: actualizado.suspendedAt,
+      reason: actualizado.suspendedReason,
+      byEmail: actualizado.suspendedByEmail,
+    },
+  })
+})
+
 export default {
   getMarginReport,
   getAiSpendReport,
@@ -625,6 +742,7 @@ export default {
   getUsdRate,
   updateUsdRate,
   updateTenantStatus,
+  deleteTenant,
   getPlanPrices,
   updatePlanPrice,
 }
