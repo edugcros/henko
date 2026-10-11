@@ -403,6 +403,15 @@ export const env = {
     topSearchesLimit: optionalNumber('METRICS_TOP_SEARCHES_LIMIT', 10),
     trafficSourcesLimit: optionalNumber('METRICS_TRAFFIC_SOURCES_LIMIT', 10),
     eventBatchMax: optionalNumber('METRICS_EVENT_BATCH_MAX', 50),
+    // Cuántos días de eventos crudos se conservan. Lo usa el índice TTL de
+    // userMetricEventModel y el script pruneUserMetrics.
+    //
+    // 90 días decididos a propósito: el panel consulta days=30 con
+    // compare=true, o sea que nada de lo que la app muestra necesita más de 60.
+    // Los 90 dan margen para tendencia trimestral sin guardar un año de
+    // eventos crudos. Es además la misma retención que ya usa
+    // subscriptionWebhookEventModel.
+    retentionDays: optionalNumber('METRICS_RETENTION_DAYS', 90),
     internalPeriodDays: optionalNumber('METRICS_INTERNAL_PERIOD_DAYS', 30),
     realtimeWindowMinutes: optionalNumber('METRICS_REALTIME_WINDOW_MINUTES', 5),
   },

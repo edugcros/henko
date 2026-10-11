@@ -35,7 +35,9 @@
     "migrate:agent-self-limits:apply": "cross-env NODE_ENV=development node src/scripts/resetAgentSelfLimitDefaults.js --apply",
     "migrate:agent-self-limits:prod": "cross-env NODE_ENV=production node src/scripts/resetAgentSelfLimitDefaults.js --apply",
     "prune:ai-ledger": "cross-env NODE_ENV=development node src/scripts/pruneAiLedger.js",
-    "prune:ai-ledger:prod": "cross-env NODE_ENV=production node src/scripts/pruneAiLedger.js"
+    "prune:ai-ledger:prod": "cross-env NODE_ENV=production node src/scripts/pruneAiLedger.js",
+    "prune:user-metrics": "cross-env NODE_ENV=development node src/scripts/pruneUserMetrics.js",
+    "prune:user-metrics:prod": "cross-env NODE_ENV=production node src/scripts/pruneUserMetrics.js"
   },
   "jest": {
     "testTimeout": 30000,

@@ -1,6 +1,7 @@
 // 📁 src/models/userMetricEventModel.js
 import mongoose from 'mongoose'
 import { tenantPlugin } from './tenantPlugin.js'
+import { env } from '../../config/env.js'
 
 const { Schema } = mongoose
 
@@ -424,6 +425,41 @@ userMetricEventSchema.pre('validate', function normalizeEvent(next) {
 
   next()
 })
+
+// RETENCIÓN: esta colección no puede crecer para siempre.
+//
+// Es la que más crece de todas y era la única de las ocho de alto crecimiento
+// sin vencimiento. Recibe cinco inserts por carga de página, de cada visitante,
+// de cada tienda. Con una tienda no se nota; con cien comercios es el renglón
+// que primero rompe: el almacenamiento crece sin techo, las consultas del panel
+// se degradan porque escanean cada vez más documentos, y la factura sube sola.
+//
+// POR QUÉ UN TTL ACÁ Y UN SCRIPT EN EL LEDGER DE IA
+//
+// pruneAiLedger.js argumenta —bien— que un TTL "borra solo, en silencio" y que
+// el ledger es materia prima del análisis de rentabilidad. Ese razonamiento no
+// se traslada: el ledger son miles de filas por mes y es material financiero;
+// esto es telemetría de comportamiento de volumen altísimo. Un script que
+// alguien tiene que acordarse de correr se olvida, y la colección vuelve a
+// crecer sin techo. Para telemetría el vencimiento automático ES la decisión
+// correcta.
+//
+// POR QUÉ createdAt Y NO occurredAt
+//
+// occurredAt lo manda el cliente (userMetricsCtrl lee rawEvent.occurredAt).
+// Un TTL sobre un campo que elige quien llama es evadible: con una fecha futura
+// los documentos nunca vencen. createdAt lo pone el servidor vía
+// timestamps: true.
+//
+// OJO AL ACTIVARLO: crear este índice sobre una colección que ya tiene
+// historia dispara el borrado de todo lo vencido de una sola vez. Por eso en
+// producción autoIndex está apagado (config/connectDB.js) y la puesta en
+// marcha va por src/scripts/pruneUserMetrics.js, que primero informa cuánto se
+// va a perder y borra en lotes.
+userMetricEventSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: Math.max(1, Number(env?.metrics?.retentionDays || 90)) * 24 * 60 * 60 },
+)
 
 userMetricEventSchema.index({ tenantId: 1, occurredAt: -1 })
 userMetricEventSchema.index({ tenantId: 1, eventType: 1, occurredAt: -1 })

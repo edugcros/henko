@@ -573,3 +573,53 @@ describe('métricas · la clave del rate limit no la elige el cliente', () => {
     expect(uno).not.toBe(otro)
   })
 })
+
+// La colección no puede crecer para siempre, y el vencimiento no lo puede
+// elegir el cliente.
+//
+// userMetricEvent es la que más crece de las ocho de alto crecimiento y era la
+// única sin vencimiento: cinco inserts por carga de página, de cada visitante,
+// de cada tienda, sin que nada se borre nunca. Con cien comercios es el renglón
+// que primero rompe.
+//
+// El TTL va sobre createdAt y NO sobre occurredAt porque occurredAt lo manda el
+// cliente (userMetricsCtrl lee rawEvent.occurredAt). Un vencimiento anclado en
+// un campo que elige quien llama es evadible: con una fecha futura los
+// documentos no vencen nunca, y el techo deja de existir justo para quien lo
+// quiera evadir.
+describe('métricas · retención', () => {
+  const indices = () => UserMetricEvent.schema.indexes()
+
+  const indiceTtl = () =>
+    indices().find(([, opciones]) => typeof opciones?.expireAfterSeconds === 'number')
+
+  test('existe un índice TTL', () => {
+    expect(indiceTtl()).toBeDefined()
+  })
+
+  test('vence por createdAt, que lo pone el servidor', () => {
+    const [campos] = indiceTtl()
+
+    expect(Object.keys(campos)).toEqual(['createdAt'])
+    // Si esto cambiara a occurredAt, el techo sería evadible mandando una
+    // fecha futura en el cuerpo del evento.
+    expect(campos.occurredAt).toBeUndefined()
+  })
+
+  test('el plazo son los 90 días configurados', () => {
+    const [, opciones] = indiceTtl()
+
+    expect(opciones.expireAfterSeconds).toBe(90 * 24 * 60 * 60)
+  })
+
+  test('el script de poda y el índice leen el mismo plazo', async () => {
+    // Si discreparan, el script podaría a un plazo y Mongo a otro: la mitad de
+    // los datos se irían por una regla que nadie eligió.
+    const fs = await import('fs')
+    const url = await import('url')
+    const ruta = url.fileURLToPath(new URL('../scripts/pruneUserMetrics.js', import.meta.url))
+    const fuente = fs.readFileSync(ruta, 'utf8')
+
+    expect(fuente).toContain('env?.metrics?.retentionDays')
+  })
+})
