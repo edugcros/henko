@@ -432,7 +432,8 @@ const PricingPage = () => {
             onClick={() => analyze(false)}
             sx={{ minWidth: 160 }}
           >
-            {analyzing ? <CircularProgress size={22} color="inherit" /> : 'Analizar'}
+            {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+            {analyzing ? <CircularProgress size={22} color="inherit" /> : <span>Analizar</span>}
           </Button>
         </Stack>
 

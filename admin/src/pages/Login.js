@@ -193,7 +193,19 @@ const Login = () => {
               }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Ingresar'}
+              {/*
+                Texto envuelto, no desnudo: un hijo de texto suelto que se
+                intercambia por un elemento rompe el render cuando el traductor
+                de Chrome lo envolvió en <font> (NotFoundError en removeChild).
+                Medido en producción contra el login del storefront desde
+                Android; el panel tiene el mismo patrón y el comercio también
+                entra desde el celular. Detalle en website/src/Pages/Login.js.
+              */}
+              {isSubmitting ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                <span>Ingresar</span>
+              )}
             </Button>
 
             {isError && !isNotVerified && (

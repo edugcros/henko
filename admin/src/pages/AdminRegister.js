@@ -803,7 +803,15 @@ const AdminRegister = () => {
                       boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                     }}
                   >
-                    {isLoading ? <CircularProgress size={26} color="inherit" /> : 'Crear tienda'}
+                    {/*
+                      Texto envuelto, no desnudo: ver website/src/Pages/Login.js.
+                      Acá el costo es un comercio que no llega a darse de alta.
+                    */}
+                    {isLoading ? (
+                      <CircularProgress size={26} color="inherit" />
+                    ) : (
+                      <span>Crear tienda</span>
+                    )}
                   </Button>
                 </Stack>
               </form>

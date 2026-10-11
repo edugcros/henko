@@ -286,3 +286,68 @@ describe('userService · distingue "no contestó" de "contestó y falló despué
     expect(res.sinRespuesta).toBe(false)
   })
 })
+
+// Por qué ningún texto de botón puede ir desnudo al lado de un elemento.
+//
+// EL CRASH, medido en producción el 11/10/2026
+//
+//   [render] Failed to execute 'removeChild' on 'Node':
+//            The node to be removed is not a child of this node.
+//   ruta: /login   dispositivo: mobile   autenticado: true
+//
+// El traductor automático de Chrome —que en Android traduce sin preguntar—
+// envuelve los nodos de texto de la página en etiquetas <font>. El botón de
+// login hacía `{isSubmitting ? <CircularProgress/> : 'Ingresar'}`: un hijo de
+// texto desnudo que React reemplaza por un elemento cuando el login termina.
+// Para entonces ese nodo ya no era hijo del botón sino del <font> de Chrome,
+// así que removeChild tiraba y se desmontaba el árbol entero. El usuario
+// quedaba con la sesión YA creada, mirando un error, y al recargar aparecía
+// logueado.
+//
+// Había ocho botones con el mismo patrón, entre ellos "Finalizar compra" del
+// carrito —una venta perdida por comprador— y "Crear tienda" del panel.
+// Envolver el texto en un elemento lo arregla: React quita el <span> que él
+// mismo creó, que sigue siendo hijo del botón, y el <font> se va adentro.
+//
+// Esta prueba mira el código fuente porque el defecto es de forma, no de
+// comportamiento: reproducirlo exigiría el traductor de Chrome, que no existe
+// en jsdom. Cubre website/src; admin tiene los mismos seis arreglados.
+describe('ningún texto de botón intercambiado con un elemento va desnudo', () => {
+  test('no hay ternarios que cambien un elemento por un texto suelto', () => {
+    const fs = require('fs')
+    const path = require('path')
+
+    const RIESGOSO =
+      /\?[^?:]*<[A-Z][A-Za-z]*[^>]*\/>[^:]*:\s*['"`][^'"`]+['"`]\s*\}|\?\s*['"`][^'"`]+['"`]\s*:\s*<[A-Z]/
+
+    const raiz = path.resolve(__dirname, '../../..')
+    const encontrados = []
+
+    const recorrer = dir => {
+      for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+        const completo = path.join(dir, entrada.name)
+
+        if (entrada.isDirectory()) {
+          if (entrada.name === '__tests__' || entrada.name === 'node_modules') continue
+          recorrer(completo)
+          continue
+        }
+
+        if (!/\.(js|jsx)$/.test(entrada.name)) continue
+
+        const contenido = fs.readFileSync(completo, 'utf8')
+
+        contenido.split('\n').forEach((linea, i) => {
+          if (RIESGOSO.test(linea)) {
+            encontrados.push(`${path.relative(raiz, completo)}:${i + 1} → ${linea.trim()}`)
+          }
+        })
+      }
+    }
+
+    recorrer(raiz)
+
+    // Si esto falla: envolvé el texto en <span>, no lo dejes suelto.
+    expect(encontrados).toEqual([])
+  })
+})

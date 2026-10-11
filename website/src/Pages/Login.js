@@ -157,7 +157,31 @@ const Login = () => {
               }}
               disabled={isSubmitting}
             >
-              {isSubmitting ? <CircularProgress size={24} color="inherit" /> : 'Ingresar'}
+              {/*
+                El texto va envuelto en <span> y no desnudo. Un hijo de texto
+                suelto que se intercambia por un elemento es lo que rompía el
+                login desde Android:
+
+                  NotFoundError: Failed to execute 'removeChild' on 'Node':
+                  The node to be removed is not a child of this node.
+
+                El traductor automático de Chrome envuelve los nodos de texto
+                en <font> al traducir la página. Cuando el login terminaba y
+                React iba a reemplazar 'Ingresar' por el spinner, ese nodo ya
+                no era hijo del botón sino del <font> que insertó Chrome, así
+                que removeChild tiraba y se desmontaba el árbol entero: el
+                usuario quedaba con la sesión ya creada viendo un error.
+
+                Con el <span>, React quita el elemento que él mismo creó —que
+                sigue siendo hijo directo del botón— y el <font> de Chrome se
+                va adentro. Se arregla sin desactivar la traducción, que en una
+                tienda con compradores de cualquier país hace falta.
+              */}
+              {isSubmitting ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                <span>Ingresar</span>
+              )}
             </Button>
 
             {isError && (

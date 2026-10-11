@@ -448,7 +448,8 @@ export default function MarketIntelligencePage() {
               disabled={loading || !product.trim()}
               sx={{ height: 56, minWidth: 120 }}
             >
-              {loading ? <CircularProgress size={22} /> : 'Analizar'}
+              {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+              {loading ? <CircularProgress size={22} /> : <span>Analizar</span>}
             </Button>
           </Stack>
 
