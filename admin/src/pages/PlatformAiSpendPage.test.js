@@ -23,6 +23,7 @@ const mockGetUsdRate = jest.fn()
 const mockUpdateUsdRate = jest.fn()
 const mockGetMargin = jest.fn()
 const mockUpdateTenantStatus = jest.fn()
+const mockDeleteTenant = jest.fn()
 
 // Mil pesos por dólar: elegido para que las conversiones se puedan verificar a
 // ojo en las aserciones (USD 1,23 → $1.230) en lugar de arrastrar la cuenta.
@@ -52,6 +53,8 @@ jest.unstable_mockModule('../services/platformService', () => ({
   getPlatformMarginReport: mockGetMargin,
   // Suspender el comercio ENTERO, distinto de pausarle sólo la IA.
   updateTenantStatus: mockUpdateTenantStatus,
+  // Dar de baja: la unica operacion de la pantalla que no se deshace.
+  deleteTenant: mockDeleteTenant,
   default: {},
 }))
 
@@ -934,5 +937,138 @@ describe('suspensión del comercio', () => {
         reason: '',
       }),
     )
+  })
+})
+
+// Dar de baja: la única operación de la pantalla que no se deshace con un clic.
+describe('baja del comercio', () => {
+  const abrir = async user => {
+    load({ byTenant: UN_COMERCIO })
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+  }
+
+  test('dice qué NO se borra, que es lo que permite decidir sin miedo', async () => {
+    const user = userEvent.setup()
+    await abrir(user)
+
+    await user.click(screen.getByRole('button', { name: /^dar de baja$/i }))
+
+    await waitFor(() => expect(screen.getByText(/no se deshace desde acá/i)).toBeInTheDocument())
+    // El gasto de IA, las órdenes y la facturación quedan: hacen falta si
+    // después discute un cobro.
+    expect(screen.getByText(/su gasto de IA, sus órdenes y su facturación/i)).toBeInTheDocument()
+  })
+
+  test('no borra si el nombre escrito no coincide', async () => {
+    const user = userEvent.setup()
+    await abrir(user)
+
+    await user.click(screen.getByRole('button', { name: /^dar de baja$/i }))
+    await user.type(screen.getByLabelText(/por qué se da de baja/i), 'pidió la baja')
+    await user.type(screen.getByLabelText(/para confirmar/i), 'moto norte')
+
+    // Minúsculas no alcanza: el punto es haber mirado el nombre.
+    const confirmar = screen.getAllByRole('button', { name: /^dar de baja$/i }).at(-1)
+    expect(confirmar).toBeDisabled()
+    expect(mockDeleteTenant).not.toHaveBeenCalled()
+  })
+
+  test('da de baja con el nombre exacto y su motivo', async () => {
+    const user = userEvent.setup()
+    mockDeleteTenant.mockResolvedValue({ status: 'deleted' })
+    await abrir(user)
+
+    await user.click(screen.getByRole('button', { name: /^dar de baja$/i }))
+    await user.type(screen.getByLabelText(/por qué se da de baja/i), 'pidió la baja')
+    await user.type(screen.getByLabelText(/para confirmar/i), 'Moto Norte')
+    await user.click(screen.getAllByRole('button', { name: /^dar de baja$/i }).at(-1))
+
+    await waitFor(() =>
+      expect(mockDeleteTenant).toHaveBeenCalledWith({
+        tenantId: 't1',
+        confirmName: 'Moto Norte',
+        reason: 'pidió la baja',
+      }),
+    )
+  })
+})
+
+// Un comercio que ya no está sigue en la tabla, y tiene que leerse como
+// historia.
+//
+// Esta tabla se arma desde el LIBRO y no desde la lista de comercios, así que un
+// comercio borrado sigue apareciendo: esa plata HENKO ya la pagó y si la fila
+// desapareciera el total del mes dejaría de cuadrar con lo que facturó el
+// proveedor. Pero sin marcarla se lee como una fila viva, y la tabla le ofrecía
+// "Gobernar" a algo que no existe.
+describe('comercio que ya no existe', () => {
+  const BORRADO_A_MANO = [{ ...UN_COMERCIO[0], tenantGone: true, name: '(comercio eliminado)' }]
+  const DADO_DE_BAJA = [{ ...UN_COMERCIO[0], tenantGone: false, tenantStatus: 'deleted' }]
+
+  test('el borrado a mano de la base se marca "no existe"', async () => {
+    load({ byTenant: BORRADO_A_MANO })
+
+    await waitFor(() => expect(screen.getByText('no existe')).toBeInTheDocument())
+  })
+
+  test('el dado de baja desde el panel se marca distinto', async () => {
+    load({ byTenant: DADO_DE_BAJA })
+
+    // Son dos estados distintos: uno lo borró alguien a mano, el otro salió por
+    // la puerta y dejó su motivo.
+    await waitFor(() => expect(screen.getByText('dado de baja')).toBeInTheDocument())
+  })
+
+  test('no se le ofrece gobernar, se le ofrece ver', async () => {
+    load({ byTenant: BORRADO_A_MANO })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^ver$/i })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /gobernar/i })).not.toBeInTheDocument()
+  })
+
+  test('y el diálogo no le ofrece acciones: no hay nada que hacerle', async () => {
+    const user = userEvent.setup()
+    load({ byTenant: BORRADO_A_MANO })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^ver$/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^ver$/i }))
+
+    await waitFor(() => expect(screen.getByText(/no hay nada que gobernar/i)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /suspender el comercio/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^dar de baja$/i })).not.toBeInTheDocument()
+  })
+})
+
+// El estado del comercio lo manda la fila de gasto, no el margen.
+//
+// EL DEFECTO
+//
+// El diálogo se armaba con `{...governing, tenantStatus: margen?.status ||
+// 'active'}`, y la clave explícita gana sobre el spread. El reporte de margen
+// EXCLUYE los comercios dados de baja, así que para uno de ésos devolvía
+// undefined y el fallback lo dejaba en 'active': la guarda no se activaba y el
+// diálogo ofrecía suspender y dar de baja a un comercio que ya estaba dado de
+// baja.
+//
+// Mis primeras pruebas no lo agarraron porque la del diálogo usaba tenantGone,
+// que no se sobrescribe. Ésta ataca el otro camino.
+describe('comercio dado de baja desde el panel', () => {
+  const DADO_DE_BAJA = [{ ...UN_COMERCIO[0], tenantGone: false, tenantStatus: 'deleted' }]
+
+  test('el diálogo no le ofrece acciones, aunque el margen no lo liste', async () => {
+    const user = userEvent.setup()
+    // Así se comporta el reporte real: un comercio dado de baja no aparece.
+    mockGetMargin.mockResolvedValue({ tenants: [] })
+    load({ byTenant: DADO_DE_BAJA })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^ver$/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^ver$/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/está dado de baja. Su gasto sigue acá/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /suspender el comercio/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^dar de baja$/i })).not.toBeInTheDocument()
   })
 })

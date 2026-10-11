@@ -44,6 +44,7 @@ import {
   updateUsdRate,
   getPlatformMarginReport,
   updateTenantStatus,
+  deleteTenant,
 } from '../services/platformService'
 
 const formatUsd = value =>
@@ -528,6 +529,145 @@ function SuspensionDelComercio({ row, onSaved, onClose }) {
   )
 }
 
+/**
+ * Dar de baja un comercio.
+ *
+ * SEPARADO DE LA SUSPENSIÓN, Y NO POR ORDEN VISUAL
+ *
+ * Suspender se deshace con un clic; esto no. Compartir botón, o incluso
+ * compartir bloque sin una frontera clara, invita a confundir una operación
+ * reversible con una que no lo es.
+ *
+ * QUÉ BORRA Y QUÉ NO
+ *
+ * Saca al comercio de toda operación y del reporte de margen. NO borra el libro
+ * de consumo de IA: esas filas registran lo que HENKO PAGÓ, y sin ellas el
+ * gasto mensual de la plataforma dejaría de cuadrar con lo que facturó el
+ * proveedor. Tampoco borra órdenes ni facturación, que es documentación que hay
+ * que poder mostrar si alguien discute un cobro.
+ *
+ * El comercio va a seguir apareciendo en la tabla de gasto, marcado como dado
+ * de baja. Eso no es un defecto: el gasto ocurrió.
+ *
+ * POR QUÉ PIDE EL NOMBRE ESCRITO
+ *
+ * Un botón de confirmación se aprieta por inercia. Escribir el nombre obliga a
+ * mirar cuál comercio es.
+ */
+function BajaDelComercio({ row, onSaved, onClose }) {
+  const [abierto, setAbierto] = useState(false)
+  const [nombre, setNombre] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const [borrando, setBorrando] = useState(false)
+  const [error, setError] = useState('')
+
+  const nombreCoincide = nombre.trim() === row?.name
+
+  const aplicar = async () => {
+    setBorrando(true)
+    setError('')
+
+    try {
+      await deleteTenant({
+        tenantId: row.tenantId,
+        confirmName: nombre.trim(),
+        reason: motivo.trim(),
+      })
+      setAbierto(false)
+      await onSaved?.()
+      onClose?.()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo dar de baja el comercio.')
+    } finally {
+      setBorrando(false)
+    }
+  }
+
+  return (
+    <>
+      <Paper variant="outlined" sx={{ p: 2, mt: 2, borderColor: 'error.main' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'error.main' }}>
+          Dar de baja el comercio
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Lo saca de toda operación y del reporte de margen. No se deshace desde esta pantalla. Su
+          gasto de IA sigue en la tabla, marcado: ese dinero ya se pagó.
+        </Typography>
+
+        <Button
+          variant="contained"
+          color="error"
+          onClick={() => {
+            setNombre('')
+            setMotivo('')
+            setError('')
+            setAbierto(true)
+          }}
+        >
+          Dar de baja
+        </Button>
+      </Paper>
+
+      <Dialog open={abierto} onClose={() => setAbierto(false)} fullWidth maxWidth="xs">
+        <DialogTitle>¿Dar de baja {row?.name}?</DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <strong>Esto no se deshace desde acá.</strong> El comercio deja de operar, sus dominios
+            dejan de resolver y sale del reporte de margen.
+          </Alert>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Lo que <strong>no</strong> se borra: su gasto de IA, sus órdenes y su facturación. Son
+            el registro de lo que se pagó y de lo que él pagó — hacen falta si después discute un
+            cobro.
+          </Alert>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <TextField
+            label="Por qué se da de baja"
+            fullWidth
+            multiline
+            minRows={2}
+            value={motivo}
+            onChange={event => setMotivo(event.target.value)}
+            placeholder="Ej.: pidió la baja por mail el 11/10"
+            helperText="Queda con tu email y la fecha."
+          />
+
+          <TextField
+            label={`Escribí "${row?.name}" para confirmar`}
+            fullWidth
+            value={nombre}
+            onChange={event => setNombre(event.target.value)}
+            sx={{ mt: 2 }}
+            helperText="Un botón se aprieta por inercia; escribir el nombre obliga a mirar cuál comercio es."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAbierto(false)} disabled={borrando}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={aplicar}
+            // El nombre tiene que coincidir Y tiene que haber motivo. El backend
+            // valida los dos igual; esto es para no hacer ir y volver.
+            disabled={borrando || !nombreCoincide || !motivo.trim()}
+          >
+            {borrando ? <CircularProgress size={22} /> : <span>Dar de baja</span>}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  )
+}
+
 /** A partir de cuántos días un tipo de cambio deja de ser confiable. */
 const DIAS_PARA_AVISAR = 15
 
@@ -844,7 +984,21 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
             Si compartiera el botón "Guardar" con el resto, alguien que vino a
             ajustar una fracción podría cortarle el servicio a un comercio que
             paga sin haberlo decidido. */}
-        <SuspensionDelComercio row={row} onSaved={onSaved} onClose={onClose} />
+        {/* Un comercio que ya no existe no se suspende ni se da de baja: no hay
+            nada que hacerle. Su fila sigue en la tabla porque el gasto ocurrió,
+            pero ofrecerle acciones sería prometer algo que no se puede. */}
+        {row?.tenantGone || row?.tenantStatus === 'deleted' ? (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            {row.tenantGone
+              ? 'Este comercio no existe en la base: alguien lo borró a mano. Su gasto sigue acá porque esa plata se pagó, pero no hay nada que gobernar.'
+              : 'Este comercio está dado de baja. Su gasto sigue acá porque esa plata se pagó.'}
+          </Alert>
+        ) : (
+          <>
+            <SuspensionDelComercio row={row} onSaved={onSaved} onClose={onClose} />
+            <BajaDelComercio row={row} onSaved={onSaved} onClose={onClose} />
+          </>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
@@ -1126,12 +1280,20 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
           error posible acá, porque el cambio se aplicaría sobre el equivocado. */}
       {governing && (
         <TenantPolicyDialog
-          // El estado del comercio sale del reporte de margen y no del de
-          // gasto, que no lo trae. Sin él el diálogo no puede saber si ofrecer
-          // "suspender" o "reactivar".
+          // El estado del comercio lo manda la fila de GASTO, que ahora lo
+          // trae, y el margen queda como respaldo.
+          //
+          // El orden importa y estaba al revés: la clave explícita gana sobre
+          // el spread, así que el margen sobrescribía el estado de la fila. Y
+          // el reporte de margen EXCLUYE los comercios dados de baja
+          // (platformMarginService:95), o sea que para uno de ésos devolvía
+          // undefined y el fallback lo dejaba en 'active'. Resultado: la guarda
+          // de abajo no se activaba y el diálogo ofrecía suspender y dar de
+          // baja a un comercio que ya estaba dado de baja.
           row={{
             ...governing,
-            tenantStatus: margenPorComercio.get(governing.tenantId)?.status || 'active',
+            tenantStatus:
+              governing.tenantStatus || margenPorComercio.get(governing.tenantId)?.status || null,
           }}
           budget={budget}
           onClose={() => setGoverning(null)}
@@ -1238,6 +1400,32 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                             <Chip size="small" color="info" variant="outlined" label="key propia" />
                           </Tooltip>
                         )}
+                        {/* COMERCIO QUE YA NO ESTÁ.
+
+                            Esta tabla se arma desde el LIBRO, no desde la lista
+                            de comercios, así que un comercio borrado sigue
+                            apareciendo: esa plata HENKO ya la pagó y si la fila
+                            desapareciera el total del mes dejaría de cuadrar
+                            con lo que facturó el proveedor.
+
+                            Pero sin marcarla se lee como una fila viva, y la
+                            tabla le ofrecía "Gobernar" a algo que no existe.
+                            Esto es historia, no algo sobre lo que actuar. */}
+                        {(row.tenantGone || row.tenantStatus === 'deleted') && (
+                          <Tooltip
+                            title={
+                              row.tenantGone
+                                ? 'No existe en la base: lo borraron a mano. Su gasto queda porque esa plata se pagó.'
+                                : 'Dado de baja. Su gasto queda porque esa plata se pagó.'
+                            }
+                          >
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={row.tenantGone ? 'no existe' : 'dado de baja'}
+                            />
+                          </Tooltip>
+                        )}
                         {/* Un comercio apagado deja de consumir, así que sus
                             números de la fila son ceros y sin esta marca se
                             leería como un comercio que simplemente no usó la
@@ -1317,7 +1505,9 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                         recordar qué comercio era y cuánto llevaba. */}
                     <TableCell align="right">
                       <Button size="small" onClick={() => setGoverning(row)}>
-                        Gobernar
+                        {/* Un comercio que ya no esta no se gobierna: se
+                            consulta. El dialogo no le ofrece acciones. */}
+                        {row.tenantGone || row.tenantStatus === 'deleted' ? 'Ver' : 'Gobernar'}
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -138,3 +138,20 @@ export const updateTenantStatus = async ({ tenantId, suspended, reason }) => {
 
   return unwrap(response)
 }
+
+/**
+ * Da de baja un comercio. Es la única operación de la pantalla que no se
+ * deshace con un clic, y por eso exige el nombre escrito.
+ *
+ * NO borra el libro de consumo de IA: esas filas registran lo que HENKO pagó,
+ * y sin ellas el gasto mensual de la plataforma dejaría de cuadrar con lo que
+ * facturó el proveedor. El comercio sigue apareciendo en el reporte de gasto,
+ * marcado como dado de baja.
+ */
+export const deleteTenant = async ({ tenantId, confirmName, reason }) => {
+  const response = await api.delete(`/platform/tenant/${tenantId}`, {
+    data: { confirmName, reason },
+  })
+
+  return unwrap(response)
+}
