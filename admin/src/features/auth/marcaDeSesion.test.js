@@ -168,3 +168,31 @@ describe('authSlice · la copia cacheada no puede sobrevivir al veredicto del ba
     expect(hayUsuarioCacheado()).toBe(false)
   })
 })
+
+// Una copia ilegible se descarta, no se arrastra.
+//
+// Al reescribir safeStorage para que no pueda tirar, el parseo pasó a
+// `tocarStorage(() => JSON.parse(raw)) ?? null`: devolvía null pero DEJABA el
+// valor corrupto en sessionStorage, releído y re-fallando en cada getUser
+// durante toda la sesión de la pestaña. La versión anterior lo borraba. Es un
+// autosaneamiento chico que no conviene perder al endurecer el helper.
+describe('safeStorage · una copia corrupta se limpia sola', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  test('getUser descarta el valor ilegible y lo borra', () => {
+    sessionStorage.setItem('user', '{esto no es json')
+
+    expect(hayUsuarioCacheado()).toBe(false)
+    // Lo que importa: no quedó para la próxima lectura.
+    expect(sessionStorage.getItem('user')).toBeNull()
+  })
+
+  test('getUser no borra una copia válida', () => {
+    sessionStorage.setItem('user', JSON.stringify({ _id: 'u1', role: 'admin' }))
+
+    expect(hayUsuarioCacheado()).toBe(true)
+    expect(sessionStorage.getItem('user')).not.toBeNull()
+  })
+})

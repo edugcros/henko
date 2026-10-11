@@ -152,9 +152,21 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
     return () => window.removeEventListener('message', handleMessage)
   }, [postPreview, previewTargetOrigin])
 
+  // Reiniciar el saludo y enviar el tema son dos cosas distintas y van en
+  // efectos distintos.
+  //
+  // Antes estaban juntas con deps [postPreview, previewUrl]. postPreview es un
+  // useCallback que depende de themeData, así que cambia de identidad en CADA
+  // edición del tema y arrastraba el efecto entero con él: el reinicio corría
+  // en cada tecla. Con la guarda de readyRef eso dejaba el preview mudo para
+  // siempre después de la primera edición —el iframe ya mandó su único saludo
+  // y no lo reenvía sin recargar— y encima aparecía el cartel de "no confirmó
+  // la conexión" siendo mentira. Antes de la guarda era sólo un parpadeo
+  // cosmético de la etiqueta, así que el defecto estaba latente.
+  //
+  // Este efecto depende SOLO de previewUrl: corre cuando el iframe realmente
+  // se recarga.
   useEffect(() => {
-    // La URL cambió: el iframe se vuelve a cargar y hay que esperar un saludo
-    // nuevo antes de volver a hablarle.
     readyRef.current = false
     setIframeReady(false)
     setLoadWarning('')
@@ -169,14 +181,19 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
       )
     }, PREVIEW_READY_TIMEOUT_MS)
 
-    postPreview()
     return () => {
       if (readyTimeoutRef.current) {
         clearTimeout(readyTimeoutRef.current)
         readyTimeoutRef.current = null
       }
     }
-  }, [postPreview, previewUrl])
+  }, [previewUrl])
+
+  // Y este manda el tema cuando cambia. Si el saludo todavía no llegó,
+  // postPreview sale solo y el envío lo hace el handler al recibirlo.
+  useEffect(() => {
+    postPreview()
+  }, [postPreview])
 
   return (
     <Paper

@@ -60,9 +60,17 @@ const safeStorage = {
 
     if (!raw || raw === 'undefined') return null
 
-    // El parseo va aparte: si lo guardado quedó corrupto, se descarta la copia
-    // sin que el intento de limpiarla pueda tirar.
-    return tocarStorage(() => JSON.parse(raw)) ?? null
+    // El parseo va aparte para que el intento de limpiar no pueda tirar. Pero
+    // la limpieza tiene que seguir ocurriendo: la versión anterior borraba la
+    // copia corrupta, y perder eso dejaba un valor ilegible en sessionStorage
+    // durante toda la sesión de la pestaña, releído y re-fallando en cada
+    // getUser.
+    try {
+      return JSON.parse(raw) ?? null
+    } catch {
+      tocarStorage(() => sessionStorage.removeItem('user'))
+      return null
+    }
   },
   removeUser: () => {
     tocarStorage(() => {
