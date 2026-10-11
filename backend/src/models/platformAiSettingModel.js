@@ -70,6 +70,27 @@ export const PLATFORM_AI_SETTINGS = Object.freeze({
   // los dos tienen precio que el dueño puede mover desde el panel.
   PLAN_PRICE_STARTER: 'planPriceStarterArs',
   PLAN_PRICE_PRO: 'planPriceProArs',
+
+  /**
+   * Pesos por dólar. Lo único que cruza las dos monedas del negocio.
+   *
+   * POR QUÉ NO PUEDE SEGUIR SIENDO SOLO UNA VARIABLE DE ENTORNO
+   *
+   * Los planes se cobran en pesos y los proveedores de IA facturan en dólares,
+   * así que el margen —ingreso menos costo— es el único cálculo donde el cruce
+   * es inevitable. Ese cruce usa este número.
+   *
+   * Estaba solo en USD_ARS_RATE, con default 1530. O sea que corregirlo exigía
+   * un deploy, y mientras nadie lo hacía el margen de TODOS los comercios se
+   * calculaba con un dólar viejo. Con la variación que tiene el peso, eso no es
+   * un detalle de presentación: es la rentabilidad mal medida, y mal medida
+   * siempre para el mismo lado —el dólar sube, el costo real sube, y el margen
+   * se sigue informando como si no—.
+   *
+   * Acá queda con autor, fecha y motivo, igual que los precios, y el createdAt
+   * de la última fila es lo que permite avisar "este valor tiene 47 días".
+   */
+  USD_ARS_RATE: 'usdArsRate',
 })
 
 const platformAiSettingSchema = new mongoose.Schema(

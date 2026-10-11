@@ -15,7 +15,12 @@ import {
   setTenantAiPolicy,
   PLATFORM_AI_SETTINGS,
 } from '../services/ai/platformAiSettingService.js'
-import { AI_PLANS, getPlanCatalog, normalizePlan } from '../services/ai/aiPlanPolicy.js'
+import {
+  AI_PLANS,
+  getPlanCatalog,
+  normalizePlan,
+  getUsdToArsRate,
+} from '../services/ai/aiPlanPolicy.js'
 
 // Qué plan se puede cotizar: los dos del catálogo, porque los dos se pagan.
 // El mapa se mantiene igual —y no se deriva de AI_PLANS— porque cada plan
@@ -368,10 +373,114 @@ export const updatePlanPrice = expressAsyncHandler(async (req, res) => {
   })
 })
 
+/**
+ * Cuántos días hace que alguien tocó el tipo de cambio, y de dónde sale.
+ *
+ * El número solo no alcanza: un 1530 puesto hoy y un 1530 que quedó de hace
+ * tres meses se leen igual en la pantalla y significan cosas opuestas. Lo
+ * segundo es el margen de todos los comercios mal medido, y siempre para el
+ * mismo lado: el peso se devalúa, el costo real en pesos sube, y el margen se
+ * sigue informando como si no hubiera pasado nada.
+ */
+const estadoDelTipoDeCambio = async () => {
+  const rate = getUsdToArsRate()
+  const historial = await getPlatformAiSettingHistory(50).catch(() => [])
+
+  const ultima = historial.find(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE)
+
+  if (!ultima?.createdAt) {
+    // Sin ninguna fila, el valor viene de la variable de entorno o del default.
+    // No hay fecha que informar y eso mismo es lo que hay que decir: nadie lo
+    // puso desde el panel todavía.
+    return { rate, source: 'env', updatedAt: null, updatedByEmail: null, ageDays: null }
+  }
+
+  const ageMs = Date.now() - new Date(ultima.createdAt).getTime()
+
+  return {
+    rate,
+    source: 'panel',
+    updatedAt: ultima.createdAt,
+    updatedByEmail: ultima.changedByEmail || null,
+    ageDays: Math.floor(ageMs / (24 * 60 * 60 * 1000)),
+  }
+}
+
+/**
+ * GET /api/platform/usd-rate
+ */
+export const getUsdRate = expressAsyncHandler(async (_req, res) => {
+  const estado = await estadoDelTipoDeCambio()
+
+  const history = await getPlatformAiSettingHistory(30).catch(() => [])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...estado,
+      history: history.filter(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE),
+    },
+  })
+})
+
+/**
+ * PUT /api/platform/usd-rate
+ *
+ * Carga a mano los pesos por dólar. `rate: null` devuelve el mando a la
+ * variable de entorno.
+ */
+export const updateUsdRate = expressAsyncHandler(async (req, res) => {
+  const { rate, reason } = req.body || {}
+
+  const isRemoval = rate === null
+  const value = isRemoval ? null : Number(rate)
+
+  // Acá el cero NO se admite, a diferencia del precio de un plan: un plan puede
+  // ser gratis, pero un dólar a cero convertiría cualquier costo en cero pesos
+  // y haría que todos los comercios parezcan rentables.
+  if (!isRemoval && (!Number.isFinite(value) || value <= 0)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'El tipo de cambio debe ser un número de pesos mayor a cero, o null para volver al valor por defecto.',
+    })
+  }
+
+  const cleanReason = String(reason || '').trim()
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá de dónde sacaste el valor del dólar.',
+    })
+  }
+
+  await setPlatformAiOverride({
+    setting: PLATFORM_AI_SETTINGS.USD_ARS_RATE,
+    value: isRemoval ? null : Math.round(value),
+    changedByEmail: req.user?.email,
+    changedByUserId: req.user?._id || null,
+    reason: cleanReason.slice(0, 500),
+  })
+
+  const estado = await estadoDelTipoDeCambio()
+  const history = await getPlatformAiSettingHistory(30).catch(() => [])
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      ...estado,
+      history: history.filter(fila => fila.setting === PLATFORM_AI_SETTINGS.USD_ARS_RATE),
+    },
+  })
+})
+
 export default {
   getMarginReport,
   getAiSpendReport,
   updateAiBudget,
+  getUsdRate,
+  updateUsdRate,
   getPlanPrices,
   updatePlanPrice,
 }

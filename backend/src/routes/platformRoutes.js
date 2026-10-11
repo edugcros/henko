@@ -17,6 +17,8 @@ import {
   updateTenantAiPolicy,
   getPlanPrices,
   updatePlanPrice,
+  getUsdRate,
+  updateUsdRate,
 } from '../controller/platformCtrl.js'
 
 const router = express.Router()
@@ -39,5 +41,13 @@ router.put('/ai-spend/tenant/:tenantId', updateTenantAiPolicy)
 // se le cobra a un comercio, así que queda con autor y motivo.
 router.get('/plan-prices', getPlanPrices)
 router.put('/plan-prices', updatePlanPrice)
+
+// El tipo de cambio. Es lo único que cruza las dos monedas del negocio —planes
+// en pesos, proveedores de IA en dólares— así que de este número depende el
+// margen de todos los comercios. Estaba solo en una variable de entorno, o sea
+// que corregirlo exigía un deploy y mientras tanto la rentabilidad se informaba
+// con un dólar viejo.
+router.get('/usd-rate', getUsdRate)
+router.put('/usd-rate', updateUsdRate)
 
 export default router
