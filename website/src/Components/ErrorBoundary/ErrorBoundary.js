@@ -13,7 +13,11 @@ import './ErrorBoundary.css'
 // esa cadena a correr dentro de una app ya rota se arriesga a un segundo
 // error que tape al primero. keepalive deja que el pedido sobreviva si el
 // usuario recarga enseguida (que es lo que hace el botón de abajo).
-let yaReportado = false
+// Cuántos reportes acepta una carga de la app. No es uno solo porque las tres
+// clases de falla son distintas y la primera que aparezca no debe tapar a las
+// otras; y no es ilimitado porque un error en bucle inundaría el log.
+const TOPE_DE_REPORTES = 3
+let reportados = 0
 
 // La ruta del crash termina en los logs del hosting, que son durables, y hay
 // rutas que llevan credenciales usables en la URL: /reset-password/:token tiene
@@ -58,11 +62,9 @@ export const rutaSegura = () => {
   }
 }
 
-const reportarCrash = (error, info) => {
-  // Un crash en bucle re-renderiza y volvería a reportar: con el primero
-  // alcanza para entender la falla.
-  if (yaReportado) return
-  yaReportado = true
+export const reportarCrash = (error, info, origen = 'render') => {
+  if (reportados >= TOPE_DE_REPORTES) return
+  reportados += 1
 
   try {
     if (!env.apiBaseUrl || typeof fetch !== 'function') return
@@ -89,7 +91,10 @@ const reportarCrash = (error, info) => {
       },
       body: JSON.stringify({
         app: 'website',
-        message: error?.message || String(error),
+        // El origen distingue las tres clases de falla, que se diagnostican
+        // distinto: un crash de render rompe la pantalla, una promesa
+        // rechazada deja la app viva y mostrando un mensaje de error.
+        message: `[${origen}] ${error?.message || String(error)}`,
         stack: error?.stack || '',
         componentStack: info?.componentStack || '',
         route: rutaSegura(),
@@ -101,6 +106,35 @@ const reportarCrash = (error, info) => {
   } catch {
     // Reportar no puede ser nunca la causa de un segundo error.
   }
+}
+
+// Un ErrorBoundary de React sólo captura errores de render, de los métodos de
+// ciclo de vida y de los constructores. NO captura promesas rechazadas ni
+// errores dentro de manejadores async, y ahí es donde vive la mayoría de las
+// fallas de una app que habla con una API: un thunk que rechaza deja la app
+// entera viva, mostrando su mensaje de error, sin que el boundary se entere.
+//
+// Por eso la primera versión de este reporte no sirvió para el login que
+// fallaba desde el celular: el login daba 200, el usuario veía un error, y no
+// llegaba ningún reporte porque no había crash de render que reportar.
+export const registrarReporteGlobal = () => {
+  if (typeof window === 'undefined') return
+
+  window.addEventListener('unhandledrejection', evento => {
+    const causa = evento?.reason
+    reportarCrash(
+      causa instanceof Error ? causa : new Error(String(causa)),
+      null,
+      'promesa-rechazada',
+    )
+  })
+
+  window.addEventListener('error', evento => {
+    // Los errores de carga de recursos (img, script) también disparan 'error'
+    // y no traen Error: no son fallas de la app y sólo harían ruido.
+    if (!evento?.error) return
+    reportarCrash(evento.error, null, 'error-global')
+  })
 }
 
 class ErrorBoundary extends React.Component {

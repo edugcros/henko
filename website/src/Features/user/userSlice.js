@@ -2,6 +2,11 @@
 import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit'
 import userService from '@features/user/userService'
 import { toast } from 'react-toastify'
+// Importar el reporte desde el módulo del ErrorBoundary no es ideal —un slice
+// dependiendo de un componente—, pero la función ya vive ahí y mover el reporte
+// a su propio módulo no se justifica por dos llamadas. Si aparece una tercera,
+// va a src/Utils.
+import { reportarCrash } from '@components/ErrorBoundary/ErrorBoundary.js'
 
 /**
  * userSlice.js
@@ -13,31 +18,58 @@ import { toast } from 'react-toastify'
 /* ---------------------------
    Helpers de storage seguros
    --------------------------- */
+// "Seguros" era el nombre, no el comportamiento.
+//
+// EL BUG
+//
+// setUser envolvía el setItem en try/catch pero llamaba a removeItem DENTRO
+// del catch, y getUser hacía lo mismo. Cuando el navegador tiene los datos del
+// sitio bloqueados, sessionStorage no falla sólo al escribir: falla al tocarlo.
+// Entonces setItem tiraba, entraba al catch, y removeItem tiraba otra vez — y
+// ese segundo throw no lo capturaba nadie. Salía de safeStorage, salía del try
+// del thunk de login y caía en su catch, que rechaza el login.
+//
+// Resultado: el backend aceptaba el login y escribía "Login exitoso", y el
+// usuario veía un error sin que la app hiciera un solo request más. Al recargar
+// aparecía logueado, porque la cookie estaba perfecta: lo único roto era el
+// intento de guardar una copia del usuario.
+//
+// removeUser era peor: no tenía try/catch, y se la llama desde un reducer.
+//
+// Guardar esta copia es una conveniencia, no un requisito —la verdad de la
+// sesión es la cookie httpOnly—, así que ninguna de estas operaciones tiene
+// derecho a hacer fallar nada.
+const tocarStorage = accion => {
+  if (typeof window === 'undefined') return undefined
+
+  try {
+    return accion()
+  } catch {
+    // Almacenamiento bloqueado, lleno o en un modo que lo prohíbe. No hay plan
+    // B y no hace falta: es una copia de conveniencia.
+    return undefined
+  }
+}
+
 const safeStorage = {
   setUser: user => {
-    if (typeof window === 'undefined') return
-    try {
-      sessionStorage.setItem('user', JSON.stringify(user))
-    } catch {
-      sessionStorage.removeItem('user')
-    }
+    tocarStorage(() => sessionStorage.setItem('user', JSON.stringify(user)))
   },
   getUser: () => {
-    if (typeof window === 'undefined') return null
-    try {
-      const raw = sessionStorage.getItem('user')
-      if (!raw || raw === 'undefined') return null
-      return JSON.parse(raw)
-    } catch {
-      sessionStorage.removeItem('user')
-      return null
-    }
+    const raw = tocarStorage(() => sessionStorage.getItem('user'))
+
+    if (!raw || raw === 'undefined') return null
+
+    // El parseo va aparte: si lo guardado quedó corrupto, se descarta la copia
+    // sin que el intento de limpiarla pueda tirar.
+    return tocarStorage(() => JSON.parse(raw)) ?? null
   },
   removeUser: () => {
-    if (typeof window === 'undefined') return
-    sessionStorage.removeItem('user')
-    sessionStorage.removeItem('wishlist')
-    sessionStorage.removeItem('csrfToken')
+    tocarStorage(() => {
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('wishlist')
+      sessionStorage.removeItem('csrfToken')
+    })
   },
 }
 
@@ -199,6 +231,31 @@ export const loginUser = createAsyncThunk(
 
       // Auditoría: Verificamos estructura del backend
       if (!res || !res.success) {
+        // Un 401 es una contraseña equivocada: pasa todos los días y no hay
+        // nada que reportar. Lo que sí hay que ver es un login que falla
+        // habiendo recibido respuesta del servidor y sin status de error,
+        // porque eso significa que el servidor lo aceptó y la falla ocurrió
+        // después, en el navegador.
+        //
+        // La ausencia de status NO alcanza como criterio: un celular sin
+        // señal, un timeout, un DNS caído o un CORS bloqueado tampoco traen
+        // status, y reportarlos acá diría "el servidor contestó bien" cuando
+        // nunca contestó —además de gastar uno de los tres cupos de reporte y
+        // tapar una falla real posterior. Por eso userService marca
+        // `sinRespuesta`.
+        //
+        // Ese era exactamente el caso del login desde el celular: el backend
+        // escribía "Login exitoso", el usuario veía un error y no quedaba
+        // rastro en ninguna parte. createAsyncThunk captura el rechazo, así
+        // que no es una promesa rechazada y ningún manejador global lo ve.
+        if (res && res.status === undefined && !res.sinRespuesta) {
+          reportarCrash(
+            new Error(res.message || 'Login rechazado sin status HTTP'),
+            null,
+            'login-sin-status',
+          )
+        }
+
         return rejectWithValue(res?.message || 'Credenciales incorrectas')
       }
 
@@ -211,6 +268,14 @@ export const loginUser = createAsyncThunk(
       safeStorage.setUser(user)
       return { user }
     } catch (err) {
+      // Acá se llega con el login YA aceptado por el servidor: lo que falló es
+      // el procesamiento en el navegador (por ejemplo setUser contra un
+      // sessionStorage bloqueado). Es la otra mitad del caso de arriba y
+      // tampoco dejaba rastro.
+      if (!err?.response) {
+        reportarCrash(err, null, 'login-post-respuesta')
+      }
+
       // Evitamos el "error is not defined" asegurando que usamos 'err'
       const message = err.response?.data?.message || err.message || 'Error de conexión'
       return rejectWithValue(message)

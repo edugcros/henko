@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import ErrorBoundary from '@components/ErrorBoundary/ErrorBoundary.js'
+import ErrorBoundary, { registrarReporteGlobal } from '@components/ErrorBoundary/ErrorBoundary.js'
 import './App.css'
 import { store } from '@app/store'
 import { initCsrf, setApiStore } from '@utils/axiosConfig'
@@ -56,6 +56,16 @@ const AppInitializer = () => {
     </Provider>
   )
 }
+
+// Va acá, antes del primer render, y no dentro de un useEffect.
+//
+// Un useEffect corre después de que el componente renderizó y se montó, así
+// que si el render inicial tira —el spinner de !ready, o el armado del árbol
+// de providers— React nunca llega al efecto y no quedaba instalado ningún
+// reporte: la app moría en blanco sin dejar rastro. Y el ErrorBoundary tampoco
+// cubre ese caso, porque está anidado DENTRO de Provider, BrowserRouter y los
+// dos providers de tema: sólo ve lo que pasa debajo de él.
+registrarReporteGlobal()
 
 const container = document.getElementById('root')
 const root = createRoot(container)
