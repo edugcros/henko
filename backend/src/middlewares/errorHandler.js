@@ -41,6 +41,11 @@ export const errorHandler = (err, req, res, next) => {
     path: req.originalUrl,
     tenantId: req.tenantId ? String(req.tenantId) : undefined,
     userId: req.user?._id ? String(req.user._id) : undefined,
+    // corsOptions deja el origen rechazado en el error, pero acá no se
+    // imprimía: un CORS_ORIGIN_BLOCKED en el log no decía QUÉ origen se bloqueó,
+    // así que no se podía distinguir el dominio legítimo de un comercio de un
+    // bot cualquiera, que es justo lo que hay que saber para arreglarlo.
+    origin: err.origin || undefined,
   })
 
   // El identificador va en TODA respuesta de error, no solo en las genéricas:

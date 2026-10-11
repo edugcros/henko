@@ -381,6 +381,51 @@ const filterReferencesByTenant = async (events, tenantId) => {
   return limpios
 }
 
+// Un crash de render en el frontend sólo dejaba rastro en el console.error
+// del navegador que lo sufrió: el ErrorBoundary tapa la pantalla con
+// "Ocurrió un error inesperado" y el stack muere ahí. Desde el servidor la
+// falla es invisible —la app alcanza a pedir tenant y tema antes de
+// romperse, así que los access logs se ven sanos— y con una tienda por
+// comercio no hay forma de pedirle la consola a cada cliente.
+//
+// Esto no guarda nada en Mongo a propósito: un crash no es una métrica que
+// se agregue ni se consulte después, es un incidente que hay que leer una
+// vez. Va al logger y se lee desde los logs del hosting, sin sumar escrituras
+// a userMetricEvent (la colección que más crece y la que no tiene TTL).
+const MAX_CRASH_MESSAGE = 500
+const MAX_CRASH_STACK = 4000
+const MAX_CRASH_ROUTE = 300
+
+export const reportClientCrash = asyncHandler(async (req, res) => {
+  const mensaje = clean(req.body?.message, MAX_CRASH_MESSAGE)
+
+  // Sin mensaje no hay incidente que reportar: cortamos antes de ensuciar
+  // los logs con ruido de bots o de clientes mal programados.
+  if (!mensaje) {
+    return res.status(400).json({
+      success: false,
+      message: 'Falta el mensaje del error',
+    })
+  }
+
+  logger.error('[CRASH CLIENTE] El frontend se rompió en el navegador', {
+    mensaje,
+    stack: clean(req.body?.stack, MAX_CRASH_STACK),
+    componentStack: clean(req.body?.componentStack, MAX_CRASH_STACK),
+    ruta: clean(req.body?.route, MAX_CRASH_ROUTE),
+    app: cleanLower(req.body?.app, 40) || 'website',
+    autenticado: Boolean(req.body?.authenticated),
+    tenantId: String(getTenantIdFromRequest(req) || ''),
+    tenantDominio: getTenantDomainFromRequest(req),
+    dispositivo: getDeviceType(req.headers?.['user-agent']),
+    userAgent: clean(req.headers?.['user-agent'], 300),
+    ip: getClientIp(req),
+  })
+
+  // 204: el cliente ya está roto, no tiene nada que hacer con una respuesta.
+  return res.status(204).end()
+})
+
 export const trackUserMetricEvent = asyncHandler(async (req, res) => {
   const tenantId = getTenantIdFromRequest(req)
 

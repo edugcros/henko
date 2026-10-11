@@ -38,9 +38,13 @@ const App = () => {
   const location = useLocation()
   const isThemePreviewRoute = location.pathname === '/theme-preview'
 
-  if (!isThemePreviewRoute) {
-    useUserMetrics()
-  }
+  // Antes esto iba dentro de `if (!isThemePreviewRoute)`. Un hook dentro de un
+  // condicional viola las reglas de hooks: al navegar entre /theme-preview y
+  // cualquier otra ruta cambiaba la cantidad de hooks del componente y React
+  // tira "Rendered fewer hooks than expected", que es un crash de render y
+  // termina en el ErrorBoundary. Además era redundante: useUserMetrics ya
+  // ignora /theme-preview por su propio DEFAULT_EXCLUDED_PATHS.
+  useUserMetrics()
 
   useEffect(() => {
     trackMetaEvent('PageView')

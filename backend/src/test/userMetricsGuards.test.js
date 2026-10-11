@@ -25,6 +25,7 @@
 // Va contra una base real: lo que se prueba es una consulta con filtro por
 // tenant, que con mocks solo probaría que la escribí como la escribí.
 
+import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
 import { crearMongoEnMemoria } from './testDB.js'
 
@@ -38,6 +39,8 @@ const ORDEN_AJENA = new mongoose.Types.ObjectId()
 
 let mongod
 let trackUserMetricEvent
+let reportClientCrash
+let logger
 let UserMetricEvent
 
 const respuesta = () => ({
@@ -49,6 +52,9 @@ const respuesta = () => ({
   },
   json(payload) {
     this.body = payload
+    return this
+  },
+  end() {
     return this
   },
 })
@@ -80,7 +86,8 @@ beforeAll(async () => {
   mongod = await crearMongoEnMemoria()
   await mongoose.connect(mongod.getUri())
 
-  ;({ trackUserMetricEvent } = await import('../controller/userMetricsCtrl.js'))
+  ;({ trackUserMetricEvent, reportClientCrash } = await import('../controller/userMetricsCtrl.js'))
+  logger = (await import('../../config/logger.js')).default
   UserMetricEvent = (await import('../models/userMetricEventModel.js')).default
 
   const db = mongoose.connection.db
@@ -366,5 +373,133 @@ describe('métricas · el valor generado se informa en pesos', () => {
     expect(summary.aiInfluencedRevenue).toBe(150000)
     // Misma venta, contada una sola vez: es la tarjeta grande del panel.
     expect(summary.totalGeneratedValue).toBe(150000)
+  })
+})
+
+// Qué queda registrado cuando el frontend se rompe en el navegador del cliente.
+//
+// Un login desde un celular devolvía 200, el backend escribía "Login exitoso" y
+// el usuario veía "Ocurrió un error inesperado": un crash de render que el
+// ErrorBoundary tapaba. Desde el servidor era invisible —la app alcanza a pedir
+// tenant y tema antes de romperse, así que los access logs se ven sanos— y el
+// stack moría en la consola de un teléfono que no tenemos. Con una tienda por
+// comercio, pedirle la consola a cada cliente no escala.
+describe('métricas · reporte de crash del frontend', () => {
+  const reportar = async (cuerpo, extra = {}) => {
+    const req = {
+      tenantId: TENANT,
+      headers: { host: 'tienda.test', 'user-agent': 'jest', ...(extra.headers || {}) },
+      body: cuerpo,
+      originalUrl: '/api/metrics/client-error',
+      socket: { remoteAddress: '1.2.3.4' },
+      ...extra,
+    }
+    const res = respuesta()
+
+    await reportClientCrash(req, res, err => {
+      if (err) throw err
+    })
+
+    return res
+  }
+
+  let espia
+
+  beforeEach(() => {
+    espia = jest.spyOn(logger, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    espia.mockRestore()
+  })
+
+  const loQueSeLogueo = () => espia.mock.calls[0][1]
+
+  test('deja el stack, la ruta y el tenant en el log', async () => {
+    const res = await reportar({
+      message: "Cannot read properties of undefined (reading 'nombre')",
+      stack: 'TypeError: Cannot read properties of undefined\n    at Home (Home.js:120:15)',
+      componentStack: '\n    at Home\n    at PublicLayout',
+      route: '/?desde=login',
+      authenticated: true,
+    })
+
+    // 204: el cliente ya está roto, no tiene nada que hacer con una respuesta.
+    expect(res.statusCode).toBe(204)
+    expect(espia).toHaveBeenCalledTimes(1)
+
+    const log = loQueSeLogueo()
+
+    expect(log.mensaje).toContain('Cannot read properties of undefined')
+    expect(log.stack).toContain('at Home (Home.js:120:15)')
+    expect(log.componentStack).toContain('at PublicLayout')
+    expect(log.ruta).toBe('/?desde=login')
+    expect(log.autenticado).toBe(true)
+    expect(log.tenantId).toBe(String(TENANT))
+    expect(log.tenantDominio).toBe('tienda.test')
+  })
+
+  test('sin mensaje no ensucia el log', async () => {
+    // Bots y clientes mal programados pegan en todo lo que sea público; sin
+    // mensaje no hay incidente que leer.
+    const res = await reportar({ stack: 'algo', route: '/' })
+
+    expect(res.statusCode).toBe(400)
+    expect(espia).not.toHaveBeenCalled()
+  })
+
+  test('reporta igual cuando el tenant no se pudo resolver', async () => {
+    // Este es el caso que más importa: que el dominio no resuelva a ningún
+    // comercio es en sí una causa probable del crash. Exigir tenant acá
+    // descartaría justamente el reporte que explica la falla.
+    const res = await reportar(
+      { message: 'Tenant no resuelto', route: '/' },
+      { tenantId: undefined, headers: { 'user-agent': 'jest' } },
+    )
+
+    expect(res.statusCode).toBe(204)
+    expect(loQueSeLogueo().tenantId).toBe('')
+  })
+
+  test('recorta un stack gigante en lugar de volcarlo entero al log', async () => {
+    const res = await reportar({
+      message: 'x'.repeat(5000),
+      stack: 'y'.repeat(50000),
+    })
+
+    expect(res.statusCode).toBe(204)
+
+    const log = loQueSeLogueo()
+
+    expect(log.mensaje).toHaveLength(500)
+    expect(log.stack).toHaveLength(4000)
+  })
+
+  test('distingue el dispositivo, que es lo que separaba celular de escritorio', async () => {
+    await reportar(
+      { message: 'boom' },
+      {
+        headers: {
+          host: 'tienda.test',
+          'user-agent':
+            'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/154.0.0.0 Mobile Safari/537.36',
+        },
+      },
+    )
+
+    expect(loQueSeLogueo().dispositivo).toBe('mobile')
+  })
+
+  test('la ruta está exenta de CSRF', async () => {
+    // Tiene que serlo: el crash puede ocurrir antes de que la app consiga su
+    // token —o justamente por no haberlo conseguido—, y un 403 nos taparía el
+    // único reporte de la falla. No escribe nada, sólo emite una línea de log.
+    const { csrfExemptRoutes } = await import('../middlewares/csrfMiddleware.js')
+
+    const exenta = csrfExemptRoutes.some(
+      ruta => ruta.method === 'POST' && ruta.path.endsWith('/metrics/client-error'),
+    )
+
+    expect(exenta).toBe(true)
   })
 })
