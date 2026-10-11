@@ -924,11 +924,13 @@ describe('SES · el inquilino viaja con cada correo', () => {
 
   let restaurar
 
-  const CON_DOMINIO_PROPIO = {
-    _id: 'comercio-1',
+  // Cada prueba usa su propio id: el cache de inquilinos vive a nivel modulo
+  // y sobrevive entre pruebas, asi que reusar uno las acoplaria.
+  const conDominioPropio = id => ({
+    _id: id,
     name: 'Tienda X',
-    email: { status: 'verified', provider: 'ses', fromAddress: 'hola@tiendax.com' },
-  }
+    email: { status: 'verified', provider: 'ses', fromAddress: `hola@${id}.com` },
+  })
 
   beforeEach(() => {
     restaurar = guardarEntorno([
@@ -936,12 +938,16 @@ describe('SES · el inquilino viaja con cada correo', () => {
       'EMAIL_FROM',
       'AWS_ACCESS_KEY_ID',
       'AWS_SECRET_ACCESS_KEY',
+      'AWS_ACCOUNT_ID',
+      'AWS_REGION',
     ])
 
     process.env.EMAIL_PROVIDER = 'ses'
     process.env.EMAIL_FROM = 'no-reply@plataforma.com'
     process.env.AWS_ACCESS_KEY_ID = 'clave-de-prueba'
     process.env.AWS_SECRET_ACCESS_KEY = 'secreto-de-prueba'
+    process.env.AWS_ACCOUNT_ID = '123456789012'
+    process.env.AWS_REGION = 'us-east-1'
 
     comandosSes.length = 0
     Object.keys(respuestasSes).forEach(clave => delete respuestasSes[clave])
@@ -958,47 +964,93 @@ describe('SES · el inquilino viaja con cada correo', () => {
   }
 
   test('con dominio propio verificado, el envío lleva el inquilino', async () => {
-    const envio = await enviar({ tenantConfig: CON_DOMINIO_PROPIO })
+    const envio = await enviar({ tenantConfig: conDominioPropio('tienda-propia') })
 
-    expect(envio.TenantName).toBe('comercio-1')
-    expect(envio.FromEmailAddress).toContain('hola@tiendax.com')
+    expect(envio.TenantName).toBe('tienda-propia')
+    expect(envio.FromEmailAddress).toContain('hola@tienda-propia.com')
   })
 
-  test('saliendo por la plataforma NO lleva inquilino', async () => {
-    // Esto no es una omisión: SES valida que el inquilino tenga permiso sobre
-    // la identidad que se usa, y la de la plataforma no está asociada a él.
-    // Mandarlo igual no sería más aislamiento, sería un envío rechazado.
+  test('saliendo por la plataforma TAMBIÉN lleva inquilino', async () => {
+    // Éste es el caso que importa, y el que antes quedaba afuera.
+    //
+    // La mayoría de los comercios nunca configura DNS: salen por la identidad
+    // de la plataforma. Si el inquilino sólo acompañara a los que tienen
+    // dominio propio, todos los demás compartirían una sola reputación — y la
+    // tienda que importa una lista comprada se llevaría puesto el envío de
+    // todas las otras.
     const envio = await enviar({
       tenantConfig: {
-        _id: 'comercio-1',
+        _id: 'tienda-compartida',
         email: { status: 'pending', provider: 'ses', fromAddress: 'hola@tiendax.com' },
       },
     })
 
-    expect(envio.TenantName).toBeUndefined()
+    expect(envio.TenantName).toBe('tienda-compartida')
     expect(envio.FromEmailAddress).toContain('no-reply@plataforma.com')
   })
 
-  test('un dominio verificado con OTRO proveedor tampoco lo lleva', async () => {
-    const envio = await enviar({
+  test('el inquilino queda asociado a la identidad que de verdad se usa', async () => {
+    // SES valida que el inquilino tenga permiso sobre la identidad del envío.
+    // Saliendo por la plataforma, la identidad a asociar es la de la
+    // plataforma, no la del comercio.
+    await enviar({
       tenantConfig: {
-        _id: 'comercio-1',
-        email: { status: 'verified', provider: 'sendgrid', fromAddress: 'hola@tiendax.com' },
+        _id: 'tienda-asociacion',
+        email: { status: 'pending', provider: 'ses', fromAddress: 'hola@tiendax.com' },
       },
     })
 
-    expect(envio.TenantName).toBeUndefined()
-    expect(envio.FromEmailAddress).toContain('no-reply@plataforma.com')
+    const asociadas = comandosSes
+      .filter(c => c.tipo === 'CreateTenantResourceAssociation')
+      .map(c => c.input.ResourceArn)
+
+    expect(asociadas.some(a => a.endsWith('identity/plataforma.com'))).toBe(true)
   })
 
-  test('con un remitente explícito no se deduce nada', async () => {
-    // Quien pasa `from` eligió una identidad que este módulo no resolvió, así
-    // que adivinar el inquilino sería arriesgar un rechazo.
+  test('sin comercio no hay inquilino', async () => {
+    // Un aviso de la plataforma a sí misma no pertenece a ninguna tienda.
+    const envio = await enviar({ tenantConfig: {} })
+
+    expect(envio.TenantName).toBeUndefined()
+    expect(comandosSes.some(c => c.tipo === 'CreateTenant')).toBe(false)
+  })
+
+  test('el segundo correo del mismo comercio no vuelve a pedirle nada a AWS', async () => {
+    // Asegurar el inquilino son tres llamadas. Repetirlas en cada correo
+    // sería triplicar el costo y la latencia de todo el sistema de email.
+    const comercio = conDominioPropio('tienda-cacheada')
+
+    await enviar({ tenantConfig: comercio })
+    const primeraVuelta = comandosSes.filter(c => c.tipo !== 'SendEmail').length
+
+    comandosSes.length = 0
+    await enviar({ tenantConfig: comercio })
+    const segundaVuelta = comandosSes.filter(c => c.tipo !== 'SendEmail').length
+
+    expect(primeraVuelta).toBeGreaterThan(0)
+    expect(segundaVuelta).toBe(0)
+  })
+
+  test('si no se puede asegurar el inquilino, el correo sale igual', async () => {
+    // LA DECISIÓN QUE FIJA ESTA PRUEBA
+    //
+    // El aislamiento de reputación importa, pero no más que el correo. Quien
+    // espera el enlace para recuperar su contraseña no gana nada con que no
+    // le llegue porque AWS rechazó una asociación.
+    //
+    // Y mandar el inquilino igual sería peor: SES rechazaría el envío entero
+    // por usar una identidad que ese inquilino no tiene asociada.
+    respuestasSes.CreateTenant = () => {
+      const error = new Error('sin permisos')
+      error.name = 'AccessDeniedException'
+      throw error
+    }
+
     const envio = await enviar({
-      tenantConfig: CON_DOMINIO_PROPIO,
-      from: 'Otra cosa <otra@tiendax.com>',
+      tenantConfig: { _id: 'comercio-sin-permiso', email: {} },
     })
 
+    expect(envio).toBeDefined()
     expect(envio.TenantName).toBeUndefined()
   })
 })
