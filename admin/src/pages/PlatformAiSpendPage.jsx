@@ -1280,12 +1280,20 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
           error posible acá, porque el cambio se aplicaría sobre el equivocado. */}
       {governing && (
         <TenantPolicyDialog
-          // El estado del comercio sale del reporte de margen y no del de
-          // gasto, que no lo trae. Sin él el diálogo no puede saber si ofrecer
-          // "suspender" o "reactivar".
+          // El estado del comercio lo manda la fila de GASTO, que ahora lo
+          // trae, y el margen queda como respaldo.
+          //
+          // El orden importa y estaba al revés: la clave explícita gana sobre
+          // el spread, así que el margen sobrescribía el estado de la fila. Y
+          // el reporte de margen EXCLUYE los comercios dados de baja
+          // (platformMarginService:95), o sea que para uno de ésos devolvía
+          // undefined y el fallback lo dejaba en 'active'. Resultado: la guarda
+          // de abajo no se activaba y el diálogo ofrecía suspender y dar de
+          // baja a un comercio que ya estaba dado de baja.
           row={{
             ...governing,
-            tenantStatus: margenPorComercio.get(governing.tenantId)?.status || 'active',
+            tenantStatus:
+              governing.tenantStatus || margenPorComercio.get(governing.tenantId)?.status || null,
           }}
           budget={budget}
           onClose={() => setGoverning(null)}

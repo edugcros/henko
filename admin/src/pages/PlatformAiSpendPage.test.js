@@ -1039,3 +1039,36 @@ describe('comercio que ya no existe', () => {
     expect(screen.queryByRole('button', { name: /^dar de baja$/i })).not.toBeInTheDocument()
   })
 })
+
+// El estado del comercio lo manda la fila de gasto, no el margen.
+//
+// EL DEFECTO
+//
+// El diálogo se armaba con `{...governing, tenantStatus: margen?.status ||
+// 'active'}`, y la clave explícita gana sobre el spread. El reporte de margen
+// EXCLUYE los comercios dados de baja, así que para uno de ésos devolvía
+// undefined y el fallback lo dejaba en 'active': la guarda no se activaba y el
+// diálogo ofrecía suspender y dar de baja a un comercio que ya estaba dado de
+// baja.
+//
+// Mis primeras pruebas no lo agarraron porque la del diálogo usaba tenantGone,
+// que no se sobrescribe. Ésta ataca el otro camino.
+describe('comercio dado de baja desde el panel', () => {
+  const DADO_DE_BAJA = [{ ...UN_COMERCIO[0], tenantGone: false, tenantStatus: 'deleted' }]
+
+  test('el diálogo no le ofrece acciones, aunque el margen no lo liste', async () => {
+    const user = userEvent.setup()
+    // Así se comporta el reporte real: un comercio dado de baja no aparece.
+    mockGetMargin.mockResolvedValue({ tenants: [] })
+    load({ byTenant: DADO_DE_BAJA })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^ver$/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^ver$/i }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/está dado de baja. Su gasto sigue acá/i)).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /suspender el comercio/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^dar de baja$/i })).not.toBeInTheDocument()
+  })
+})

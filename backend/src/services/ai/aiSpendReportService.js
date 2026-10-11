@@ -497,8 +497,11 @@ export const getPeriodSpendByTenant = async period => {
 
   if (faltantes.length === 0) return filasConPolitica
 
+  // `status` va en el select porque las filas de abajo informan si el comercio
+  // todavía existe. Sin él la bandera quedaría siempre en undefined y la
+  // pantalla le ofrecería acciones a un comercio dado de baja.
   const tenants = await Tenant.find({ _id: { $in: faltantes.map(([id]) => id) } })
-    .select('name hostname plan')
+    .select('name hostname plan status')
     .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
     .lean()
 
@@ -511,6 +514,16 @@ export const getPeriodSpendByTenant = async period => {
       tenantId,
       name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
       plan: tenant?.plan || null,
+
+      // Las mismas banderas que el bloque de arriba, y por el mismo motivo.
+      // Este reporte devuelve filas por dos caminos —las que tienen movimientos
+      // en el libro y las de comercios pausados sin consumo— y una bandera que
+      // sólo existe en uno de los dos deja la guarda de la pantalla a medias:
+      // en la otra mitad vuelve a ofrecer acciones sobre comercios que ya no
+      // están.
+      tenantGone: !tenant,
+      tenantStatus: tenant?.status || null,
+
       tokens: 0,
       toolCalls: 0,
       operations: 0,

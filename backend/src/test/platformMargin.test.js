@@ -539,3 +539,41 @@ describe('baja de comercio', () => {
     expect(fila.name).toBe('(comercio eliminado)')
   })
 })
+
+// Las filas del SEGUNDO camino del reporte tambien dicen si el comercio existe.
+//
+// getPeriodSpendByTenant devuelve filas por dos caminos: las que tienen
+// movimientos en el libro, y las de comercios con la IA pausada y sin consumo en
+// el periodo —que se agregan a proposito para que no se caigan de la tabla—.
+//
+// Las banderas se habian agregado solo al primero, asi que un comercio dado de
+// baja con politica pausada y sin consumo aparecia con el boton "Gobernar" y
+// todas las acciones habilitadas: el mismo defecto que esto vino a arreglar,
+// por el otro camino del codigo.
+describe('comercio pausado y sin consumo', () => {
+  test('la fila dice que el comercio esta dado de baja', async () => {
+    const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
+
+    await crearComercio(CARO, { name: 'Caro', plan: 'starter' })
+    await Tenant.collection.updateOne({ _id: CARO }, { $set: { status: 'deleted' } })
+
+    // Pausado y sin una sola fila en el libro este periodo.
+    await setTenantAiPolicy({
+      tenantId: String(CARO),
+      suspended: true,
+      suspendedReason: 'prueba',
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const filas = await getPeriodSpendByTenant(PERIODO)
+    const fila = filas.find(f => String(f.tenantId) === String(CARO))
+
+    expect(fila).toBeDefined()
+    expect(fila.operations).toBe(0)
+    // Sin esto la pantalla le ofrecia acciones a un comercio dado de baja.
+    expect(fila.tenantStatus).toBe('deleted')
+    expect(fila.tenantGone).toBe(false)
+  })
+})
