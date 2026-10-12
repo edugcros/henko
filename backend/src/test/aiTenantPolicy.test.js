@@ -333,7 +333,15 @@ describe('la lectura de la política', () => {
   test('un comercio sin política cargada devuelve el defecto permisivo', async () => {
     const politica = await getTenantAiPolicy(NORMAL)
 
-    expect(politica).toEqual({ share: null, suspended: false, suspendedReason: null })
+    // usdCap se suma al defecto con el techo en plata por comercio: `null`
+    // quiere decir "usa su fracción", que es el comportamiento permisivo de
+     // siempre.
+    expect(politica).toEqual({
+      share: null,
+      usdCap: null,
+      suspended: false,
+      suspendedReason: null,
+    })
   })
 
   test('dos cambios sobre el mismo comercio no crean dos documentos', async () => {

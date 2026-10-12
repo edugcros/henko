@@ -55,6 +55,22 @@ const aiTenantPolicySchema = new mongoose.Schema(
     share: { type: Number, default: null, min: 0.01, max: 1 },
 
     /**
+     * Techo en DÓLARES del mes para este comercio. `null` = usa su fracción.
+     *
+     * POR QUÉ EXISTE ADEMÁS DEL share
+     *
+     * El share reparte el techo de tokens, y el mismo tope de tokens puede
+     * costar 5x más o menos según qué modelo de la cadena conteste. Cuando lo
+     * que se quiere acotar es exactamente el GASTO —"este comercio no me puede
+     * costar más de veinte dólares este mes"— la fracción no lo expresa: hay
+     * que poder decir el número.
+     *
+     * Gana sobre el share cuando está puesto. Sin mínimo ni máximo porque el
+     * rango razonable depende del techo de la plataforma, que se mueve.
+     */
+    usdCap: { type: Number, default: null, min: 0 },
+
+    /**
      * El interruptor. Con esto en true, este comercio no consume más IA.
      *
      * Es distinto de bajarle el share a cero —que no se puede— y distinto de

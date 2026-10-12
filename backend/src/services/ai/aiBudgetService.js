@@ -35,6 +35,7 @@ import {
   getPlatformMonthlyUsdBudget,
   getEstimatedCostUsd,
   getSharedKeyTenantCap,
+  getSharedKeyTenantUsdCap,
   getSubscriptionState,
   normalizeMetric,
   normalizePlan,
@@ -510,10 +511,20 @@ const liquidarReserva = async ({ tenantId, operationId, period }) => {
 
   if (!operacion) return
 
-  await releasePlatformCost({
-    period: operacion.period || period,
-    amount: Number(operacion.reservedCostUsd || 0),
-  })
+  const comprometido = Number(operacion.reservedCostUsd || 0)
+  const periodoReal = operacion.period || period
+
+  await releasePlatformCost({ period: periodoReal, amount: comprometido })
+
+  // La del comercio va acá y no en cada llamador a propósito: este es el ÚNICO
+  // embudo por donde se libera la reserva de plataforma —el findOneAndUpdate de
+  // arriba pone el reservedCostUsd de la operación en cero de forma atómica, así
+  // que dos liberaciones sobre la misma operación no descuentan dos veces—, y
+  // poner las dos liberaciones juntas hace que la simetría quede garantizada
+  // por construcción. Si se liberaran en lugares distintos, alcanzaría con que
+  // un camino nuevo se olvidara de una para que el comercio quedara con plata
+  // retenida hasta fin de mes.
+  await releaseTenantCost({ tenantId, period: periodoReal, amount: comprometido })
 }
 
 /**
@@ -645,6 +656,11 @@ export const DENY_REASONS = Object.freeze({
   METRIC_LIMIT: 'metric_limit_exceeded',
   GUARD_LIMIT: 'guard_limit_exceeded',
   PLATFORM_BUDGET: 'platform_budget_exhausted',
+  // ESTE comercio se gastó su techo en plata. Distinto de PLATFORM_BUDGET, que
+  // es la plataforma entera: acá los demás comercios siguen funcionando, y es
+  // justamente el punto. Antes el único techo en plata era el global, así que
+  // un comercio desbocado cortaba la IA de todos.
+  TENANT_USD_BUDGET: 'tenant_usd_budget_exhausted',
   // Va demasiado rapido. Es distinto de quedarse sin cupo: el cupo se agota y
   // hay que esperar al mes que viene; esto se destraba solo en un minuto.
   RATE_LIMIT: 'rate_limit_exceeded',
@@ -797,6 +813,88 @@ const reservePlatformCost = async ({ period, estimate, usdBudget }) => {
   ).lean()
 
   return updated ? estimate : null
+}
+
+/**
+ * Lo mismo que reservePlatformCost, pero para UN comercio.
+ *
+ * POR QUÉ HACÍA FALTA
+ *
+ * El tope por comercio existía sólo en TOKENS. El propio catálogo de precios
+ * explica por qué eso no controla el gasto: entre un modelo y otro de la cadena
+ * hay 5x de diferencia de tarifa, así que el mismo tope de tokens puede costar
+ * veinte dólares o cien según quién conteste, y eso lo decide la cadena de
+ * respaldo y no una política. El techo en plata existía sólo a nivel
+ * plataforma, o sea que cuando UN comercio se desbocaba el disyuntor cortaba
+ * para TODOS: el daño se repartía entre comercios que no habían hecho nada.
+ *
+ * MISMO PATRÓN, Y NO POR SIMETRÍA ESTÉTICA
+ *
+ * El techo viaja DENTRO del filtro del findOneAndUpdate. Si no entra, no
+ * matchea, y no se reserva nada. No hay ventana porque no hay dos pasos —
+ * comprobar y después gastar deja pasar cien pedidos simultáneos, que es
+ * exactamente el modo de falla que este diseño evita en el techo de plataforma.
+ *
+ * @returns {Promise<number|null>} cuánto se comprometió; 0 si no hacía falta,
+ *   null si no entró en el techo del comercio.
+ */
+const reserveTenantCost = async ({ tenantId, period, estimate, usdCap }) => {
+  if (usdCap === UNLIMITED || !(estimate > 0)) return 0
+
+  await AiUsage.updateOne(
+    { tenantId, period },
+    { $setOnInsert: { tenantId, period } },
+    { upsert: true },
+  )
+    .setOptions({ tenantId })
+    .catch(() => null)
+
+  const updated = await AiUsage.findOneAndUpdate(
+    {
+      tenantId,
+      period,
+      $expr: {
+        $lte: [
+          {
+            $add: [
+              { $ifNull: ['$estimatedCostUsd', 0] },
+              { $ifNull: ['$reservedCostUsd', 0] },
+              estimate,
+            ],
+          },
+          usdCap,
+        ],
+      },
+    },
+    { $inc: { reservedCostUsd: estimate } },
+    { new: true },
+  )
+    .setOptions({ tenantId })
+    .lean()
+
+  return updated ? estimate : null
+}
+
+/**
+ * Devuelve plata comprometida de UN comercio.
+ *
+ * Igual que la de plataforma, nunca deja el contador en negativo: el $max con
+ * cero lo impide aunque la liberación llegue dos veces.
+ */
+const releaseTenantCost = async ({ tenantId, period, amount }) => {
+  if (!(amount > 0) || !tenantId) return
+
+  await AiUsage.updateOne({ tenantId, period }, [
+    {
+      $set: {
+        reservedCostUsd: {
+          $max: [0, { $subtract: [{ $ifNull: ['$reservedCostUsd', 0] }, amount] }],
+        },
+      },
+    },
+  ])
+    .setOptions({ tenantId })
+    .catch(() => null)
 }
 
 /**
@@ -1841,6 +1939,41 @@ export const reserveAiBudget = async ({
     })
   }
 
+  // EL TECHO EN PLATA DE ESTE COMERCIO.
+  //
+  // Va después del de plataforma porque el global es el que protege a todos: si
+  // la plataforma no tiene plata, no hay nada que decidir sobre un comercio.
+  //
+  // Y va como reserva por el mismo motivo que el global: el costo real recién
+  // se conoce después de la respuesta, así que comprobar-y-después-gastar deja
+  // pasar cien pedidos simultáneos.
+  const tenantUsdCap = getSharedKeyTenantUsdCap({
+    share: tenantPolicy?.share ?? null,
+    usdCap: tenantPolicy?.usdCap ?? null,
+  })
+
+  const reservedTenantUsd = await reserveTenantCost({
+    tenantId: id,
+    period,
+    estimate: estimateUsd,
+    usdCap: tenantUsdCap,
+  })
+
+  if (reservedTenantUsd === null) {
+    // La plata del techo global vuelve: este comercio no va a gastar, y
+    // dejarla comprometida se la quitaría a los demás hasta fin de mes.
+    await releasePlatformCost({ period, amount: reservedUsd })
+
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.TENANT_USD_BUDGET,
+      detail: 'usd',
+      profile: aiProfile,
+    })
+  }
+
   // EL CANDADO. Antes de este punto no se tocó ningún contador; después de
   // este punto, el `$inc` solo corre si la operación es nueva.
   const { fresh, operation } = await openOperation({
@@ -1862,7 +1995,12 @@ export const reserveAiBudget = async ({
   if (!fresh) {
     // No se cobra, así que no se compromete: lo reservado hace tres líneas se
     // devuelve o quedaría retenido hasta fin de mes por un reintento.
+    //
+    // Las DOS reservas: la global y la de este comercio. liquidarReserva no
+    // cubre este camino porque no hay operación nueva a nombre de la cual
+    // liquidar — el reintento matcheó una que ya existía.
     await releasePlatformCost({ period, amount: reservedUsd })
+    await releaseTenantCost({ tenantId: id, period, amount: reservedTenantUsd })
 
     const usage = await AiUsage.findOne({ tenantId: id, period })
       .setOptions({ tenantId: id })
@@ -1893,7 +2031,12 @@ export const reserveAiBudget = async ({
     // La cuota del comercio no alcanzó: la plata comprometida vuelve. Sin
     // esto, un comercio sin cupo le comería el techo a la plataforma con cada
     // intento fallido.
+    //
+    // Y también la suya: sin esta línea, un comercio con la cuota agotada se
+    // comería su propio techo en plata a fuerza de intentos denegados, y
+    // quedaría trabado por partida doble hasta fin de mes.
     await releasePlatformCost({ period, amount: reservedUsd })
+    await releaseTenantCost({ tenantId: id, period, amount: reservedTenantUsd })
 
     const usage = await AiUsage.findOne({ tenantId: id, period })
       .setOptions({ tenantId: id })

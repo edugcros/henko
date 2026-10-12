@@ -41,6 +41,32 @@ const aiUsageSchema = new Schema(
       min: 0,
     },
 
+    /**
+     * Plata comprometida por operaciones en vuelo de ESTE comercio.
+     *
+     * POR QUÉ HACE FALTA, Y POR QUÉ NO ALCANZABA CON estimatedCostUsd
+     *
+     * El tope por comercio existía sólo en TOKENS, y el propio catálogo de
+     * precios explica por qué eso no controla el gasto: entre un modelo y otro
+     * de la cadena hay 5x de diferencia de tarifa, así que el mismo tope de
+     * tokens puede costar veinte dólares o cien según quién conteste — y eso lo
+     * decide la cadena de respaldo, no una política. El techo en plata existía
+     * sólo a nivel plataforma, o sea que cuando UN comercio se desbocaba el
+     * disyuntor cortaba para TODOS.
+     *
+     * Para poner un techo en plata por comercio hace falta comprometer antes de
+     * gastar: el costo real recién se conoce después de la respuesta, y
+     * comprobar-y-después-gastar deja pasar cien pedidos simultáneos. Es el
+     * mismo razonamiento —y el mismo campo— que ya tiene AiPlatformUsage.
+     *
+     * Se libera apenas se sabe el costo real, en liquidarReserva.
+     */
+    reservedCostUsd: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // Consumo que corrió con la API key propia del tenant (BYOK). No cuenta
     // contra los topes del plan, pero se registra igual: sin este número no
     // se puede dimensionar a qué plan corresponde un comercio.
