@@ -32,7 +32,7 @@ jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   // Van con los valores reales y no con placeholders: abajo se comprueba que
   // el controlador mande EXACTAMENTE estos.
   AI_FEATURES: { IMAGE_AI: 'imageAi' },
-  AI_PROVIDERS: { REPLICATE: 'replicate' },
+  AI_PROVIDERS: { GEMINI: 'gemini' },
   buildBudgetDenialMessage: () => 'sin cupo',
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
@@ -108,7 +108,7 @@ describe('imageAiCtrl · cobro de la edición', () => {
   test('si el proveedor falla se devuelve con la clave de la reserva', async () => {
     // La devolución tiene que poder unirse con lo que anula: sin la clave son
     // dos filas sueltas, y un reintento del refund descuenta dos veces.
-    mockGenerate.mockRejectedValue(new Error('replicate caído'))
+    mockGenerate.mockRejectedValue(new Error('Gemini caído'))
 
     await expect(correr()).rejects.toThrow('replicate caído')
 
@@ -164,7 +164,7 @@ test('declara de que funcion viene y contra quien presupuesta', async () => {
   expect(mockReserve).toHaveBeenCalledWith(
     expect.objectContaining({
       feature: 'imageAi',
-      provider: 'replicate',
+      provider: 'gemini',
       forcePlatformBilling: true,
     }),
   )
