@@ -261,24 +261,21 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
 /**
  * Generación de imágenes, que NO se cobra por token.
  *
- * Replicate y HuggingFace cobran por imagen, así que no entra en la tabla de
- * arriba: no hay entrada ni salida que separar. Pero es un PRECIO, y los
- * precios viven en este archivo — estaba en aiPlanPolicy.js, que es el archivo
- * de planes y topes, o sea de lo que el comercio RECIBE. Cuánto le cuesta a
- * HENKO es otra pregunta y tenía su propia respuesta suelta.
+ * Gemini Image cobra por la generación de imagen, así que no entra en la tabla
+ * de arriba: no hay entrada ni salida de texto que separar. El costo se registra
+ * como estimación por imagen y se puede ajustar con AI_COST_USD_PER_IMAGE_EDIT.
  *
  * Lleva vigencia por el mismo motivo que los modelos: el día que se corrija la
  * tarifa con datos reales de facturación, las imágenes de agosto tienen que
  * seguir costando lo que costaron. Sin fechas, corregir el número hacia
  * adelante reescribe la historia hacia atrás.
  *
- * El 0,02 es una estimación conservadora sobre el costo documentado de
- * Replicate (flux-schnell más el respaldo ocasional de quitar fondo), no una
- * factura. AI_COST_USD_PER_IMAGE_EDIT lo corrige sin tocar código, y cuando
- * haya una cifra real conviene cerrar esta ventana y abrir una nueva en vez de
- * editar esta.
+ * El valor predeterminado de USD 0,0336 es una estimación de generación a 1K
+ * con Gemini 3.1 Flash Lite Image, no una factura. Configurar
+ * AI_COST_USD_PER_IMAGE_EDIT en Render con el costo efectivo esperado y revisar
+ * el valor cuando Google cambie sus tarifas.
  */
-const IMAGE_CATALOG = [{ from: null, until: null, perImage: 0.02 }]
+const IMAGE_CATALOG = [{ from: null, until: null, perImage: 0.0336 }]
 
 /**
  * Precio de UNA generación de imagen, a la fecha del consumo.
