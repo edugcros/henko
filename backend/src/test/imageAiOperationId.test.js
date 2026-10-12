@@ -1,21 +1,3 @@
-// El controlador de edición de imagen frente al medidor.
-//
-// POR QUÉ EXISTE
-//
-// Este controlador cobraba en dos pasos: `reserveAiBudget` subía el contador de
-// cuota y, después de generar la imagen, una segunda llamada sumaba el costo.
-// Entre los dos pasos había una ida y vuelta al proveedor, y la segunda llamada
-// se tragaba sus propios errores. Si no llegaba a ejecutarse, el cupo quedaba
-// consumido sin su plata.
-//
-// Se vio en datos reales: 9 reservas de edición, 6 devoluciones y 2 consumos,
-// con el contador de cuota en 3. Una edición ocupó cupo y nunca registró costo,
-// y como ningún movimiento llevaba `operationId` no había forma de saber cuál.
-//
-// Hoy el costo viaja dentro de la reserva (es tarifa plana: ya se conoce ahí) y
-// la devolución revierte las dos cosas. Lo que este test fija es lo que le toca
-// al controlador: que no exista un segundo paso que cobre, y que la devolución
-// use la clave de la reserva que anula.
 
 import { jest } from '@jest/globals'
 
@@ -28,11 +10,8 @@ const mockGenerate = jest.fn()
 
 jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   AI_METRICS: { IMAGE_EDITS: 'imageEdits' },
-  // El controlador declara de que funcion viene y contra quien presupuesta.
-  // Van con los valores reales y no con placeholders: abajo se comprueba que
-  // el controlador mande EXACTAMENTE estos.
   AI_FEATURES: { IMAGE_AI: 'imageAi' },
-  AI_PROVIDERS: { REPLICATE: 'replicate' },
+  AI_PROVIDERS: { GEMINI: 'gemini' },
   buildBudgetDenialMessage: () => 'sin cupo',
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
@@ -82,6 +61,7 @@ const correr = async () => {
 
 beforeEach(() => {
   jest.clearAllMocks()
+
   mockReserve.mockResolvedValue({
     allowed: true,
     operationId: OPERATION_ID,
@@ -99,18 +79,15 @@ describe('imageAiCtrl · cobro de la edición', () => {
     const res = await correr()
 
     expect(res.body.success).toBe(true)
-    // Toda la contabilidad de una edición que salió bien es la reserva. Un
-    // segundo paso que cobre es exactamente lo que se podía perder.
+    // La reserva registra el costo. No debe existir un segundo cobro.
     expect(mockReserve).toHaveBeenCalledTimes(1)
     expect(mockRefund).not.toHaveBeenCalled()
   })
 
-  test('si el proveedor falla se devuelve con la clave de la reserva', async () => {
-    // La devolución tiene que poder unirse con lo que anula: sin la clave son
-    // dos filas sueltas, y un reintento del refund descuenta dos veces.
-    mockGenerate.mockRejectedValue(new Error('replicate caído'))
+  test('si Gemini falla se devuelve con la clave de la reserva', async () => {
+    mockGenerate.mockRejectedValue(new Error('Gemini caído'))
 
-    await expect(correr()).rejects.toThrow('replicate caído')
+    await expect(correr()).rejects.toThrow('Gemini caído')
 
     expect(mockRefund).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,10 +97,10 @@ describe('imageAiCtrl · cobro de la edición', () => {
     )
   })
 
-  test('el controlador no inventa la clave, usa la que le devuelven', async () => {
-    mockGenerate.mockRejectedValue(new Error('replicate caído'))
+  test('el controlador usa la clave que devuelve la reserva', async () => {
+    mockGenerate.mockRejectedValue(new Error('Gemini caído'))
 
-    await expect(correr()).rejects.toThrow()
+    await expect(correr()).rejects.toThrow('Gemini caído')
 
     const [[reserva]] = mockReserve.mock.calls
     const [[devolucion]] = mockRefund.mock.calls
@@ -143,17 +120,11 @@ describe('imageAiCtrl · cobro de la edición', () => {
 
     expect(res.statusCode).toBe(402)
     expect(mockGenerate).not.toHaveBeenCalled()
-    // No se reservó nada, así que no hay nada que devolver.
     expect(mockRefund).not.toHaveBeenCalled()
   })
 })
 
-// Un mock que solo satisface el import no prueba nada: prueba el mock. Esto
-// comprueba que el controlador declare de que funcion viene y contra quien
-// presupuesta, que es lo unico que despues permite responder "¿que funcion me
-// esta costando la plata?" — agentMessages lo comparten tres funciones y
-// `metric` no las distingue.
-test('declara de que funcion viene y contra quien presupuesta', async () => {
+test('declara la función y el proveedor contra los que presupuesta', async () => {
   mockGenerate.mockResolvedValue({
     buffer: Buffer.from('resultado'),
     contentType: 'image/png',
@@ -164,7 +135,7 @@ test('declara de que funcion viene y contra quien presupuesta', async () => {
   expect(mockReserve).toHaveBeenCalledWith(
     expect.objectContaining({
       feature: 'imageAi',
-      provider: 'replicate',
+      provider: 'gemini',
       forcePlatformBilling: true,
     }),
   )

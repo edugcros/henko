@@ -7,25 +7,19 @@ import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/bac
 /**
  * Motores de imagen
  * ─────────────────
- * Quitar fondo:  RMBG-1.4 local (gratis, sin API key) → Replicate si está el token
- * Generar fondo: Replicate flux-schnell (modelo oficial) → HuggingFace SD3 (gratis)
- * Prompt:        Gemini traduce/optimiza el prompt del usuario a inglés
+ * Quitar fondo:  RMBG local (gratis, sin API key) → Replicate solo si falla el recorte local
+ * Generar fondo: Gemini Image (modelo configurable, por defecto Flash Lite Image)
+ * Prompt:        Gemini optimiza el prompt del usuario a inglés
  *
- * Todo el flujo funciona sin ninguna credencial de pago: el recorte corre en el
- * propio proceso y el fondo lo genera HuggingFace. Replicate es opcional y sólo
- * mejora velocidad y calidad cuando hay token.
- *
- * HuggingFace no sirve ningún modelo de background removal en su tier gratuito
- * (hf-inference sólo expone segmentación semántica, no recortes con alpha), por
- * eso el recorte se resuelve localmente y no contra su API.
+ * La generación de fondo utiliza la clave Gemini de plataforma y no hace
+ * fallback automático a otros proveedores pagos: un error de cuota debe
+ * detener la operación en vez de disparar un segundo gasto. El producto se
+ * recorta y compone localmente para preservar la foto original.
  */
 
 const REPLICATE_API = 'https://api.replicate.com/v1'
-const HF_ROUTER = 'https://router.huggingface.co/hf-inference/models'
 
 const BG_REMOVER_VERSION = 'a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc'
-const FLUX_MODEL = 'black-forest-labs/flux-schnell'
-const HF_TXT2IMG_MODEL = 'stabilityai/stable-diffusion-3-medium-diffusers'
 
 const MAX_EDGE = 1600
 const POLL_INTERVAL_MS = 1000
@@ -165,8 +159,6 @@ const getReplicateToken = () => {
   }
   return token
 }
-
-const getHfToken = () => env.huggingface?.apiKey || ''
 
 // ─── Utilidades de imagen ────────────────────────────────
 
@@ -325,64 +317,91 @@ const removeBg = async imageBuffer => {
   return removeBgReplicate(imageBuffer)
 }
 
-// ─── Generar fondo ───────────────────────────────────────
+// ─── Generar fondo con Gemini ───────────────────────────────
+//
+// Gemini genera únicamente el fondo. El producto se recorta localmente y se
+// compone después, así se conserva la foto original del producto sin pedirle
+// al modelo que la vuelva a dibujar. No se reintenta con proveedores pagos:
+// un error de cuota debe detenerse aquí, no disparar una segunda factura.
 
-const generateBgReplicate = async (prompt, aspectRatio = '1:1') => {
-  const token = getReplicateToken()
+const GEMINI_IMAGE_MODEL_DEFAULT = 'gemini-3.1-flash-lite-image'
 
-  // Modelo oficial → /models/{owner}/{name}/predictions, sin version hash
-  return createPrediction(token, `/models/${FLUX_MODEL}/predictions`, {
-    input: {
-      prompt,
-      num_outputs: 1,
-      aspect_ratio: aspectRatio,
-      output_format: 'png',
-      go_fast: true,
-    },
-  })
-}
+const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
+  const apiKey = String(env.ai?.geminiApiKey || '').trim()
+  if (!apiKey) {
+    throw fail('GEMINI_API_KEY no está configurada para generar imágenes.', 503)
+  }
 
-const generateBgHuggingFace = async prompt => {
-  const token = getHfToken()
-  if (!token) throw fail('HUGGINGFACE_API_KEY no configurado', 503)
+  const configuredModel = String(
+    env.ai?.geminiImageModel || env.ai?.googleImageModel || GEMINI_IMAGE_MODEL_DEFAULT,
+  ).trim()
+  if (!/^[a-zA-Z0-9._-]+$/.test(configuredModel)) {
+    throw fail('GEMINI_IMAGE_MODEL tiene un formato inválido.', 503)
+  }
 
-  const res = await fetch(`${HF_ROUTER}/${HF_TXT2IMG_MODEL}`, {
+  const allowedRatios = new Set(['1:1', '16:9', '4:5'])
+  const safeRatio = allowedRatios.has(aspectRatio) ? aspectRatio : '1:1'
+  const url = `${GEMINI_API}/${encodeURIComponent(configuredModel)}:generateContent`
+
+  const res = await fetch(url, {
     method: 'POST',
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(90000),
     headers: {
-      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
     },
-    body: JSON.stringify({ inputs: prompt }),
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig: { aspectRatio: safeRatio },
+      },
+    }),
   })
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    logger.error('HuggingFace txt2img failed', { status: res.status, body })
-    throw fail(`HuggingFace no pudo generar el fondo (${res.status})`)
+    logger.error('Gemini image generation failed', {
+      model: configuredModel,
+      status: res.status,
+      body: body.slice(0, 500),
+    })
+
+    if (res.status === 401 || res.status === 403) {
+      throw fail('Gemini rechazó la credencial o no tiene permiso para generar imágenes.', 503)
+    }
+    if (res.status === 429) {
+      throw fail(
+        'Gemini alcanzó el límite de uso o cuota. Revisá la facturación y los límites de la API.',
+        429,
+      )
+    }
+    throw fail(`Gemini no pudo generar el fondo (${res.status}).`, 502)
   }
 
-  return Buffer.from(await res.arrayBuffer())
+  const json = await res.json()
+  const imagePart = json?.candidates?.[0]?.content?.parts?.find(part => part?.inlineData?.data)
+  if (!imagePart?.inlineData?.data) {
+    const finishReason = json?.candidates?.[0]?.finishReason || 'sin imagen en la respuesta'
+    logger.warn('Gemini image generation returned no image', {
+      model: configuredModel,
+      finishReason,
+    })
+    throw fail('Gemini no devolvió una imagen. Probá con otra instrucción.', 502)
+  }
+
+  const buffer = Buffer.from(imagePart.inlineData.data, 'base64')
+  if (!buffer.length) throw fail('Gemini devolvió una imagen vacía.', 502)
+
+  logger.info('Background generado con Gemini', {
+    model: configuredModel,
+    bytes: buffer.length,
+    aspectRatio: safeRatio,
+  })
+  return buffer
 }
 
-/**
- * Cualquier fallo de Replicate (créditos, red, 5xx) cae a HuggingFace.
- * HuggingFace no soporta aspect_ratio en esta API de inferencia simple — el
- * fallback siempre genera cuadrado; el resize final igual lo ajusta al
- * canvas de destino, solo que sin el encuadre nativo que sí da Replicate.
- */
-const generateBg = async (prompt, aspectRatio = '1:1') => {
-  try {
-    const buffer = await generateBgReplicate(prompt, aspectRatio)
-    logger.info('Background generado con Replicate')
-    return buffer
-  } catch (err) {
-    logger.warn('Replicate falló, usando HuggingFace', { error: describe(err) })
-    const buffer = await generateBgHuggingFace(prompt)
-    logger.info('Background generado con HuggingFace (fallback)')
-    return buffer
-  }
-}
+const generateBg = (prompt, aspectRatio = '1:1') => generateBgGemini(prompt, aspectRatio)
 
 // ─── API pública ─────────────────────────────────────────
 
@@ -413,8 +432,8 @@ export const generateVariation = async (
   logger.info('generateVariation', {
     bytes: imageBuffer.length,
     mime: mimeType,
-    original: prompt,
-    optimized: optimizedPrompt,
+    promptLength: prompt.length,
+    optimizedPromptLength: optimizedPrompt.length,
     purpose,
   })
 
