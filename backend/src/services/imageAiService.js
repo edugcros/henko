@@ -371,7 +371,10 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
       throw fail('Gemini rechazó la credencial o no tiene permiso para generar imágenes.', 503)
     }
     if (res.status === 429) {
-      throw fail('Gemini alcanzó el límite de uso o cuota. Revisá la facturación y los límites de la API.', 429)
+      throw fail(
+        'Gemini alcanzó el límite de uso o cuota. Revisá la facturación y los límites de la API.',
+        429,
+      )
     }
     throw fail(`Gemini no pudo generar el fondo (${res.status}).`, 502)
   }
