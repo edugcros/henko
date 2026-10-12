@@ -26,7 +26,9 @@ export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
     data: {
       geminiImageConfigured: Boolean(process.env.GEMINI_API_KEY),
       geminiImageModel:
-        process.env.GEMINI_IMAGE_MODEL || process.env.GOOGLE_IMAGE_MODEL || 'gemini-3.1-flash-lite-image',
+        process.env.GEMINI_IMAGE_MODEL ||
+        process.env.GOOGLE_IMAGE_MODEL ||
+        'gemini-3.1-flash-lite-image',
       localBackgroundRemoval: local,
     },
   })
