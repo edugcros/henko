@@ -283,7 +283,7 @@ const ImageAiEditor = () => {
         })
         if (mountedRef.current && searchId === productSearchIdRef.current) setProductOptions(res?.data || [])
       } catch {
-        if (mountedRef.current && query === productQuery) setProductOptions([])
+        if (mountedRef.current && searchId === productSearchIdRef.current) setProductOptions([])
       } finally {
         if (mountedRef.current) setProductSearching(false)
       }
