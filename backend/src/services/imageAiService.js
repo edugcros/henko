@@ -7,17 +7,14 @@ import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/bac
 /**
  * Motores de imagen
  * ─────────────────
- * Quitar fondo:  RMBG-1.4 local (gratis, sin API key) → Replicate si está el token
- * Generar fondo: Replicate flux-schnell (modelo oficial) → HuggingFace SD3 (gratis)
- * Prompt:        Gemini traduce/optimiza el prompt del usuario a inglés
+ * Quitar fondo:  RMBG local (gratis, sin API key) → Replicate solo si falla el recorte local
+ * Generar fondo: Gemini Image (modelo configurable, por defecto Flash Lite Image)
+ * Prompt:        Gemini optimiza el prompt del usuario a inglés
  *
- * Todo el flujo funciona sin ninguna credencial de pago: el recorte corre en el
- * propio proceso y el fondo lo genera HuggingFace. Replicate es opcional y sólo
- * mejora velocidad y calidad cuando hay token.
- *
- * HuggingFace no sirve ningún modelo de background removal en su tier gratuito
- * (hf-inference sólo expone segmentación semántica, no recortes con alpha), por
- * eso el recorte se resuelve localmente y no contra su API.
+ * La generación de fondo utiliza la clave Gemini de plataforma y no hace
+ * fallback automático a otros proveedores pagos: un error de cuota debe
+ * detener la operación en vez de disparar un segundo gasto. El producto se
+ * recorta y compone localmente para preservar la foto original.
  */
 
 const REPLICATE_API = 'https://api.replicate.com/v1'
