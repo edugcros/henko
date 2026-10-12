@@ -488,6 +488,27 @@ const sendAuthCookies = (res, req, refreshToken, accessToken, role) => {
   }
 }
 
+// La ventana de gracia del refresh no debe rotar ni reescribir la cookie de
+// refresh, pero sí debe instalar el access token nuevo como cookie httpOnly.
+// El cliente admin no guarda el token del cuerpo en memoria/localStorage.
+const sendAccessCookie = (res, req, accessToken) => {
+  const secure = env.cookieSecure ?? isProd
+  const sameSite = env.cookieSameSite
+  const domain = getCookieDomain(req)
+  const partitioned = usePartitionedCookies(sameSite)
+  const { access } = getSessionCookieNames(req)
+
+  res.cookie(access, accessToken, {
+    httpOnly: true,
+    secure,
+    sameSite,
+    domain,
+    path: '/',
+    maxAge: getAccessCookieMaxAge(),
+    ...(partitioned ? { partitioned: true } : {}),
+  })
+}
+
 const toSafeQuantity = value => {
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed < 1) return null
@@ -1274,6 +1295,10 @@ export const handleRefreshToken = expressAsyncHandler(async (req, res) => {
         userId: String(conGracia._id),
         graceMs: REFRESH_GRACE_MS,
       })
+
+      // No rotar la cookie de refresh en la respuesta perdedora de la carrera,
+      // pero siempre renovar la cookie de access que motivó el reintento.
+      sendAccessCookie(res, req, graceAccessToken)
 
       return res.status(200).json({
         success: true,
