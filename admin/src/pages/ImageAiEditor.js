@@ -281,9 +281,13 @@ const ImageAiEditor = () => {
           q: query.trim(),
           limit: 10,
         })
-        if (mountedRef.current && searchId === productSearchIdRef.current) setProductOptions(res?.data || [])
+        if (mountedRef.current && searchId === productSearchIdRef.current) {
+          setProductOptions(res?.data || [])
+        }
       } catch {
-        if (mountedRef.current && searchId === productSearchIdRef.current) setProductOptions([])
+        if (mountedRef.current && searchId === productSearchIdRef.current) {
+          setProductOptions([])
+        }
       } finally {
         if (mountedRef.current) setProductSearching(false)
       }
