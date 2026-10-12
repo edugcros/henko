@@ -24,9 +24,10 @@ export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
   res.json({
     success: true,
     data: {
+      geminiImageConfigured: Boolean(process.env.GEMINI_API_KEY),
+      geminiImageModel:
+        process.env.GEMINI_IMAGE_MODEL || process.env.GOOGLE_IMAGE_MODEL || 'gemini-3.1-flash-lite-image',
       localBackgroundRemoval: local,
-      replicateConfigured: Boolean(process.env.REPLICATE_API_TOKEN),
-      huggingfaceConfigured: Boolean(process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN),
     },
   })
 })
@@ -71,9 +72,9 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim()
   const purpose = IMAGE_PURPOSES.has(req.body.purpose) ? req.body.purpose : null
 
-  // Generar un fondo cuesta plata en tres lugares a la vez (Gemini optimiza
-  // el prompt, Replicate o HuggingFace generan la imagen). Es la única de las
-  // tres vías de IA que hasta este refactor no tenía ningún medidor.
+  // La generación del fondo usa Gemini con la clave de plataforma. La clave
+  // propia del tenant, si existe, solo se usa para optimizar el prompt. La
+  // reserva debe reflejar el proveedor que realmente factura la generación.
   //
   // La reserva cobra la cuota Y el costo en el mismo movimiento: el precio por
   // imagen es una tarifa plana, o sea que ya se conoce acá. Antes el costo se
@@ -84,13 +85,11 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     tenantId,
     metric: AI_METRICS.IMAGE_EDITS,
     feature: AI_FEATURES.IMAGE_AI,
-    // Contra quién se presupuesta. La generación puede caer a HuggingFace en
-    // la misma llamada; este campo dice contra quién se reservó, igual que
-    // requestedModel frente a actualModel.
-    provider: AI_PROVIDERS.REPLICATE,
-    // La key propia, si existe, solo optimiza el prompt en Gemini. El fondo
-    // sigue generándose con credenciales de plataforma (Replicate/Hugging Face),
-    // por lo que el costo de imagen debe reservar presupuesto de HENKART.
+    // Gemini es el proveedor de generación de fondo y la llamada usa la key
+    // de plataforma; no hay fallback automático a otros proveedores pagos.
+    provider: AI_PROVIDERS.GEMINI,
+    // La key propia, si existe, solo optimiza el prompt. La generación de la
+    // imagen se factura a la plataforma, por lo que se fuerza ese presupuesto.
     forcePlatformBilling: true,
   })
 
