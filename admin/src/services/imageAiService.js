@@ -21,7 +21,7 @@ export const generateVariation = async (file, prompt, purpose) => {
   if (purpose) formData.append('purpose', purpose)
 
   const response = await api.post('/image-ai/generate-variation', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Dejar que el navegador/Axios asigne el boundary real de multipart.
     timeout: 180000,
   })
 
