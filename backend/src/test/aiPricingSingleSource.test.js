@@ -91,8 +91,8 @@ describe('precio por imagen · vive en el catálogo y lleva fecha', () => {
     // imágenes daría distinto sin que nadie lo haya decidido.
     delete process.env.AI_COST_USD_PER_IMAGE_EDIT
 
-    expect(getImagePrice().perImage).toBe(0.02)
-    expect(computeImageCostUsd(3)).toBeCloseTo(0.06, 10)
+    expect(getImagePrice().perImage).toBe(0.0336)
+    expect(computeImageCostUsd(3)).toBeCloseTo(0.1008, 10)
   })
 
   test('el entorno lo corrige, y se sabe que vino de ahí', () => {
