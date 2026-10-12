@@ -25,6 +25,7 @@ import {
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
   getPerTenantShare,
+  getSharedKeyTenantUsdCap,
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
   UNLIMITED,
@@ -437,6 +438,14 @@ export const getPeriodSpendByTenant = async period => {
     const share = Number.isFinite(politica?.share) ? politica.share : shareGlobal
     const tokenCap = budget === UNLIMITED ? null : Math.floor(budget * share)
 
+    // El mismo cálculo que aplica el disyuntor, no una copia: si la pantalla
+    // mostrara un techo distinto del que corta, el número serviría para
+    // confundir y no para decidir.
+    const usdCapEfectivo = getSharedKeyTenantUsdCap({
+      share: politica?.share ?? null,
+      usdCap: politica?.usdCap ?? null,
+    })
+
     return {
       tenantId,
       name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
@@ -474,6 +483,30 @@ export const getPeriodSpendByTenant = async period => {
       keySources: (fila.keySources || []).filter(Boolean),
       tokenCap,
       percentOfCap: tokenCap ? round((tokens / tokenCap) * 100, 1) : null,
+
+      /**
+       * El techo en PLATA de este comercio, y cuánto lleva usado.
+       *
+       * POR QUÉ NO ALCANZABA CON percentOfCap
+       *
+       * Ese porcentaje es sobre el tope de TOKENS, y el catálogo de precios
+       * explica por qué eso no dice cuánto va a costar: entre un modelo y otro
+       * de la cadena hay 5x de diferencia de tarifa. Un comercio puede ir al
+       * 40% de sus tokens y al 95% de su plata, o al revés, y la columna de
+       * tokens no distingue los dos casos.
+       *
+       * Es además la columna que anticipa el corte por plata, que es el que
+       * ahora existe por comercio.
+       */
+      usdCap: usdCapEfectivo === UNLIMITED ? null : round(usdCapEfectivo, 4),
+      percentOfUsdCap:
+        usdCapEfectivo === UNLIMITED || !(usdCapEfectivo > 0)
+          ? null
+          : round((platformCostUsd / usdCapEfectivo) * 100, 1),
+      // `null` quiere decir "usa su fracción"; un número, que alguien le puso
+      // ese techo a mano. La pantalla tiene que poder distinguirlo.
+      usdCapOverride: Number.isFinite(politica?.usdCap) ? politica.usdCap : null,
+
       percentOfPlatformUsd:
         usdBudget === UNLIMITED || usdBudget <= 0
           ? null
@@ -532,6 +565,12 @@ export const getPeriodSpendByTenant = async period => {
       keySources: [],
       tokenCap: null,
       percentOfCap: null,
+      // Mismos campos que el bloque de arriba: un comercio pausado tiene techo
+      // igual, y una bandera que solo existe en uno de los dos caminos deja la
+      // pantalla a medias.
+      usdCap: null,
+      percentOfUsdCap: null,
+      usdCapOverride: Number.isFinite(politica.usdCap) ? politica.usdCap : null,
       percentOfPlatformUsd: null,
       share: Number.isFinite(politica.share) ? politica.share : null,
       suspended: true,

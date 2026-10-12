@@ -1072,3 +1072,68 @@ describe('comercio dado de baja desde el panel', () => {
     expect(screen.queryByRole('button', { name: /^dar de baja$/i })).not.toBeInTheDocument()
   })
 })
+
+// El techo en PLATA de cada comercio, que es el control que faltaba.
+//
+// El tope por comercio existía sólo en TOKENS, y el catálogo de precios explica
+// por qué eso no controla el gasto: entre un modelo y otro de la cadena hay 5x
+// de diferencia de tarifa, así que el mismo tope de tokens puede costar veinte
+// dólares o cien según quién conteste. Un comercio puede ir al 40% de sus tokens
+// y al 95% de su plata, y la columna de tokens no distingue los dos casos.
+describe('techo en plata por comercio', () => {
+  const CON_TECHO = [{ ...UN_COMERCIO[0], usdCap: 20, percentOfUsdCap: 62.5, usdCapOverride: null }]
+
+  test('muestra cuánto lleva de su techo', async () => {
+    load({ byTenant: CON_TECHO })
+
+    await waitFor(() => expect(screen.getByText('62.5%')).toBeInTheDocument())
+  })
+
+  test('sin techo lo dice en lugar de mostrar un cero', async () => {
+    // Cero se leería como "no gastó nada", que es una afirmación distinta.
+    load({ byTenant: [{ ...UN_COMERCIO[0], usdCap: null, percentOfUsdCap: null }] })
+
+    await waitFor(() => expect(screen.getByText('sin techo')).toBeInTheDocument())
+  })
+
+  test('se puede poner un techo en dólares a un comercio', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantPolicy.mockResolvedValue(REPORT)
+    load({ byTenant: CON_TECHO })
+
+    await waitFor(() => expect(screen.getByText('62.5%')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    await user.type(screen.getByLabelText(/techo en dólares/i), '5')
+    await user.type(screen.getByLabelText(/^motivo$/i), 'se desbocó en tres días')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() =>
+      expect(mockUpdateTenantPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 't1', usdCap: 5 }),
+      ),
+    )
+  })
+
+  test('vacío manda null para volver a su fracción', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantPolicy.mockResolvedValue(REPORT)
+    // Arranca con un techo puesto a mano, y se lo borra.
+    load({ byTenant: [{ ...CON_TECHO[0], usdCapOverride: 20 }] })
+
+    await waitFor(() => expect(screen.getByText('62.5%')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    await user.clear(screen.getByLabelText(/techo en dólares/i))
+    await user.type(screen.getByLabelText(/^motivo$/i), 'vuelve al reparto normal')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    // null y "no mandar el campo" son cosas distintas para el backend: el
+    // primero devuelve el mando a la fracción, el segundo no toca nada.
+    await waitFor(() =>
+      expect(mockUpdateTenantPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 't1', usdCap: null }),
+      ),
+    )
+  })
+})

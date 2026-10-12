@@ -841,6 +841,7 @@ function TipoDeCambioCard({ fx, onSaved }) {
 function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   const { dinero } = useDinero()
   const [share, setShare] = useState('')
+  const [usdCap, setUsdCap] = useState('')
   const [suspended, setSuspended] = useState(false)
   const [suspendedReason, setSuspendedReason] = useState('')
   const [reason, setReason] = useState('')
@@ -852,6 +853,11 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   useEffect(() => {
     if (!row) return
     setShare(row.share === null || row.share === undefined ? '' : String(row.share))
+    setUsdCap(
+      row.usdCapOverride === null || row.usdCapOverride === undefined
+        ? ''
+        : String(row.usdCapOverride),
+    )
     setSuspended(row.suspended === true)
     setSuspendedReason(row.suspendedReason || '')
     setReason('')
@@ -874,6 +880,10 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
   const topeResultante =
     budget.tokens && shareEfectiva ? Math.floor(budget.tokens * shareEfectiva) : null
 
+  // Vacio = usa su fraccion. Igual que el share, el backend distingue null
+  // (volver a la fraccion) de no mandar el campo.
+  const usdCapValue = String(usdCap).trim() === '' ? null : Number(usdCap)
+
   const submit = async () => {
     setSaving(true)
     setError('')
@@ -882,6 +892,7 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
       const data = await updateTenantAiPolicy({
         tenantId: row.tenantId,
         ...(String(share) !== String(row.share ?? '') ? { share: shareValue } : {}),
+        ...(String(usdCap) !== String(row.usdCapOverride ?? '') ? { usdCap: usdCapValue } : {}),
         ...(suspended !== row.suspended
           ? { suspended, suspendedReason }
           : // El motivo visible puede cambiar sin que cambie el interruptor.
@@ -924,6 +935,31 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
             topeResultante
               ? `${Math.round(shareEfectiva * 100)}% del techo = ${formatTokens(topeResultante)} tokens para este comercio. Vacío = usa el reparto global.`
               : 'Entre 0.01 y 1. Vacío = usa el reparto global de la plataforma.'
+          }
+        />
+
+        {/* EL TECHO EN PLATA, al lado del de tokens y no en su lugar.
+
+            El de arriba reparte TOKENS, y el catálogo de precios explica por qué
+            eso no controla el gasto: entre un modelo y otro de la cadena hay 5x
+            de diferencia de tarifa, así que el mismo tope de tokens puede costar
+            veinte dólares o cien según quién conteste — y eso lo decide la
+            cadena de respaldo, no una política.
+
+            Van los dos porque miden cosas distintas y las dos sirven: la
+            fracción reparte proporcionalmente, esto pone un número. */}
+        <TextField
+          label="Su techo en dólares del mes"
+          type="number"
+          fullWidth
+          value={usdCap}
+          onChange={event => setUsdCap(event.target.value)}
+          sx={{ mb: 2 }}
+          inputProps={{ step: 1, min: 0.01 }}
+          helperText={
+            usdCapValue
+              ? `Este comercio no va a costar más de USD ${usdCapValue} este mes. Gana sobre la fracción de arriba.`
+              : `Vacío = usa su fracción, hoy ${row.usdCap === null ? 'sin techo' : `USD ${row.usdCap}`}. Poné un número para acotar el gasto directamente.`
           }
         />
 
@@ -1363,6 +1399,10 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                 <TableRow>
                   <TableCell>Comercio</TableCell>
                   <TableCell align="right">Paga HENKO</TableCell>
+                  {/* Cuánto lleva de SU techo en plata. El de tokens, más a la
+                      derecha, no contesta lo mismo: entre modelos de la cadena
+                      hay 5x de tarifa. */}
+                  <TableCell align="right">De su techo</TableCell>
                   {/* EL MARGEN, AL LADO DEL COSTO.
 
                       Vivía en otra pantalla, y ésa es la razón por la que no
@@ -1466,6 +1506,38 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                         <Typography variant="caption" color="text.secondary">
                           {dinero(row.tenantProviderCostUsd)} con su key
                         </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {/* CUÁNTO LLEVA DE SU TECHO EN PLATA.
+
+                          Va al lado del costo porque es lo que convierte el
+                          monto en una decisión: USD 4 no dice nada solo, "USD 4
+                          de un techo de USD 5" dice que a este comercio le
+                          quedan horas.
+
+                          El porcentaje de tokens, que está más a la derecha, no
+                          contesta esto: entre modelos de la cadena hay 5x de
+                          tarifa, así que un comercio puede ir al 40% de sus
+                          tokens y al 95% de su plata. */}
+                      {row.percentOfUsdCap === null || row.percentOfUsdCap === undefined ? (
+                        <Typography variant="caption" color="text.disabled">
+                          sin techo
+                        </Typography>
+                      ) : (
+                        <Tooltip
+                          title={`${dinero(row.platformCostUsd)} de un techo de ${dinero(row.usdCap)}${
+                            row.usdCapOverride ? ' (puesto a mano)' : ' (su fracción)'
+                          }`}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{ fontWeight: row.percentOfUsdCap >= 80 ? 600 : 400 }}
+                            color={usageColor(row.percentOfUsdCap)}
+                          >
+                            {row.percentOfUsdCap}%
+                          </Typography>
+                        </Tooltip>
                       )}
                     </TableCell>
                     <TableCell align="right">

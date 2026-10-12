@@ -333,7 +333,15 @@ describe('la lectura de la política', () => {
   test('un comercio sin política cargada devuelve el defecto permisivo', async () => {
     const politica = await getTenantAiPolicy(NORMAL)
 
-    expect(politica).toEqual({ share: null, suspended: false, suspendedReason: null })
+    // usdCap se suma al defecto con el techo en plata por comercio: `null`
+    // quiere decir "usa su fracción", que es el comportamiento permisivo de
+     // siempre.
+    expect(politica).toEqual({
+      share: null,
+      usdCap: null,
+      suspended: false,
+      suspendedReason: null,
+    })
   })
 
   test('dos cambios sobre el mismo comercio no crean dos documentos', async () => {
@@ -378,4 +386,19 @@ describe('la lectura de la política', () => {
     expect(fila.changedByEmail).toBe('duenio@henko.com')
     expect(fila.reason).toBe('factura de agosto vencida hace 40 días')
   })
+})
+
+// Estas variables se fijan a nivel de modulo para el armado de ESTE archivo, y
+// process.env se comparte entre archivos cuando Jest corre con --runInBand. Sin
+// limpiarlas quedan puestas para los que siguen.
+//
+// Importa desde que existe el techo en PLATA por comercio: antes un techo en
+// dolares filtrado solo afectaba al contador de plataforma, que cada archivo
+// resetea. Ahora hace finito el tope de cada comercio, asi que una variable
+// olvidada puede denegar operaciones en otro archivo y el fallo aparece lejos
+// de su causa.
+afterAll(() => {
+  delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET
+  delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+  delete process.env.AI_PLATFORM_PER_TENANT_SHARE
 })

@@ -283,7 +283,7 @@ export const getPlatformAiSettingHistory = async (limit = 20) => {
  */
 export const getTenantAiPolicy = async tenantId => {
   const id = String(tenantId || '').trim()
-  const defecto = { share: null, suspended: false, suspendedReason: null }
+  const defecto = { share: null, usdCap: null, suspended: false, suspendedReason: null }
 
   if (!id) return defecto
 
@@ -304,6 +304,7 @@ export const getTenantAiPolicy = async tenantId => {
 
     return {
       share: Number.isFinite(row.share) ? row.share : null,
+      usdCap: Number.isFinite(row.usdCap) ? row.usdCap : null,
       suspended: row.suspended === true,
       suspendedReason: row.suspendedReason || null,
     }
@@ -330,6 +331,7 @@ export const getTenantAiPolicy = async tenantId => {
 export const setTenantAiPolicy = async ({
   tenantId,
   share,
+  usdCap,
   suspended,
   suspendedReason = null,
   changedByEmail,
@@ -354,6 +356,30 @@ export const setTenantAiPolicy = async ({
       $set.share = parsed
     } else {
       $set.share = null
+    }
+  }
+
+  // El techo en PLATA de este comercio, en dólares del mes. `null` lo quita y
+  // vuelve a mandar la fracción.
+  //
+  // Se valida acá y no sólo en el controlador por el mismo motivo que el share:
+  // a este servicio también lo puede llamar un script de mantenimiento, y el
+  // mismo valor disparatado tiene que rebotar por los dos caminos.
+  if (usdCap !== undefined) {
+    if (usdCap !== null) {
+      const parsed = Number(usdCap)
+
+      // El cero se rechaza en lugar de guardarse: un techo en cero dejaría al
+      // comercio sin IA, y para eso está el interruptor `suspended`, que lo
+      // dice con esas palabras y se ve en la pantalla. Un cero acá se leería
+      // como "sin configurar" en cualquier lectura futura.
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error('El techo en dólares por comercio tiene que ser mayor a cero')
+      }
+
+      $set.usdCap = parsed
+    } else {
+      $set.usdCap = null
     }
   }
 
@@ -405,6 +431,7 @@ export const getAllTenantAiPolicies = async () => {
   return rows.reduce((acc, row) => {
     acc[String(row.tenantId)] = {
       share: Number.isFinite(row.share) ? row.share : null,
+      usdCap: Number.isFinite(row.usdCap) ? row.usdCap : null,
       suspended: row.suspended === true,
       suspendedReason: row.suspendedReason || null,
       changedByEmail: row.changedByEmail || null,

@@ -59,12 +59,17 @@ export const updatePlatformAiBudget = async ({ tokens, usd, perTenantShare, reas
 export const updateTenantAiPolicy = async ({
   tenantId,
   share,
+  usdCap,
   suspended,
   suspendedReason,
   reason,
 }) => {
   const response = await api.put(`/platform/ai-spend/tenant/${tenantId}`, {
     ...(share !== undefined ? { share } : {}),
+    // El techo en PLATA. Distinto del share: ese reparte proporcionalmente y
+    // tiene piso de 1%, asi que no puede expresar "este comercio no me puede
+    // costar mas de veinte dolares este mes".
+    ...(usdCap !== undefined ? { usdCap } : {}),
     ...(suspended !== undefined ? { suspended } : {}),
     ...(suspendedReason !== undefined ? { suspendedReason } : {}),
     reason,

@@ -803,6 +803,52 @@ const getVisionTokensPerCall = () => Math.max(1, readEnvNumber('AI_VISION_TOKENS
  * un presupuesto medido en tokens no significaría nada. Su freno son las
  * cuotas por plan.
  */
+/**
+ * El techo en PLATA de un comercio sobre la key compartida, en dólares del mes.
+ *
+ * POR QUÉ EL TOPE EN TOKENS NO ALCANZABA
+ *
+ * Lo dice el comentario de MONTHLY_USD_BUDGET: entre gemini-3.6-flash y
+ * 3.1-flash-lite hay 5x de diferencia de tarifa, así que el mismo tope de
+ * tokens puede costar veinte dólares o cien según qué modelo esté respondiendo
+ * — y eso lo decide la cadena de respaldo, no nosotros.
+ *
+ * O sea que un comercio podía estar perfectamente dentro de su cupo de tokens y
+ * costar cinco veces lo previsto. El techo en plata existía SOLO a nivel
+ * plataforma, así que cuando uno se desbocaba el disyuntor cortaba para TODOS:
+ * el control existía, pero en la unidad equivocada y repartiendo el daño entre
+ * comercios que no habían hecho nada.
+ *
+ * CÓMO SE DERIVA
+ *
+ * La misma fracción que el tope de tokens, aplicada al techo en dólares. Así
+ * las dos palancas se mueven juntas y no hay que mantener dos reparticiones que
+ * se contradigan: bajarle el share a un comercio le baja los tokens Y la plata.
+ *
+ * `usdCapOverride` permite ponerle un número en dólares directo, para el caso
+ * en que lo que se quiere acotar es exactamente el gasto y no la proporción.
+ * Gana sobre la fracción.
+ */
+export const getSharedKeyTenantUsdCap = ({
+  share: shareOverride = null,
+  usdCap: usdCapOverride = null,
+} = {}) => {
+  // El tope explícito en dólares manda: es el más específico de los dos.
+  if (Number.isFinite(usdCapOverride) && usdCapOverride > 0) return usdCapOverride
+
+  const usdBudget = getPlatformMonthlyUsdBudget()
+  if (usdBudget === UNLIMITED) return UNLIMITED
+
+  const share =
+    Number.isFinite(shareOverride) && shareOverride !== null
+      ? Math.min(Math.max(shareOverride, 0.01), 1)
+      : getPerTenantShare()
+
+  // Sin piso artificial: si la fracción da centavos, el comercio tiene centavos.
+  // Inventarle un mínimo seria regalarle techo a quien el dueño decidió acotar.
+  return usdBudget * share
+}
+
 export const getSharedKeyTenantCap = (metric, { share: shareOverride = null } = {}) => {
   const normalizedMetric = normalizeMetric(metric)
 

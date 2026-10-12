@@ -206,7 +206,7 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
  */
 export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
   const { tenantId } = req.params
-  const { share, suspended, suspendedReason, reason } = req.body || {}
+  const { share, usdCap, suspended, suspendedReason, reason } = req.body || {}
 
   if (!mongoose.Types.ObjectId.isValid(String(tenantId || '').trim())) {
     return res.status(400).json({
@@ -227,7 +227,7 @@ export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  if (share === undefined && suspended === undefined) {
+  if (share === undefined && usdCap === undefined && suspended === undefined) {
     return res.status(400).json({
       success: false,
       message: 'No se indicó ningún cambio.',
@@ -248,8 +248,33 @@ export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
     }
   }
 
+  // El techo en PLATA de este comercio, en dolares del mes.
+  //
+  // Se valida aparte del share porque son cosas distintas: el share reparte
+  // proporcionalmente y tiene piso de 1%, asi que no puede expresar "este
+  // comercio no me puede costar mas de veinte dolares". El cero se rechaza en
+  // lugar de guardarse: dejaria al comercio sin IA, y para eso esta el
+  // interruptor, que lo dice con esas palabras y se ve en la pantalla.
+  if (usdCap !== undefined && usdCap !== null) {
+    const numero = Number(usdCap)
+
+    if (!Number.isFinite(numero) || numero <= 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'El techo en dolares del comercio debe ser mayor a cero, o null para usar su fraccion.',
+      })
+    }
+  }
+
   await setTenantAiPolicy({
     tenantId: String(tenantId).trim(),
+    usdCap:
+      usdCap === undefined
+        ? undefined
+        : usdCap === null
+          ? null
+          : Math.round(Number(usdCap) * 10000) / 10000,
     share:
       share === undefined
         ? undefined
