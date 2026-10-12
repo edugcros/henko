@@ -88,6 +88,10 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     // la misma llamada; este campo dice contra quién se reservó, igual que
     // requestedModel frente a actualModel.
     provider: AI_PROVIDERS.REPLICATE,
+    // La key propia, si existe, solo optimiza el prompt en Gemini. El fondo
+    // sigue generándose con credenciales de plataforma (Replicate/Hugging Face),
+    // por lo que el costo de imagen debe reservar presupuesto de HENKART.
+    forcePlatformBilling: true,
   })
 
   if (!reservation.allowed) {

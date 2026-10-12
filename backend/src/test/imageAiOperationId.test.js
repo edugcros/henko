@@ -162,6 +162,10 @@ test('declara de que funcion viene y contra quien presupuesta', async () => {
   await correr()
 
   expect(mockReserve).toHaveBeenCalledWith(
-    expect.objectContaining({ feature: 'imageAi', provider: 'replicate' }),
+    expect.objectContaining({
+      feature: 'imageAi',
+      provider: 'replicate',
+      forcePlatformBilling: true,
+    }),
   )
 })

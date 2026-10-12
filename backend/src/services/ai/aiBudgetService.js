@@ -1732,6 +1732,10 @@ export const reserveAiBudget = async ({
   feature = null,
   provider = null,
   requestedModel = null,
+  // Algunas funciones usan una key propia para una etapa, pero siguen usando
+  // credenciales de plataforma para la operación costosa principal. En ese
+  // caso no se puede omitir el presupuesto global por ser BYOK.
+  forcePlatformBilling = false,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -1830,7 +1834,7 @@ export const reserveAiBudget = async ({
 
   // BYOK no consume presupuesto de infraestructura de HENKO. Conservamos el
   // registro de uso porque el panel necesita visibilidad del consumo del tenant.
-  if (aiProfile.keySource === KEY_SOURCE.TENANT) {
+  if (aiProfile.keySource === KEY_SOURCE.TENANT && !forcePlatformBilling) {
     await recordAiConsumption({
       tenantId: id,
       metric: normalizedMetric,

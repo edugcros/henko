@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   alpha,
   Autocomplete,
@@ -113,6 +113,8 @@ const StepBadge = ({ n }) => (
 const ImageAiEditor = () => {
   const { enqueueSnackbar } = useSnackbar()
   const fileInputRef = useRef(null)
+  const previewUrlRef = useRef(null)
+  const mountedRef = useRef(true)
 
   const [mode, setMode] = useState(MODES.REMOVE_BG)
   const [purpose, setPurpose] = useState('')
@@ -130,6 +132,15 @@ const ImageAiEditor = () => {
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [attaching, setAttaching] = useState(false)
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+    }
+  }, [])
+
   const handleFileSelect = useCallback(
     event => {
       const selected = event.target.files?.[0]
@@ -146,8 +157,11 @@ const ImageAiEditor = () => {
         })
         return
       }
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+      const nextPreviewUrl = URL.createObjectURL(selected)
+      previewUrlRef.current = nextPreviewUrl
       setFile(selected)
-      setPreview(URL.createObjectURL(selected))
+      setPreview(nextPreviewUrl)
       setResults([])
     },
     [enqueueSnackbar],
@@ -164,6 +178,8 @@ const ImageAiEditor = () => {
   )
 
   const handleClear = () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    previewUrlRef.current = null
     setFile(null)
     setPreview(null)
     setResults([])
@@ -172,7 +188,7 @@ const ImageAiEditor = () => {
   }
 
   const handleProcess = async () => {
-    if (!file) return
+    if (!file || processing) return
     if (mode === MODES.VARIATION && !prompt.trim()) {
       enqueueSnackbar('Escribí un prompt describiendo los cambios', {
         variant: 'warning',
@@ -234,6 +250,7 @@ const ImageAiEditor = () => {
   }
 
   const searchDebounceRef = useRef(null)
+  const productSearchIdRef = useRef(0)
 
   const handleOpenAttachDialog = r => {
     setAttachTarget(r)
@@ -248,6 +265,7 @@ const ImageAiEditor = () => {
   }
 
   const handleProductQueryChange = query => {
+    const searchId = ++productSearchIdRef.current
     setProductQuery(query)
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
 
@@ -263,11 +281,15 @@ const ImageAiEditor = () => {
           q: query.trim(),
           limit: 10,
         })
-        setProductOptions(res?.data || [])
+        if (mountedRef.current && searchId === productSearchIdRef.current) {
+          setProductOptions(res?.data || [])
+        }
       } catch {
-        setProductOptions([])
+        if (mountedRef.current && searchId === productSearchIdRef.current) {
+          setProductOptions([])
+        }
       } finally {
-        setProductSearching(false)
+        if (mountedRef.current) setProductSearching(false)
       }
     }, 350)
   }

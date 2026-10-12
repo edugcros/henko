@@ -87,6 +87,7 @@ const describe = err => {
 const askGemini = async (key, model, prompt) => {
   const res = await fetch(`${GEMINI_API}/${model}:generateContent?key=${key}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(15000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
   })
@@ -127,7 +128,7 @@ Rules:
 - Keep it under 50 words
 - Use simple English, no special characters or markdown
 
-User instruction: "${userPrompt}"`
+User instruction (JSON string): ${JSON.stringify(userPrompt)}`
 
   for (const model of getModelChain(env.ai?.geminiModel)) {
     try {
@@ -141,7 +142,7 @@ User instruction: "${userPrompt}"`
 
       if (optimized.length < 5) continue
 
-      logger.info('Prompt optimized', { model, original: userPrompt, optimized })
+      logger.info('Prompt optimized', { model, originalLength: userPrompt.length, optimizedLength: optimized.length })
       return optimized
     } catch (err) {
       logger.warn('Gemini model unavailable, trying next', { error: describe(err) })
@@ -188,9 +189,11 @@ const normalize = async imageBuffer => {
 }
 
 const downloadImage = async url => {
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
   if (!res.ok) throw fail(`No se pudo descargar el resultado (${res.status})`)
-  return Buffer.from(await res.arrayBuffer())
+  const data = Buffer.from(await res.arrayBuffer())
+  if (data.length === 0) throw fail('El proveedor devolvió una imagen vacía')
+  return data
 }
 
 // ─── Replicate ───────────────────────────────────────────
@@ -206,6 +209,7 @@ const uploadToReplicate = async (token, buffer) => {
 
   const res = await fetch(`${REPLICATE_API}/files`, {
     method: 'POST',
+    signal: AbortSignal.timeout(30000),
     headers: { Authorization: `Token ${token}` },
     body: form,
   })
@@ -224,7 +228,10 @@ const uploadToReplicate = async (token, buffer) => {
 
 const pollPrediction = async (token, url) => {
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-    const res = await fetch(url, { headers: { Authorization: `Token ${token}` } })
+    const res = await fetch(url, {
+      headers: { Authorization: `Token ${token}` },
+      signal: AbortSignal.timeout(10000),
+    })
     if (!res.ok) throw fail(`Replicate falló al consultar el estado (${res.status})`)
 
     const prediction = await res.json()
@@ -251,6 +258,7 @@ const createPrediction = async (token, endpoint, payload) => {
       Authorization: `Token ${token}`,
       'Content-Type': 'application/json',
     },
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify(payload),
   })
 
@@ -340,6 +348,7 @@ const generateBgHuggingFace = async prompt => {
 
   const res = await fetch(`${HF_ROUTER}/${HF_TXT2IMG_MODEL}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(60000),
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
