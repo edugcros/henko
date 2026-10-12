@@ -252,6 +252,7 @@ const openOperation = async ({
   provider = null,
   requestedModel = null,
   reservedCostUsd = 0,
+  reservedTenantCostUsd = 0,
   status = AI_OPERATION_STATUS.RUNNING,
 }) => {
   try {
@@ -265,6 +266,7 @@ const openOperation = async ({
       provider,
       requestedModel,
       reservedCostUsd,
+      reservedTenantCostUsd,
       status,
       startedAt: new Date(),
     })
@@ -501,8 +503,15 @@ const liquidarReserva = async ({ tenantId, operationId, period }) => {
   if (!operationId || !tenantId) return
 
   const operacion = await AiOperation.findOneAndUpdate(
-    { tenantId, operationId, reservedCostUsd: { $gt: 0 } },
-    { $set: { reservedCostUsd: 0 } },
+    {
+      tenantId,
+      operationId,
+      // Cualquiera de los dos con plata basta para que haya algo que liberar:
+      // sin techo global el de plataforma es cero y el del comercio no, y con
+      // la condicion vieja esa operacion no matcheaba y no se liberaba nada.
+      $or: [{ reservedCostUsd: { $gt: 0 } }, { reservedTenantCostUsd: { $gt: 0 } }],
+    },
+    { $set: { reservedCostUsd: 0, reservedTenantCostUsd: 0 } },
     { new: false },
   )
     .setOptions({ tenantId })
@@ -511,10 +520,12 @@ const liquidarReserva = async ({ tenantId, operationId, period }) => {
 
   if (!operacion) return
 
-  const comprometido = Number(operacion.reservedCostUsd || 0)
   const periodoReal = operacion.period || period
 
-  await releasePlatformCost({ period: periodoReal, amount: comprometido })
+  await releasePlatformCost({
+    period: periodoReal,
+    amount: Number(operacion.reservedCostUsd || 0),
+  })
 
   // La del comercio va acá y no en cada llamador a propósito: este es el ÚNICO
   // embudo por donde se libera la reserva de plataforma —el findOneAndUpdate de
@@ -524,7 +535,14 @@ const liquidarReserva = async ({ tenantId, operationId, period }) => {
   // por construcción. Si se liberaran en lugares distintos, alcanzaría con que
   // un camino nuevo se olvidara de una para que el comercio quedara con plata
   // retenida hasta fin de mes.
-  await releaseTenantCost({ tenantId, period: periodoReal, amount: comprometido })
+  //
+  // Cada una por SU monto: los dos techos son independientes y liberar la del
+  // comercio por el monto de la otra la dejaba comprometida para siempre.
+  await releaseTenantCost({
+    tenantId,
+    period: periodoReal,
+    amount: Number(operacion.reservedTenantCostUsd || 0),
+  })
 }
 
 /**
@@ -1986,6 +2004,10 @@ export const reserveAiBudget = async ({
     provider,
     requestedModel,
     reservedCostUsd: reservedUsd,
+    // Los dos montos por separado: con techo global sin configurar el de
+    // plataforma es cero y el del comercio no, y liberar uno por el monto del
+    // otro deja plata comprometida para siempre.
+    reservedTenantCostUsd: reservedTenantUsd,
   })
 
   // Reintento: este cobro ya ocurrió. Se devuelve permitido —porque la reserva

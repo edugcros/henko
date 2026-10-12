@@ -202,6 +202,27 @@ const aiOperationSchema = new mongoose.Schema(
      */
     reservedCostUsd: { type: Number, default: 0, min: 0 },
 
+    /**
+     * Lo comprometido contra el techo del COMERCIO, que no siempre es lo mismo
+     * que lo comprometido contra el de la plataforma.
+     *
+     * POR QUÉ NO ALCANZABA CON UN SOLO CAMPO
+     *
+     * Los dos techos son independientes. Sin techo global configurado
+     * —getPlatformMonthlyUsdBudget devuelve UNLIMITED, que es el estado por
+     * defecto— la reserva de plataforma es cero, pero un comercio con usdCap
+     * puesto a mano sí compromete plata: la guarda del override corre antes de
+     * mirar el techo global.
+     *
+     * Liberar la del comercio por el monto de la otra dejaba su plata
+     * comprometida PARA SIEMPRE. El reservedCostUsd del comercio crecía en cada
+     * operación hasta tocar su techo, y a partir de ahí todo se le denegaba por
+     * el resto del mes habiendo gastado casi nada — justo a los comercios que
+     * alguien decidió acotar, en silencio, y al principio pareciendo que el
+     * techo funcionaba.
+     */
+    reservedTenantCostUsd: { type: Number, default: 0, min: 0 },
+
     // Por qué falló, en el lenguaje del sistema (DENY_REASONS o el código del
     // proveedor). No es para mostrarle al comercio: para eso está
     // buildBudgetDenialMessage.

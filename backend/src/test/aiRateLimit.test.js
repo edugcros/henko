@@ -63,6 +63,15 @@ beforeEach(async () => {
   await AiRateWindow.collection.deleteMany({})
   delete process.env.AI_RATE_LIMIT_PER_MINUTE
   delete process.env.AI_RATE_LIMIT_PER_HOUR
+
+  // Los techos de presupuesto tambien, aunque este archivo no los use: desde
+  // que existe el techo en PLATA por comercio, un techo en dolares que otro
+  // archivo dejo puesto hace finito el tope de cada comercio y puede denegar
+  // estas reservas. Una prueba que depende de que OTRO archivo limpie es
+  // fragil por construccion, y esa fragilidad ya se cobro una corrida.
+  delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET
+  delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+  delete process.env.AI_PLATFORM_PER_TENANT_SHARE
 })
 
 const reservar = (tenantId = TENANT) =>

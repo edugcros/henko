@@ -479,3 +479,63 @@ describe('tope en dolares puesto a mano', () => {
     expect(resultados.some(r => r.reason === DENY_REASONS.TENANT_USD_BUDGET)).toBe(true)
   }, 60000)
 })
+
+// Sin techo global, la plata del comercio igual se libera.
+//
+// EL DEFECTO
+//
+// Los dos techos son independientes. getPlatformMonthlyUsdBudget devuelve
+// UNLIMITED cuando no hay override ni variable de entorno —el estado POR
+// DEFECTO—, asi que la reserva de plataforma es cero. Pero un comercio con
+// usdCap puesto a mano SI compromete plata: la guarda del override corre antes
+// de mirar el techo global.
+//
+// liquidarReserva liberaba la del comercio por el monto de la de plataforma, o
+// sea cero. Cada operacion dejaba su estimado comprometido para siempre: el
+// contador del comercio crecia hasta tocar su techo y despues se le denegaba
+// todo por el resto del mes habiendo gastado casi nada. Justo a los comercios
+// que alguien decidio acotar, en silencio, y al principio pareciendo que el
+// techo funcionaba.
+describe('liberacion sin techo global', () => {
+  test('la plata comprometida del comercio vuelve al liquidar', async () => {
+    const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
+    const { recordAiConsumption } = await import('../services/ai/aiBudgetService.js')
+
+    // El estado por defecto: SIN techo global en dolares.
+    delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+
+    await setTenantAiPolicy({
+      tenantId: TENANT,
+      usdCap: 1,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+
+    const permiso = await reservar('liberacion-sin-global')
+    expect(permiso.allowed).toBe(true)
+
+    const durante = await AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    // Mientras corre, hay plata comprometida.
+    expect(durante.reservedCostUsd).toBeGreaterThan(0)
+
+    await recordAiConsumption({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      amount: 1,
+      profile: PERFIL,
+      operationId: 'liberacion-sin-global',
+      period: PERIODO_REAL,
+      costUsd: 0.001,
+    }).catch(() => null)
+
+    const despues = await AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    // Y al liquidar vuelve. Sin esto el comercio se bloqueaba solo.
+    expect(despues.reservedCostUsd).toBe(0)
+  }, 60000)
+})

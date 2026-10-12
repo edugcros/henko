@@ -387,3 +387,18 @@ describe('la lectura de la política', () => {
     expect(fila.reason).toBe('factura de agosto vencida hace 40 días')
   })
 })
+
+// Estas variables se fijan a nivel de modulo para el armado de ESTE archivo, y
+// process.env se comparte entre archivos cuando Jest corre con --runInBand. Sin
+// limpiarlas quedan puestas para los que siguen.
+//
+// Importa desde que existe el techo en PLATA por comercio: antes un techo en
+// dolares filtrado solo afectaba al contador de plataforma, que cada archivo
+// resetea. Ahora hace finito el tope de cada comercio, asi que una variable
+// olvidada puede denegar operaciones en otro archivo y el fallo aparece lejos
+// de su causa.
+afterAll(() => {
+  delete process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET
+  delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+  delete process.env.AI_PLATFORM_PER_TENANT_SHARE
+})
