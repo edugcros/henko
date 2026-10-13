@@ -755,6 +755,27 @@ describe('eventos de entrega de Resend · firma Svix', () => {
     expect(infos.some(e => /📬/.test(e.msg))).toBe(true)
   })
 
+  test('un correo suprimido es un fallo, no una entrega', async () => {
+    // ES EL CASO DEL 18/09/2026, CON OTRO PROVEEDOR.
+    //
+    // Resend ni intenta mandarlo porque la dirección está en su lista de
+    // supresión por rebotes anteriores. Si esto se registrara como evento
+    // informativo, el correo figuraría como bueno en nuestros logs y del otro
+    // lado nunca salió — el incidente exacto que este archivo vino a cerrar.
+    await mandar({
+      cuerpo: {
+        type: 'email.suppressed',
+        data: { email_id: 'res-sup', to: ['rebota@ejemplo.com'], reason: 'on suppression list' },
+      },
+    })
+
+    const fallo = errores.find(e => /📭/.test(e.msg))
+
+    expect(fallo).toBeDefined()
+    expect(fallo.datos.messageId).toBe('res-sup')
+    expect(fallo.datos.motivo).toMatch(/suppression/)
+  })
+
   test('un retraso NO es un fallo', async () => {
     // Es un reintento en curso. Tratarlo como error llenaría los logs de
     // alarmas que se resuelven solas — mismo criterio que `deferred` en

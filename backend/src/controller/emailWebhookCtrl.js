@@ -465,10 +465,24 @@ export const handleSesEvents = async (req, res) => {
 /**
  * Eventos que significan que el correo NO llegó.
  *
+ * `email.suppressed` ESTÁ EN LA LISTA, Y ES EL QUE MÁS IMPORTA.
+ *
+ * Es el correo que Resend ni siquiera intenta mandar porque la dirección está
+ * en su lista de supresión por rebotes anteriores. Es exactamente lo que pasó
+ * el 18/09/2026 con SendGrid: el correo figuraba como enviado en nuestros logs
+ * y del otro lado estaba en `Dropped` por supresión. Dejarlo como evento
+ * informativo repetiría ese incidente con otro proveedor — el caso que este
+ * archivo entero existe para que no vuelva a pasar.
+ *
  * `email.delivery_delayed` queda afuera por lo mismo que `deferred` en
  * SendGrid y `deliverydelay` en SES: es un reintento en curso, no un fallo.
  */
-const EVENTOS_DE_FALLO_RESEND = new Set(['email.bounced', 'email.complained', 'email.failed'])
+const EVENTOS_DE_FALLO_RESEND = new Set([
+  'email.bounced',
+  'email.complained',
+  'email.failed',
+  'email.suppressed',
+])
 
 /**
  * La ventana de reenvío tolerada, en Svix.
