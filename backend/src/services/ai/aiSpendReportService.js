@@ -18,6 +18,7 @@
 // métrica y por modelo, y lo que sale son totales. Ningún resultado de este
 // archivo debe servirse a un comercio — es información de la plataforma.
 
+import mongoose from 'mongoose'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import logger from '../../../config/logger.js'
@@ -35,7 +36,7 @@ import {
 } from './aiPlanPolicy.js'
 import { getPlatformAiSettingHistory, getAllTenantAiPolicies } from './platformAiSettingService.js'
 import Tenant from '../../models/tenantModel.js'
-import { getCurrentPeriod } from './aiPeriod.js'
+import { getCurrentPeriod, getPreviousPeriod } from './aiPeriod.js'
 // La contabilidad vive aparte: este archivo REPORTA, aquel RECONCILIA.
 import { rebuildPlatformProjection } from './aiAccountingService.js'
 
@@ -341,6 +342,136 @@ const getSpendByKeySource = async period => {
   }))
 }
 
+// ─── CONTRA EL MES ANTERIOR ──────────────────────────────────────────────────
+//
+// Todo el reporte mira UN mes. Eso contesta "cuánto llevo" y no contesta la
+// pregunta con la que uno abre esta pantalla: "¿esto es normal?".
+//
+// Un comercio con USD 4 en el mes no dice nada solo. USD 4 contra los USD 1,20
+// que llevaba a esta altura del mes pasado dice que triplicó, y esa es la
+// señal que hace falta para ir a mirarlo ANTES de que toque su techo. El
+// detector de anomalías cubre el salto de un día contra los días del mismo
+// mes; esto cubre el deslizamiento lento, que es el que nunca dispara nada y
+// termina en la factura.
+
+/** Cuántos días tiene el mes del período. Día 0 del mes siguiente, en UTC. */
+const diasDelPeriodo = period => {
+  const [anio, mes] = String(period).split('-').map(Number)
+  return new Date(Date.UTC(anio, mes, 0)).getUTCDate()
+}
+
+/**
+ * Cuántos días del período se pueden comparar honestamente contra el anterior.
+ *
+ * ESTE ES EL NÚMERO QUE DECIDE SI LA COMPARACIÓN SIRVE O MIENTE.
+ *
+ * El mes en curso va por la mitad y el anterior está entero. Comparar los dos
+ * totales el día 5 muestra a TODOS los comercios desplomados un 80%, que no es
+ * un dato: es una propiedad del calendario. La comparación tiene que ser contra
+ * los MISMOS días del mes anterior.
+ *
+ * Y se corta en el último día CERRADO, no en hoy: hoy va a medio andar, y
+ * medirlo contra un día completo del mes pasado vuelve a inclinar la cuenta
+ * para abajo — más suave, pero siempre para el mismo lado. Un mes ya cerrado se
+ * compara entero, que ahí sí es mes contra mes.
+ *
+ * Devuelve 0 el día 1: no hay ningún día cerrado y no hay nada que comparar.
+ */
+const diasComparables = (period, now) =>
+  period === getCurrentPeriod() ? now.getUTCDate() - 1 : diasDelPeriodo(period)
+
+/**
+ * Cuánto cambió cada comercio contra el mes anterior, a igualdad de días.
+ *
+ * UNA SOLA CONSULTA PARA LOS DOS MESES. Agrupa por (comercio, período) con el
+ * `$match` sobre ambos: dos consultas separadas traerían lo mismo con el doble
+ * de viajes, y esta agregación corre en cada apertura de la pantalla.
+ *
+ * @returns {Promise<Map<string, {previousUsd:number, comparableUsd:number,
+ *   previousComparableUsd:number, changePercent:number|null}>>}
+ */
+const getTenantTrends = async (period, { now = new Date() } = {}) => {
+  const anterior = getPreviousPeriod(period)
+  const comparables = diasComparables(period, now)
+
+  // El día 1 del mes no hay días cerrados. Se devuelve vacío en vez de una
+  // comparación contra cero días, que daría "-100%" para todo el mundo.
+  if (!anterior || comparables < 1) return new Map()
+
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const costoConSigno = {
+    $cond: [
+      esDevolucion,
+      { $multiply: [{ $ifNull: ['$costUsd', 0] }, -1] },
+      { $ifNull: ['$costUsd', 0] },
+    ],
+  }
+
+  const filas = await AiConsumptionLedger.aggregate([
+    {
+      $match: {
+        period: { $in: [period, anterior] },
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
+    {
+      $group: {
+        _id: { tenantId: '$tenantId', period: '$period' },
+        total: { $sum: costoConSigno },
+        // El mismo total pero acotado a los días comparables. Va en la misma
+        // pasada que el total: separarlo en dos agregaciones recorrería el
+        // mismo conjunto de filas dos veces.
+        comparable: {
+          $sum: {
+            $cond: [
+              { $lte: [{ $dayOfMonth: { date: '$createdAt', timezone: 'UTC' } }, comparables] },
+              costoConSigno,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+
+  const porComercio = new Map()
+
+  for (const f of filas) {
+    const tenantId = String(f._id.tenantId)
+    const entrada = porComercio.get(tenantId) || { actual: null, previo: null }
+
+    entrada[f._id.period === period ? 'actual' : 'previo'] = {
+      total: f.total || 0,
+      comparable: f.comparable || 0,
+    }
+
+    porComercio.set(tenantId, entrada)
+  }
+
+  const tendencias = new Map()
+
+  for (const [tenantId, { actual, previo }] of porComercio) {
+    const comparableUsd = actual?.comparable || 0
+    const previousComparableUsd = previo?.comparable || 0
+
+    tendencias.set(tenantId, {
+      previousUsd: round(previo?.total || 0, 6),
+      comparableUsd: round(comparableUsd, 6),
+      previousComparableUsd: round(previousComparableUsd, 6),
+      // `null` cuando el mes pasado no gastó nada: no hay porcentaje que
+      // calcular sobre cero. Es el mismo criterio que usa el detector de
+      // anomalías con `factor`, y es distinto de un 0% — que significa que
+      // gastó lo mismo.
+      changePercent:
+        previousComparableUsd > 0
+          ? round(((comparableUsd - previousComparableUsd) / previousComparableUsd) * 100, 1)
+          : null,
+    })
+  }
+
+  return tendencias
+}
+
 /**
  * Quién se está gastando el presupuesto.
  *
@@ -359,8 +490,17 @@ const getSpendByKeySource = async period => {
  * puede driftear —ya pasó, 17.223 tokens— mientras que el libro es la fuente
  * de verdad. Y permite separar lo que paga HENKO de lo que consume el
  * comercio, que en AiUsage vive en un solo número.
+ *
+ * LA COMPARACIÓN CONTRA EL MES ANTERIOR SE PIDE, NO VIENE SOLA.
+ *
+ * Es una agregación cruzada sobre DOS meses del libro, y quien más llama a
+ * esta función es el reporte de margen, que no la usa. Con el flag en true por
+ * omisión, abrir la pantalla de gasto la calcularía dos veces —una por el
+ * reporte de gasto y otra por el de margen, que se piden juntos— y la segunda
+ * se tiraría. Un costo que se paga sin pedirlo es el que nadie encuentra
+ * después.
  */
-export const getPeriodSpendByTenant = async period => {
+export const getPeriodSpendByTenant = async (period, { now = new Date(), trend = false } = {}) => {
   const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
   const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
 
@@ -416,9 +556,25 @@ export const getPeriodSpendByTenant = async period => {
   const usdBudget = getPlatformMonthlyUsdBudget()
   const shareGlobal = getPerTenantShare()
 
-  // Lo que el dueño de la plataforma decidió sobre cada comercio. Una consulta
-  // para todos, no una por fila.
-  const politicas = await getAllTenantAiPolicies().catch(() => ({}))
+  // Lo que el dueño de la plataforma decidió sobre cada comercio, y cuánto
+  // cambió cada uno contra el mes anterior. Una consulta para todos y no una
+  // por fila: con cientos de comercios, una por fila sería la pantalla entera.
+  //
+  // La tendencia no tumba la tabla si falla. Es la información que explica un
+  // número, no el número: perderla deja la tabla igual de usable que antes de
+  // que existiera, y quedarse sin pantalla de gasto no es una opción.
+  const [politicas, tendencias] = await Promise.all([
+    getAllTenantAiPolicies().catch(() => ({})),
+    trend
+      ? getTenantTrends(period, { now }).catch(error => {
+          logger.warn('[AI TENDENCIA] No se pudo comparar contra el mes anterior', {
+            period,
+            error: error.message,
+          })
+          return new Map()
+        })
+      : new Map(),
+  ])
 
   const filasConPolitica = filas.map(fila => {
     const tenant = fila.tenant?.[0] || null
@@ -426,6 +582,7 @@ export const getPeriodSpendByTenant = async period => {
     const tokens = fila.tokens || 0
     const platformCostUsd = round(fila.platformCostUsd, 6)
     const politica = politicas[tenantId] || null
+    const tendencia = tendencias.get(tenantId) || null
 
     // El tope por comercio es una FRACCIÓN del techo global (ver
     // resolveEffectiveLimit en aiPlanPolicy.js). Mostrar cuánto de ESE tope
@@ -517,6 +674,28 @@ export const getPeriodSpendByTenant = async period => {
       share: Number.isFinite(politica?.share) ? politica.share : null,
       suspended: politica?.suspended === true,
       suspendedReason: politica?.suspendedReason || null,
+
+      /**
+       * CÓMO VIENE ESTE COMERCIO CONTRA EL MES PASADO.
+       *
+       * Las demás columnas comparan contra un TECHO, y eso deja ciego al
+       * comercio que se desliza: duplica su consumo todos los meses y sigue
+       * lejos de su tope, así que ninguna alarma se enciende hasta que ya se
+       * comió el presupuesto. Acá se compara contra SÍ MISMO.
+       *
+       * `comparableUsd` y `previousComparableUsd` son los MISMOS días de cada
+       * mes (ver diasComparables), no los totales: el mes en curso va por la
+       * mitad y compararlo entero contra el anterior mostraría a todos los
+       * comercios cayendo. `previousUsd` sí es el mes anterior completo, que
+       * es otro dato y sirve para otra cosa: cuánto costó de verdad.
+       *
+       * Todo en null cuando no hay con qué comparar —el día 1, o un comercio
+       * que arrancó este mes—, que es distinto de un 0%.
+       */
+      previousUsd: tendencia?.previousUsd ?? null,
+      comparableUsd: tendencia?.comparableUsd ?? null,
+      previousComparableUsd: tendencia?.previousComparableUsd ?? null,
+      changePercent: tendencia?.changePercent ?? null,
     }
   })
 
@@ -542,6 +721,10 @@ export const getPeriodSpendByTenant = async period => {
 
   const enCero = faltantes.map(([tenantId, politica]) => {
     const tenant = porId.get(tenantId) || null
+    // Un comercio pausado tiene tendencia igual, y es justo la que explica por
+    // qué está en cero: gastaba y dejó de gastar. Sin esto la fila mostraría
+    // guiones donde la respuesta ya estaba calculada.
+    const tendencia = tendencias.get(tenantId) || null
 
     return {
       tenantId,
@@ -575,6 +758,14 @@ export const getPeriodSpendByTenant = async period => {
       share: Number.isFinite(politica.share) ? politica.share : null,
       suspended: true,
       suspendedReason: politica.suspendedReason || null,
+
+      // Los mismos campos que el bloque de arriba, por el mismo motivo: una
+      // columna que solo existe en la mitad de las filas deja la tabla a
+      // medias.
+      previousUsd: tendencia?.previousUsd ?? null,
+      comparableUsd: tendencia?.comparableUsd ?? null,
+      previousComparableUsd: tendencia?.previousComparableUsd ?? null,
+      changePercent: tendencia?.changePercent ?? null,
     }
   })
 
@@ -590,12 +781,6 @@ export const getPeriodSpendByTenant = async period => {
 // disyuntor corta cuando ya se gastó; el aviso del 80% avisa cuando faltan dos
 // días a ritmo normal y unas horas a ritmo desbocado. Un pronóstico que dice
 // "al ritmo de esta semana llegás al techo el día 18" avisa el día 6.
-
-/** Cuántos días tiene el mes del período. Día 0 del mes siguiente, en UTC. */
-const diasDelPeriodo = period => {
-  const [anio, mes] = String(period).split('-').map(Number)
-  return new Date(Date.UTC(anio, mes, 0)).getUTCDate()
-}
 
 /**
  * El gasto día por día del período.
@@ -902,9 +1087,223 @@ export const getSpendAnomalies = async (period, { now = new Date() } = {}) => {
   }))
 }
 
+// ─── UN COMERCIO, DÍA POR DÍA ────────────────────────────────────────────────
+//
+// La tabla dice QUIÉN y cuánto cambió. Esto contesta las dos que vienen
+// después, y que hasta acá no tenían dónde mirarse:
+//
+//   ¿CUÁNDO cambió?  Un comercio que triplicó puede haberlo hecho de a poco
+//                    —creció el negocio, y eso se cobra— o en un día, que es
+//                    un bug o un abuso. La decisión no es la misma y el total
+//                    del mes no las distingue.
+//   ¿EN QUÉ?         El mismo total repartido en análisis de mercado o en
+//                    mensajes del agente lleva a palancas distintas.
+//
+// Va en su propio endpoint y NO en el reporte general: una serie diaria por
+// comercio son treinta y un valores por cada uno, y la pantalla se abre para
+// mirar el total. Con cientos de comercios eso es un reporte que nadie puede
+// cargar para contestar una pregunta que se hace sobre uno solo.
+
+/**
+ * Rellena los días que no tienen movimientos.
+ *
+ * El gráfico necesita la serie COMPLETA: con los días salteados, un comercio
+ * que gastó el 3 y el 20 dibuja dos barras pegadas y parece que gastó dos días
+ * seguidos. Se rellena acá y no en la pantalla para que el dato llegue ya con
+ * la forma que tiene el mes.
+ */
+/**
+ * Un id de Mongo de verdad: 24 caracteres hexadecimales.
+ *
+ * NO SE USA mongoose.Types.ObjectId.isValid, Y ESTO LO DESCUBRIÓ UN TEST.
+ *
+ * Esa función acepta además CUALQUIER string de 12 caracteres, porque un
+ * ObjectId son 12 bytes y lo interpreta como los bytes crudos: 'no-soy-un-id'
+ * pasa la validación y se convierte en el id 6e6f2d736f792d756e2d6964. El
+ * efecto no es un error —es una pantalla vacía que dice "(comercio
+ * eliminado)"— que es la peor forma de fallar: parece una respuesta.
+ */
+const ES_OBJECT_ID = /^[0-9a-f]{24}$/i
+
+const serieDensa = (filas, dias) => {
+  const porDia = new Map(filas.map(f => [f._id, f]))
+
+  return Array.from({ length: dias }, (_, i) => {
+    const fila = porDia.get(i + 1)
+
+    return {
+      day: i + 1,
+      costUsd: round(fila?.costUsd || 0, 6),
+      tokens: fila?.tokens || 0,
+      operations: fila?.operations || 0,
+    }
+  })
+}
+
+/**
+ * Todo lo que hace falta para entender a UN comercio: su mes día por día, el
+ * mes anterior para comparar, y en qué se le fue.
+ *
+ * @param {string} tenantId
+ * @param {string} period
+ * @returns {Promise<object|null>} null si el id no es válido
+ */
+export const getTenantSpendDetail = async (tenantId, period, { now = new Date() } = {}) => {
+  if (!ES_OBJECT_ID.test(String(tenantId || ''))) return null
+
+  const id = new mongoose.Types.ObjectId(String(tenantId))
+  const anterior = getPreviousPeriod(period)
+
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+  const soloTokens = {
+    $cond: [{ $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }, '$amount', 0],
+  }
+
+  // El filtro base de las tres consultas. `tenantId` primero y `period`
+  // después es el orden del índice { tenantId, period, metric }, así que las
+  // tres se resuelven sin recorrer la colección.
+  const movimientos = {
+    event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+  }
+
+  const scope = { ignoreTenant: true, platformScope: 'platform:detalle-de-comercio' }
+
+  const [porDia, porMetrica, porModelo, tenant] = await Promise.all([
+    // Los dos meses en una sola pasada, por el mismo motivo que en la
+    // tendencia: es el mismo conjunto de filas.
+    AiConsumptionLedger.aggregate([
+      {
+        $match: {
+          tenantId: id,
+          period: { $in: [period, anterior].filter(Boolean) },
+          ...movimientos,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            period: '$period',
+            day: { $dayOfMonth: { date: '$createdAt', timezone: 'UTC' } },
+          },
+          costUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+          tokens: { $sum: conSigno(soloTokens) },
+          operations: { $sum: conSigno(1) },
+        },
+      },
+    ]).option(scope),
+
+    AiConsumptionLedger.aggregate([
+      { $match: { tenantId: id, period, ...movimientos } },
+      {
+        $group: {
+          _id: '$metric',
+          costUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+          tokens: { $sum: conSigno(soloTokens) },
+          operations: { $sum: conSigno(1) },
+        },
+      },
+      { $sort: { costUsd: -1 } },
+    ]).option(scope),
+
+    // Por modelo van solo los consumos: una devolución no lleva modelo
+    // confiable y restarla de un modelo que no es el suyo movería el gasto de
+    // un renglón a otro.
+    AiConsumptionLedger.aggregate([
+      { $match: { tenantId: id, period, event: LEDGER_EVENT.CONSUMED, model: { $ne: null } } },
+      {
+        $group: {
+          _id: '$model',
+          costUsd: { $sum: { $ifNull: ['$costUsd', 0] } },
+          tokens: { $sum: soloTokens },
+          operations: { $sum: 1 },
+        },
+      },
+      { $sort: { costUsd: -1 } },
+    ]).option(scope),
+
+    Tenant.findById(id)
+      .select('name hostname plan status')
+      .setOptions(scope)
+      .lean()
+      .catch(() => null),
+  ])
+
+  const delMes = porDia.filter(f => f._id.period === period).map(f => ({ ...f, _id: f._id.day }))
+  const delAnterior = porDia
+    .filter(f => f._id.period === anterior)
+    .map(f => ({ ...f, _id: f._id.day }))
+
+  const daily = serieDensa(delMes, diasDelPeriodo(period))
+  const previousDaily = anterior ? serieDensa(delAnterior, diasDelPeriodo(anterior)) : []
+
+  const sumar = (serie, campo) => serie.reduce((total, d) => total + (d[campo] || 0), 0)
+
+  // Los mismos días de cada mes, con el mismo criterio que la columna de la
+  // tabla: el total del mes en curso contra el del anterior completo mostraría
+  // una caída que es del calendario y no del comercio.
+  const dias = diasComparables(period, now)
+  const comparableUsd = dias >= 1 ? sumar(daily.slice(0, dias), 'costUsd') : null
+  const previousComparableUsd = dias >= 1 ? sumar(previousDaily.slice(0, dias), 'costUsd') : null
+
+  return {
+    tenantId: String(id),
+    name: tenant?.name || tenant?.hostname || '(comercio eliminado)',
+    plan: tenant?.plan || null,
+    tenantGone: !tenant,
+    tenantStatus: tenant?.status || null,
+
+    period,
+    previousPeriod: anterior,
+
+    daily,
+    previousDaily,
+
+    totals: {
+      costUsd: round(sumar(daily, 'costUsd'), 6),
+      tokens: sumar(daily, 'tokens'),
+      operations: sumar(daily, 'operations'),
+    },
+    previousTotals: {
+      costUsd: round(sumar(previousDaily, 'costUsd'), 6),
+      tokens: sumar(previousDaily, 'tokens'),
+      operations: sumar(previousDaily, 'operations'),
+    },
+
+    comparison: {
+      days: dias >= 1 ? dias : 0,
+      costUsd: comparableUsd === null ? null : round(comparableUsd, 6),
+      previousCostUsd: previousComparableUsd === null ? null : round(previousComparableUsd, 6),
+      changePercent:
+        previousComparableUsd > 0
+          ? round(((comparableUsd - previousComparableUsd) / previousComparableUsd) * 100, 1)
+          : null,
+    },
+
+    byMetric: porMetrica.map(f => ({
+      metric: f._id,
+      costUsd: round(f.costUsd, 6),
+      tokens: f.tokens || 0,
+      operations: f.operations || 0,
+    })),
+    byModel: porModelo.map(f => ({
+      model: f._id,
+      costUsd: round(f.costUsd, 6),
+      tokens: f.tokens || 0,
+      operations: f.operations || 0,
+    })),
+  }
+}
+
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
+
+  // UN SOLO reloj para todo el reporte. La tabla por comercio y el bloque que
+  // explica contra qué se comparó usan el mismo corte de días, y dos llamadas
+  // a `new Date()` pueden caer a los dos lados de la medianoche UTC: el
+  // reporte diría "doce días" sobre filas calculadas con trece.
+  const ahora = new Date()
 
   const [
     usage,
@@ -923,11 +1322,11 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     getPeriodSpendByModel(period),
     getPeriodQuality(period),
     getSpendByKeySource(period),
-    getPeriodSpendByTenant(period),
+    getPeriodSpendByTenant(period, { now: ahora, trend: true }),
     getPeriodDailySpend(period),
     // No tumba el reporte si falla: es una señal adicional, y perderla no
     // puede dejar sin pantalla a quien necesita ver el gasto.
-    getSpendAnomalies(period).catch(error => {
+    getSpendAnomalies(period, { now: ahora }).catch(error => {
       logger.warn('[AI ANOMALÍAS] No se pudieron calcular', {
         period,
         error: error.message,
@@ -976,6 +1375,7 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     daily,
     spentUsd: gastadoUsd,
     usdBudget,
+    now: ahora,
   })
 
   return {
@@ -1091,6 +1491,24 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     // un techo compartido sin saber quién lo consume solo permite castigar a
     // todos por igual.
     byTenant,
+    /**
+     * CONTRA QUÉ se comparó cada comercio.
+     *
+     * El porcentaje de cambio de cada fila no se puede leer sin esto. «+180%»
+     * significa una cosa si son doce días contra doce y otra si es un mes
+     * entero contra otro, y la pantalla tiene que poder decirlo en vez de
+     * dejar que cada uno suponga.
+     *
+     * `days: 0` quiere decir que no hubo comparación: es el día 1 del mes y no
+     * hay ningún día cerrado todavía.
+     */
+    comparison: {
+      previousPeriod: getPreviousPeriod(period),
+      days: Math.max(0, diasComparables(period, ahora)),
+      // Un mes cerrado se compara entero contra el anterior entero; el mes en
+      // curso, solo hasta el último día cerrado.
+      partial: period === getCurrentPeriod(),
+    },
     // Quién movió el techo, cuándo y por qué. Va en el mismo reporte porque un
     // salto en el consumo y un cambio de límite se leen juntos o no se leen.
     settingHistory,
@@ -1102,5 +1520,6 @@ export default {
   getPeriodSpendByModel,
   getPeriodQuality,
   getPeriodSpendByTenant,
+  getTenantSpendDetail,
   getPlatformSpendSnapshot,
 }

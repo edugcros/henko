@@ -360,3 +360,244 @@ describe('por comercio · quien se lo gasto', () => {
     expect(comercio.tokens).toBe(500)
   })
 })
+
+// ─── CONTRA EL MES ANTERIOR ──────────────────────────────────────────────────
+//
+// Todo el resto del reporte compara contra un TECHO, y eso deja ciego al
+// comercio que se desliza: duplica su consumo todos los meses y sigue lejos de
+// su tope, así que ninguna alarma se enciende hasta que ya se comió el
+// presupuesto.
+//
+// Esto se prueba contra una base real y no con mocks por el mismo motivo que
+// el resto del archivo: lo que puede estar mal no es que el pipeline se pase
+// como se escribió, es qué devuelve Mongo cuando se le pide agrupar dos meses
+// y cortar por día.
+
+const ANTERIOR = '2026-08'
+
+/** Una fila en el día `day` del período que se indique, en UTC. */
+const enDia = (period, day, extra = {}) =>
+  fila({
+    period,
+    metric: 'agentTokens',
+    unit: 'tokens',
+    createdAt: new Date(`${period}-${String(day).padStart(2, '0')}T12:00:00.000Z`),
+    ...extra,
+  })
+
+describe('getPreviousPeriod', () => {
+  test('en enero vuelve a diciembre del año anterior', async () => {
+    // El error obvio es restarle uno al mes: en enero eso da '2026-00', que no
+    // existe, y la comparación se cae justo en el cierre de año.
+    const { getPreviousPeriod } = await import('../services/ai/aiPeriod.js')
+
+    expect(getPreviousPeriod('2026-01')).toBe('2025-12')
+    expect(getPreviousPeriod('2026-10')).toBe('2026-09')
+    expect(getPreviousPeriod('no es un período')).toBeNull()
+  })
+})
+
+describe('tendencia contra el mes anterior', () => {
+  test('un comercio que duplicó lo dice', async () => {
+    await Ledger.collection.insertMany([
+      enDia(ANTERIOR, 5, { costUsd: 0.5, amount: 1000 }),
+      enDia(PERIODO, 5, { costUsd: 0.5, amount: 1000 }),
+      enDia(PERIODO, 6, { costUsd: 0.5, amount: 1000 }),
+    ])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(PERIODO, { trend: true })
+
+    expect(comercio.previousUsd).toBeCloseTo(0.5, 6)
+    expect(comercio.comparableUsd).toBeCloseTo(1, 6)
+    expect(comercio.changePercent).toBe(100)
+  })
+
+  test('sin gasto el mes anterior no se inventa un porcentaje', async () => {
+    // Dividir por cero daría Infinity y la pantalla mostraría "∞%". El null es
+    // distinto de un 0%, que significa que gastó lo mismo.
+    await Ledger.collection.insertMany([enDia(PERIODO, 5, { costUsd: 0.5, amount: 1000 })])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(PERIODO, { trend: true })
+
+    expect(comercio.changePercent).toBeNull()
+    expect(comercio.previousUsd).toBe(0)
+  })
+
+  test('las devoluciones restan también en la comparación', async () => {
+    await Ledger.collection.insertMany([
+      enDia(ANTERIOR, 5, { costUsd: 1, amount: 1000, operationId: 'op-1' }),
+      enDia(ANTERIOR, 5, {
+        event: 'refunded',
+        costUsd: 0.5,
+        amount: 500,
+        operationId: 'op-1',
+      }),
+      enDia(PERIODO, 5, { costUsd: 0.5, amount: 1000 }),
+    ])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(PERIODO, { trend: true })
+
+    // El mes pasado quedó neto en 0,50, así que gastar 0,50 ahora es no haber
+    // cambiado. Sin restar la devolución, la tabla diría que cayó un 50%.
+    expect(comercio.previousUsd).toBeCloseTo(0.5, 6)
+    expect(comercio.changePercent).toBe(0)
+  })
+
+  test('sin pedirla, la comparación no se calcula', async () => {
+    // Es una agregación cruzada sobre DOS meses del libro, y quien más llama a
+    // esta función es el reporte de margen, que no la usa. Con la comparación
+    // por omisión, abrir la pantalla de gasto la calcularía dos veces y una se
+    // tiraría.
+    await Ledger.collection.insertMany([
+      enDia(ANTERIOR, 5, { costUsd: 0.5, amount: 1000 }),
+      enDia(PERIODO, 5, { costUsd: 1, amount: 1000 }),
+    ])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(PERIODO)
+
+    expect(comercio.changePercent).toBeNull()
+    expect(comercio.previousUsd).toBeNull()
+    // Lo demás de la fila no cambia: lo que no se calcula es la comparación.
+    expect(comercio.platformCostUsd).toBeCloseTo(1, 6)
+  })
+
+  test('el mes en curso se compara con los MISMOS días del anterior', async () => {
+    // ES LA PIEZA QUE DECIDE SI LA COLUMNA SIRVE O MIENTE.
+    //
+    // El mes en curso va por la mitad y el anterior está entero: comparar los
+    // dos totales el día 13 muestra a TODOS los comercios desplomados, que no
+    // es un dato sino una propiedad del calendario.
+    const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
+    const actual = getCurrentPeriod()
+    const [anio, mes] = actual.split('-').map(Number)
+    const previo = `${mes === 1 ? anio - 1 : anio}-${String(mes === 1 ? 12 : mes - 1).padStart(2, '0')}`
+
+    // Día 13: doce días cerrados. Hoy no cuenta —va a medio andar— y medirlo
+    // contra un día completo del mes pasado inclinaría la cuenta para abajo.
+    const now = new Date(`${actual}-13T10:00:00.000Z`)
+
+    await Ledger.collection.insertMany([
+      // Mes en curso: 1 dólar en los días comparables, más uno de hoy.
+      enDia(actual, 3, { costUsd: 1, amount: 1000 }),
+      enDia(actual, 13, { costUsd: 99, amount: 1000 }),
+      // Mes anterior: 1 dólar dentro de la ventana y 50 fuera.
+      enDia(previo, 3, { costUsd: 1, amount: 1000 }),
+      enDia(previo, 25, { costUsd: 50, amount: 1000 }),
+    ])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(actual, { now, trend: true })
+
+    expect(comercio.comparableUsd).toBeCloseTo(1, 6)
+    expect(comercio.previousComparableUsd).toBeCloseTo(1, 6)
+    expect(comercio.changePercent).toBe(0)
+
+    // El total del mes anterior se informa igual, completo: es otro dato y
+    // sirve para otra cosa —cuánto costó de verdad— y por eso va aparte.
+    expect(comercio.previousUsd).toBeCloseTo(51, 6)
+    // Y lo del mes en curso que quedó fuera de la ventana sigue estando en el
+    // costo de la fila: lo que se acota es la comparación, no el gasto.
+    expect(comercio.platformCostUsd).toBeCloseTo(100, 6)
+  })
+
+  test('el día 1 del mes no hay nada que comparar', async () => {
+    // Sin días cerrados, cualquier comparación daría "-100%" para todo el
+    // mundo. Un null dice que no se puede saber, que es la verdad.
+    const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
+    const actual = getCurrentPeriod()
+
+    await Ledger.collection.insertMany([enDia(actual, 1, { costUsd: 1, amount: 1000 })])
+
+    const { getPeriodSpendByTenant } = await import('../services/ai/aiSpendReportService.js')
+    const [comercio] = await getPeriodSpendByTenant(actual, {
+      now: new Date(`${actual}-01T10:00:00.000Z`),
+      trend: true,
+    })
+
+    expect(comercio.changePercent).toBeNull()
+    expect(comercio.comparableUsd).toBeNull()
+    expect(comercio.platformCostUsd).toBeCloseTo(1, 6)
+  })
+})
+
+describe('getTenantSpendDetail · un comercio día por día', () => {
+  const OTRO = new mongoose.Types.ObjectId()
+
+  test('la serie viene completa, con los días sin gasto en cero', async () => {
+    // Con los días salteados, un comercio que gastó el 3 y el 20 dibuja dos
+    // barras pegadas y el gráfico dice que gastó dos días seguidos.
+    await Ledger.collection.insertMany([
+      enDia(PERIODO, 3, { costUsd: 0.3, amount: 300 }),
+      enDia(PERIODO, 20, { costUsd: 0.2, amount: 200 }),
+    ])
+
+    const { getTenantSpendDetail } = await import('../services/ai/aiSpendReportService.js')
+    const detalle = await getTenantSpendDetail(String(TENANT), PERIODO)
+
+    // Septiembre tiene 30 días.
+    expect(detalle.daily).toHaveLength(30)
+    expect(detalle.daily[2]).toMatchObject({ day: 3, costUsd: 0.3, tokens: 300 })
+    expect(detalle.daily[3]).toMatchObject({ day: 4, costUsd: 0, tokens: 0 })
+    expect(detalle.daily[19]).toMatchObject({ day: 20, costUsd: 0.2 })
+    expect(detalle.totals.costUsd).toBeCloseTo(0.5, 6)
+  })
+
+  test('no mezcla el consumo de otro comercio', async () => {
+    // Es una lectura cross-tenant con ignoreTenant: lo único que la mantiene
+    // acotada a un comercio es el $match, y una lectura de plataforma que
+    // devuelve datos del vecino es la peor falla posible de esta pantalla.
+    await Ledger.collection.insertMany([
+      enDia(PERIODO, 3, { costUsd: 0.3, amount: 300 }),
+      enDia(PERIODO, 3, { costUsd: 99, amount: 99999, tenantId: OTRO }),
+    ])
+
+    const { getTenantSpendDetail } = await import('../services/ai/aiSpendReportService.js')
+    const detalle = await getTenantSpendDetail(String(TENANT), PERIODO)
+
+    expect(detalle.totals.costUsd).toBeCloseTo(0.3, 6)
+    expect(detalle.daily[2].tokens).toBe(300)
+  })
+
+  test('trae el mes anterior y en qué se le fue', async () => {
+    await Ledger.collection.insertMany([
+      enDia(ANTERIOR, 10, { costUsd: 0.1, amount: 100 }),
+      enDia(PERIODO, 10, { costUsd: 0.3, amount: 300 }),
+      enDia(PERIODO, 11, { metric: 'marketTokens', costUsd: 0.6, amount: 600 }),
+    ])
+
+    const { getTenantSpendDetail } = await import('../services/ai/aiSpendReportService.js')
+    const detalle = await getTenantSpendDetail(String(TENANT), PERIODO)
+
+    expect(detalle.previousPeriod).toBe(ANTERIOR)
+    expect(detalle.previousTotals.costUsd).toBeCloseTo(0.1, 6)
+    // Agosto tiene 31 días y septiembre 30: la serie del mes anterior tiene el
+    // largo de SU mes, no el del período pedido.
+    expect(detalle.previousDaily).toHaveLength(31)
+
+    // Un mes cerrado se compara entero contra el anterior entero.
+    expect(detalle.comparison.days).toBe(30)
+    expect(detalle.comparison.changePercent).toBe(800)
+
+    // Lo mismo repartido en análisis de mercado o en el agente lleva a
+    // palancas distintas, y el total del mes no las separa.
+    expect(detalle.byMetric[0]).toMatchObject({ metric: 'marketTokens', costUsd: 0.6 })
+    expect(detalle.byMetric[1]).toMatchObject({ metric: 'agentTokens', costUsd: 0.3 })
+  })
+
+  test('un id que no es un ObjectId devuelve null en vez de romper', async () => {
+    const { getTenantSpendDetail } = await import('../services/ai/aiSpendReportService.js')
+
+    // 'no-soy-un-id' tiene DOCE caracteres, y ese es justo el caso que
+    // mongoose.Types.ObjectId.isValid deja pasar: un ObjectId son 12 bytes y
+    // la función los acepta crudos. Con esa validación, esta llamada devolvía
+    // un detalle entero en cero con el nombre "(comercio eliminado)" — una
+    // pantalla que parece una respuesta y no lo es.
+    expect(await getTenantSpendDetail('no-soy-un-id', PERIODO)).toBeNull()
+    expect(await getTenantSpendDetail('', PERIODO)).toBeNull()
+    expect(await getTenantSpendDetail(undefined, PERIODO)).toBeNull()
+  })
+})
