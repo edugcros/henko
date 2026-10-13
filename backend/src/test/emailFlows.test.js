@@ -79,8 +79,14 @@ jest.unstable_mockModule('@aws-sdk/client-sesv2', () => ({
 const { resolveSenderAddress, sendEmail } = await import('../services/emailService.js')
 const { extractDomain } = await import('../services/email/tenantEmailDomainService.js')
 
-const { CODIGOS, esReintentable, proveedorActivo, enviarConProveedor, dominiosDelProveedor } =
-  await import('../services/email/emailProviders.js')
+const {
+  CODIGOS,
+  esReintentable,
+  proveedorActivo,
+  cadenaDeEnvio,
+  enviarConProveedor,
+  dominiosDelProveedor,
+} = await import('../services/email/emailProviders.js')
 
 const { resolveRecoveryChannel } =
   await import('../services/aiAgent/aiCartRecoveryWorkerService.js')
@@ -497,6 +503,37 @@ const guardarEntorno = claves => {
     })
 }
 
+/**
+ * Todas las credenciales de correo que existen.
+ *
+ * SE LISTAN ENTERAS PARA PODER BORRARLAS, Y ESO NO ES CELO DE MÁS.
+ *
+ * Desde que hay cadena de respaldo, un proveedor con credenciales cargadas
+ * ENTRA al envío: una prueba que afirma "SendGrid devuelve 429" sobre un
+ * entorno donde además hay RESEND_API_KEY está midiendo la cadena y no al
+ * proveedor. Hoy .env.development no tiene las de Resend ni las de AWS, así
+ * que las pruebas pasan por ausencia y no por diseño — y el día que alguien
+ * agregue una, cambian de significado sin que nada falle.
+ */
+const CREDENCIALES_DE_CORREO = [
+  'EMAIL_PROVIDER',
+  'SENDGRID_API_KEY',
+  'EMAIL_PASS',
+  'RESEND_API_KEY',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+]
+
+/** Deja un único proveedor en pie, para poder afirmar algo sobre él solo. */
+const soloEsteProveedor = (id, claves) => {
+  CREDENCIALES_DE_CORREO.forEach(clave => delete process.env[clave])
+
+  process.env.EMAIL_PROVIDER = id
+  Object.entries(claves).forEach(([clave, valor]) => {
+    process.env[clave] = valor
+  })
+}
+
 describe('proveedor de envío · cuál queda activo', () => {
   let restaurar
 
@@ -573,16 +610,12 @@ describe('proveedor de envío · forma del pedido y traducción de fallas', () =
   let fetchOriginal
 
   beforeEach(() => {
-    restaurar = guardarEntorno([
-      'EMAIL_PROVIDER',
-      'SENDGRID_API_KEY',
-      'EMAIL_PASS',
-      'RESEND_API_KEY',
-    ])
+    restaurar = guardarEntorno(CREDENCIALES_DE_CORREO)
     fetchOriginal = global.fetch
 
-    process.env.EMAIL_PROVIDER = 'sendgrid'
-    process.env.SENDGRID_API_KEY = 'clave-de-prueba'
+    // Un solo proveedor en pie: lo que estas pruebas afirman es cómo traduce
+    // SUS fallas, y con un respaldo configurado estarían midiendo la cadena.
+    soloEsteProveedor('sendgrid', { SENDGRID_API_KEY: 'clave-de-prueba' })
   })
 
   afterEach(() => {
@@ -685,12 +718,14 @@ describe('proveedor de envío · forma del pedido y traducción de fallas', () =
 
     expect(cuerpo.from).toEqual({ email: 'no-reply@tiendax.com', name: 'Tienda X' })
     expect(cuerpo.personalizations).toEqual([{ to: [{ email: 'compradora@ejemplo.com' }] }])
-    expect(resultado).toEqual({ messageId: 'sg-123', proveedor: 'SendGrid' })
+    // `respaldo: false` dice que lo aceptó el proveedor configurado y no un
+    // suplente. Viaja siempre, porque quien registre el envío tiene que poder
+    // distinguir los dos casos sin adivinar.
+    expect(resultado).toEqual({ messageId: 'sg-123', proveedor: 'SendGrid', respaldo: false })
   })
 
   test('Resend recibe el remitente entero, que es como lo pide', async () => {
-    process.env.EMAIL_PROVIDER = 'resend'
-    process.env.RESEND_API_KEY = 'clave-de-prueba'
+    soloEsteProveedor('resend', { RESEND_API_KEY: 'clave-de-prueba' })
 
     let cuerpo = null
 
@@ -709,7 +744,228 @@ describe('proveedor de envío · forma del pedido y traducción de fallas', () =
 
     expect(cuerpo.from).toBe('Tienda X <no-reply@tiendax.com>')
     expect(cuerpo.to).toEqual(['compradora@ejemplo.com'])
-    expect(resultado).toEqual({ messageId: 'res-456', proveedor: 'Resend' })
+    expect(resultado).toEqual({ messageId: 'res-456', proveedor: 'Resend', respaldo: false })
+  })
+})
+
+// =====================================================
+// Cadena de respaldo entre proveedores
+// =====================================================
+//
+// EL INCIDENTE QUE CIERRA ESTE BLOQUE, CON FECHA Y HORA
+//
+// El 13/10/2026 a las 02:07 UTC SendGrid empezó a contestar
+// `401 {"message":"Maximum credits exceeded"}` a todo envío: se venció el
+// trial. El sistema tenía los tres drivers escritos y probados, y usaba UNO.
+// Una factura impaga dejó sin correo a TODAS las tiendas a la vez, y como el
+// 401 se clasifica como falla definitiva, esos correos no quedaron ni en cola.
+
+describe('proveedor de envío · cadena de respaldo', () => {
+  const CORREO = {
+    to: 'compradora@ejemplo.com',
+    from: 'Tienda X <no-reply@tiendax.com>',
+    subject: 'Asunto',
+    text: 'Cuerpo',
+  }
+
+  let restaurar
+  let fetchOriginal
+
+  beforeEach(() => {
+    restaurar = guardarEntorno(CREDENCIALES_DE_CORREO)
+    fetchOriginal = global.fetch
+  })
+
+  afterEach(() => {
+    global.fetch = fetchOriginal
+    restaurar()
+  })
+
+  /** SendGrid principal y Resend cargado detrás: la configuración del arreglo. */
+  const conRespaldoDeResend = () => {
+    soloEsteProveedor('sendgrid', {
+      SENDGRID_API_KEY: 'clave-de-prueba',
+      RESEND_API_KEY: 'clave-de-respaldo',
+    })
+  }
+
+  /**
+   * Un `fetch` que contesta distinto según a quién le hablen.
+   *
+   * Se discrimina por URL y no por orden de llamada: afirmar "la segunda
+   * llamada" daría por buena una cadena que llame dos veces al mismo.
+   */
+  const responder = ({ sendgrid, resend }) => {
+    const llamadas = []
+
+    global.fetch = async url => {
+      const destino = String(url).includes('sendgrid') ? 'sendgrid' : 'resend'
+      llamadas.push(destino)
+
+      return destino === 'sendgrid' ? sendgrid() : resend()
+    }
+
+    return llamadas
+  }
+
+  const rechazar = status => () => ({
+    ok: false,
+    status,
+    text: async () => 'detalle del proveedor',
+    json: async () => ({ message: 'detalle del proveedor' }),
+    headers: { get: () => null },
+  })
+
+  const aceptarComoResend = () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ id: 'res-ok' }),
+    headers: { get: () => null },
+  })
+
+  test('el 401 de SendGrid sin créditos sale por Resend', async () => {
+    // EL CASO EXACTO DEL 13/10. Antes de esto, acá se terminaba el correo.
+    conRespaldoDeResend()
+    const llamadas = responder({ sendgrid: rechazar(401), resend: aceptarComoResend })
+
+    const resultado = await enviarConProveedor(CORREO)
+
+    expect(resultado).toEqual({ messageId: 'res-ok', proveedor: 'Resend', respaldo: true })
+    expect(llamadas).toEqual(['sendgrid', 'resend'])
+  })
+
+  test('mientras el principal ande, el respaldo ni se toca', async () => {
+    // Un respaldo que se usa cuando no hace falta reparte el envío entre dos
+    // reputaciones y vuelve inútil el webhook de eventos del principal.
+    conRespaldoDeResend()
+    const llamadas = responder({
+      sendgrid: () => ({
+        ok: true,
+        status: 202,
+        text: async () => '',
+        headers: { get: cabecera => (cabecera === 'x-message-id' ? 'sg-ok' : null) },
+      }),
+      resend: aceptarComoResend,
+    })
+
+    const resultado = await enviarConProveedor(CORREO)
+
+    expect(resultado.proveedor).toBe('SendGrid')
+    expect(resultado.respaldo).toBe(false)
+    expect(llamadas).toEqual(['sendgrid'])
+  })
+
+  test('un pedido inválido no se pasea por la cadena', async () => {
+    // Una dirección mal formada la rechaza cualquiera igual: recorrer los
+    // tres son tres fallas idénticas y tres veces la demora adentro de una
+    // petición que alguien está esperando. Es la diferencia entre "¿reintento
+    // con el mismo?" y "¿pruebo con otro?", que no se contestan igual.
+    conRespaldoDeResend()
+    const llamadas = responder({ sendgrid: rechazar(400), resend: aceptarComoResend })
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.PEDIDO_INVALIDO,
+    })
+    expect(llamadas).toEqual(['sendgrid'])
+  })
+
+  test('sin credenciales, un proveedor no entra en la cadena', async () => {
+    // No alcanza con que el driver exista: llamar a un proveedor sin API key
+    // es una llamada perdida y un error de más en el log que no dice nada.
+    soloEsteProveedor('sendgrid', { SENDGRID_API_KEY: 'clave-de-prueba' })
+    const llamadas = responder({ sendgrid: rechazar(401), resend: aceptarComoResend })
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.AUTENTICACION,
+    })
+    expect(llamadas).toEqual(['sendgrid'])
+  })
+
+  test('el principal sin configurar no frena el correo, pero queda en el log', async () => {
+    // El activo va SIEMPRE primero aunque no tenga credenciales: falla al
+    // instante sin tocar la red, su problema queda primero en el registro
+    // —que es donde hay que verlo— y el correo sale igual por el otro.
+    soloEsteProveedor('sendgrid', { RESEND_API_KEY: 'clave-de-respaldo' })
+    const llamadas = responder({ sendgrid: rechazar(401), resend: aceptarComoResend })
+
+    const resultado = await enviarConProveedor(CORREO)
+
+    expect(resultado).toEqual({ messageId: 'res-ok', proveedor: 'Resend', respaldo: true })
+    // Sin API key no se llama a SendGrid: se descarta antes de la red.
+    expect(llamadas).toEqual(['resend'])
+  })
+
+  test('si fallan todos, el error nombra a cada uno', async () => {
+    conRespaldoDeResend()
+    responder({ sendgrid: rechazar(401), resend: rechazar(403) })
+
+    await expect(enviarConProveedor(CORREO)).rejects.toMatchObject({
+      code: CODIGOS.AUTENTICACION,
+      cadena: [
+        expect.objectContaining({ proveedor: 'SendGrid', code: CODIGOS.AUTENTICACION }),
+        expect.objectContaining({ proveedor: 'Resend', code: CODIGOS.AUTENTICACION }),
+      ],
+    })
+  })
+
+  test('si alguno falló por algo pasajero, la cadena se puede reintentar', async () => {
+    // EL CÓDIGO DEL ERROR DECIDE SI RÍO ARRIBA SE VUELVE A INTENTAR.
+    //
+    // Devolver el del principal —401, definitivo— haría que el bucle se
+    // rindiera aunque el respaldo haya fallado por un 503 que se destraba
+    // solo en un segundo. Volver a recorrer la cadena cuesta nada: el paso
+    // por el que ya falló definitivamente falla al instante.
+    conRespaldoDeResend()
+    responder({ sendgrid: rechazar(401), resend: rechazar(503) })
+
+    const error = await enviarConProveedor(CORREO).catch(fallo => fallo)
+
+    expect(error.code).toBe(CODIGOS.PROVEEDOR_CAIDO)
+    expect(esReintentable(error.code)).toBe(true)
+    // Y el mensaje trae a los dos: con uno solo, quien lea el log va a ir a
+    // arreglar un proveedor sin enterarse de que el otro también está mal.
+    expect(error.message).toMatch(/SendGrid/)
+    expect(error.message).toMatch(/Resend/)
+  })
+
+  test('un error sin clasificar no activa el respaldo', async () => {
+    // NO ES CELO: ES NO DUPLICARLE EL CORREO A NADIE.
+    //
+    // Todo error que nace en el módulo lleva un código de CODIGOS. Uno sin
+    // código es algo que nadie previó —un TypeError leyendo el id de una
+    // respuesta que YA FUE ACEPTADA, por ejemplo— y ahí no se sabe si el
+    // mensaje salió. Mandarlo por otro sería mandarlo dos veces.
+    // Se rompe DESPUÉS del `ok: true`, que es donde está el peligro: una
+    // falla de red la clasifica `pedir` como proveedor caído y esa sí cruza.
+    // Lo que no puede cruzar es un fallo posterior a que el mensaje ya fue
+    // aceptado.
+    conRespaldoDeResend()
+    const llamadas = responder({
+      sendgrid: () => ({
+        ok: true,
+        status: 202,
+        text: async () => '',
+        headers: {
+          get: () => {
+            throw new TypeError('algo que nadie previó')
+          },
+        },
+      }),
+      resend: aceptarComoResend,
+    })
+
+    await expect(enviarConProveedor(CORREO)).rejects.toThrow(/nadie previó/)
+    expect(llamadas).toEqual(['sendgrid'])
+  })
+
+  test('la cadena se arma en cada envío, no una vez al arranque', async () => {
+    // Las credenciales son variables de entorno: un redeploy que agrega una
+    // tiene que ampliar la cadena sin que nadie reinicie nada.
+    soloEsteProveedor('sendgrid', { SENDGRID_API_KEY: 'clave-de-prueba' })
+    expect(cadenaDeEnvio().map(proveedor => proveedor.nombre)).toEqual(['SendGrid'])
+
+    process.env.RESEND_API_KEY = 'clave-de-respaldo'
+    expect(cadenaDeEnvio().map(proveedor => proveedor.nombre)).toEqual(['SendGrid', 'Resend'])
   })
 })
 

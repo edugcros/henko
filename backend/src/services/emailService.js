@@ -10,7 +10,12 @@
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
 import { validateEmail, escapeHtml, sanitizeString } from './email/emailShared.js'
-import { enviarConProveedor, esReintentable, proveedorActivo } from './email/emailProviders.js'
+import {
+  cadenaDeEnvio,
+  enviarConProveedor,
+  esReintentable,
+  proveedorActivo,
+} from './email/emailProviders.js'
 
 // =====================================================
 // CONSTANTES
@@ -505,11 +510,35 @@ const buildPlainTextSummary = ({ orderNumber, items, totals, shippingAddress, st
 
 let transportAnnounced = false
 
-const announceTransportOnce = proveedor => {
+/**
+ * Qué proveedores hay en pie, la primera vez que sale un correo.
+ *
+ * POR QUÉ SE ANUNCIA TAMBIÉN EL RESPALDO, Y EN WARN CUANDO NO HAY
+ *
+ * «Tener un solo proveedor» no se ve en ningún lado hasta el día que ese
+ * proveedor se cae, y entonces ya se perdieron correos. El 13/10/2026 pasó
+ * exactamente eso: SendGrid se quedó sin créditos a las 02:07 UTC y la
+ * plataforma entera se quedó sin correo porque no había nadie detrás.
+ *
+ * Que el aviso sea de nivel warn es a propósito: no es un error —el sistema
+ * funciona— pero es la clase de cosa que uno quiere encontrar ANTES, no
+ * mientras la busca.
+ */
+const announceTransportOnce = cadena => {
   if (transportAnnounced) return
   transportAnnounced = true
 
-  logger.info(`[EMAIL] Proveedor: ${proveedor}`)
+  const [principal, ...respaldos] = cadena
+
+  if (respaldos.length === 0) {
+    logger.warn(`[EMAIL] Proveedor: ${principal} — SIN RESPALDO`, {
+      nota: 'Si este proveedor se cae, no sale ningún correo. Cargá las credenciales de otro.',
+    })
+
+    return
+  }
+
+  logger.info(`[EMAIL] Proveedor: ${principal}`, { respaldos })
 }
 
 // =====================================================
@@ -521,19 +550,27 @@ const sendWithRetry = async (mailOptions, maxRetries = 3) => {
 
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
-      const proveedor = proveedorActivo().nombre
+      const cadena = cadenaDeEnvio().map(proveedor => proveedor.nombre)
+      const [proveedorConfigurado] = cadena
 
-      announceTransportOnce(proveedor)
+      announceTransportOnce(cadena)
 
       logger.info('📤 Enviando email', {
         attempt,
         maxRetries,
-        proveedor,
+        // El que se va a intentar PRIMERO. Si está caído, el envío sale por
+        // un respaldo y el log de aceptación de abajo nombra a ése.
+        proveedor: proveedorConfigurado,
         to: mailOptions.to,
         subject: mailOptions.subject,
       })
 
-      const { messageId } = await enviarConProveedor(mailOptions)
+      // `proveedor` es quien EFECTIVAMENTE aceptó el correo, que no siempre es
+      // el configurado: desde que hay cadena de respaldo, registrar acá
+      // `proveedorActivo()` haría que el log afirmara que salió por SendGrid
+      // un correo que salió por Resend — y el log es lo único con lo que se
+      // diagnostica un correo que no llegó.
+      const { messageId, proveedor } = await enviarConProveedor(mailOptions)
 
       // "Aceptado", no "enviado". Todos estos proveedores contestan "lo
       // recibí, después veré qué hago": el rebote, el descarte por lista de
