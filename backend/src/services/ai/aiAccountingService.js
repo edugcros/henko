@@ -562,7 +562,7 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
   const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
   const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
 
-  const [libro, comercios, plataforma] = await Promise.all([
+  const [libro, porMetrica, comercios, plataforma] = await Promise.all([
     // Agrupado por si la fila la pagó el comercio con su key o la plataforma.
     // Sin esa separación no hay forma de comparar: ver el bloque de abajo.
     AiConsumptionLedger.aggregate([
@@ -573,6 +573,38 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
           costUsd: { $sum: conSigno('$costUsd') },
         },
       },
+    ]).option({ ignoreTenant: true, platformScope: 'platform:auditoria-contable-ia' }),
+
+    /**
+     * EN QUÉ SE COMPONE el lado del libro, función por función.
+     *
+     * POR QUÉ HACÍA FALTA, MEDIDO EN UN CASO REAL
+     *
+     * El 13/10/2026 esta auditoría venía informando, cada hora, que faltaban
+     * USD 0,194564 en el contador de plataforma. Un número y nada más. Con
+     * eso no se puede diagnosticar nada: hay cinco caminos distintos que
+     * escriben al libro y al contador, y el informe no decía por cuál se
+     * había escapado la plata. Hubo que ir a leer los cinco a mano.
+     *
+     * El contador de plataforma es UN total y no se puede desglosar, así que
+     * esto no da el desvío por métrica. Da algo que alcanza: la composición
+     * del libro. Si el contador dice 0,04 y el libro dice {visión 0,19,
+     * tokens 0,04}, la métrica que se escapó se lee de un vistazo.
+     *
+     * Mismo filtro que rebuildPlatformProjection —sin BYOK— para que los
+     * renglones sumen exactamente el total contra el que se compara, y no
+     * uno parecido.
+     */
+    AiConsumptionLedger.aggregate([
+      { $match: { period, keySource: { $ne: 'tenant' } } },
+      {
+        $group: {
+          _id: { metric: '$metric', unit: { $ifNull: ['$unit', 'units'] } },
+          costUsd: { $sum: conSigno('$costUsd') },
+          filas: { $sum: 1 },
+        },
+      },
+      { $sort: { costUsd: -1 } },
     ]).option({ ignoreTenant: true, platformScope: 'platform:auditoria-contable-ia' }),
 
     // La suma de lo que cree cada comercio. Va con ignoreTenant por el mismo
@@ -661,6 +693,22 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
   // resta el BYOK a los comercios para ponerla en la base del contador.
   anotar(platformCost, tenantsCost - byokCost, 'platformUsage', 'tenantUsageSinByok')
 
+  /**
+   * LA PLATA COMPROMETIDA, QUE NO ENTRA EN LA COMPARACIÓN PERO SÍ EN EL CORTE.
+   *
+   * `estimatedCostUsd` es lo gastado y es contra eso que se compara el libro,
+   * porque una reserva sin liquidar todavía no tiene fila de consumo. Pero el
+   * disyuntor NO mira ese campo solo: corta con gastado MÁS reservado (ver
+   * aiBudgetService, donde se arma `gastadoUsd`).
+   *
+   * O sea que un informe que sólo muestra `platformUsage` deja abierta la
+   * pregunta más importante que se hace quien lo lee: «¿el disyuntor está
+   * midiendo de menos, o la plata está comprometida y sin liquidar?». Son
+   * diagnósticos opuestos —uno es un agujero en el contador, el otro son
+   * reservas colgadas— y se resuelven distinto. Informarlo cuesta un campo.
+   */
+  const reservedCost = Number(plataforma?.reservedCostUsd || 0)
+
   return {
     period,
     // A la misma precisión que las diferencias. Mostrar los montos en centavos
@@ -672,7 +720,21 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
       byok: round(byokCost, 6),
       tenantUsage: round(tenantsCost, 6),
       platformUsage: round(platformCost, 6),
+      platformReserved: round(reservedCost, 6),
+      // Lo que el disyuntor realmente mira. Si ESTE número cuadra con el
+      // libro y `platformUsage` no, no hay agujero: hay reservas sin liquidar.
+      platformUsageConReservas: round(platformCost + reservedCost, 6),
     },
+    // En qué se compone el lado del libro. El contador de plataforma es un
+    // total que no se puede desglosar, así que la atribución se hace por
+    // eliminación: la métrica que no esté reflejada en el total es la que se
+    // escapó.
+    ledgerByMetric: (porMetrica || []).map(fila => ({
+      metric: fila._id?.metric || null,
+      unit: fila._id?.unit || null,
+      costUsd: round(fila.costUsd, 6),
+      rows: fila.filas,
+    })),
     findings,
     balanced: findings.length === 0,
   }
@@ -766,6 +828,14 @@ export const runAccountingAudit = async ({ period = getCurrentPeriod() } = {}) =
       period,
       ...auditoria.cost,
       findings: auditoria.findings,
+      // LA COMPOSICIÓN DEL LIBRO VA EN EL MISMO RENGLÓN QUE LA DIFERENCIA.
+      //
+      // Sin esto el aviso era un número suelto —«faltan USD 0,194564»— y
+      // diagnosticarlo exigía leer a mano los cinco caminos que escriben al
+      // libro y al contador. Con los renglones al lado, la función que se
+      // escapó se lee de un vistazo: es la que el total del contador no
+      // alcanza a cubrir.
+      ledgerByMetric: auditoria.ledgerByMetric,
     })
 
     await notifyAccountingDrift({ ...auditoria, ledgerMissing: faltanFilas })
