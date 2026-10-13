@@ -38,6 +38,7 @@ import {
 } from '@mui/material'
 import {
   getPlatformAiSpend,
+  getTenantAiSpendDetail,
   updatePlatformAiBudget,
   updateTenantAiPolicy,
   getUsdRate,
@@ -383,6 +384,89 @@ function MargenDelComercio({ margen }) {
         {margen.unprofitable && ' · pierde plata'}
       </Typography>
     </>
+  )
+}
+
+/**
+ * Cuánto subió o bajó este comercio contra el mes anterior.
+ *
+ * POR QUÉ ESTA COLUMNA Y NO MÁS PORCENTAJES DE TECHO
+ *
+ * Todas las demás comparan contra un TOPE, y eso deja ciego al caso que más
+ * plata cuesta: el comercio que se desliza. Duplica su consumo todos los meses
+ * y sigue lejos de su techo, así que no enciende ninguna alarma hasta que ya se
+ * comió el presupuesto. Acá se lo compara contra SÍ MISMO.
+ *
+ * Es distinto del detector de anomalías, que mira un día contra los días del
+ * mismo mes y sirve para el salto brusco. Esto ve la pendiente.
+ */
+const TRIPLICO = 100
+const SUBIO_FUERTE = 25
+
+function TendenciaDelComercio({ row, comparison }) {
+  const { dinero } = useDinero()
+
+  // Sin días cerrados —el día 1 del mes— o sin gasto el mes pasado no hay
+  // porcentaje que calcular. Son dos situaciones distintas y se dicen distinto:
+  // la primera es "todavía no se puede saber", la segunda es "antes no gastaba".
+  if (row.comparableUsd === null || row.comparableUsd === undefined) {
+    return (
+      <Tooltip title="Recién empieza el mes: todavía no hay ningún día cerrado contra el cual comparar">
+        <Typography variant="body2" color="text.disabled">
+          —
+        </Typography>
+      </Tooltip>
+    )
+  }
+
+  const dias = comparison?.days
+  const ventana = dias
+    ? `los primeros ${dias} ${dias === 1 ? 'día' : 'días'} de cada mes`
+    : 'el mismo tramo de cada mes'
+
+  if (row.changePercent === null || row.changePercent === undefined) {
+    // Gasta ahora y no gastaba antes. No hay múltiplo —dividir por cero daría
+    // infinito— pero el caso es real y es justo el que hay que mirar.
+    if (row.comparableUsd > 0) {
+      return (
+        <Tooltip title={`No tenía consumo en ${ventana} del mes anterior`}>
+          <Chip size="small" color="warning" variant="outlined" label="nuevo" />
+        </Tooltip>
+      )
+    }
+
+    return (
+      <Typography variant="body2" color="text.disabled">
+        —
+      </Typography>
+    )
+  }
+
+  const subio = row.changePercent > 0
+  const color =
+    row.changePercent >= TRIPLICO
+      ? 'error.main'
+      : row.changePercent >= SUBIO_FUERTE
+        ? 'warning.main'
+        : row.changePercent <= -SUBIO_FUERTE
+          ? 'success.main'
+          : 'text.secondary'
+
+  return (
+    <Tooltip
+      title={`${dinero(row.comparableUsd)} contra ${dinero(row.previousComparableUsd)} en ${ventana}. El mes anterior completo fueron ${dinero(row.previousUsd)}.`}
+    >
+      <Typography
+        variant="body2"
+        color={color}
+        sx={{ fontWeight: Math.abs(row.changePercent) >= SUBIO_FUERTE ? 600 : 400 }}
+      >
+        {/* El signo se escribe a mano: un "+" adelante es lo que hace que la
+            columna se barra con la vista sin leer el número. */}
+        {subio ? '+' : ''}
+        {row.changePercent}%
+      </Typography>
+    </Tooltip>
   )
 }
 
@@ -838,7 +922,206 @@ function TipoDeCambioCard({ fx, onSaved }) {
   )
 }
 
-function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
+/**
+ * El mes de UN comercio, día por día.
+ *
+ * QUÉ CONTESTA QUE LA TABLA NO
+ *
+ * La tabla dice que un comercio triplicó. Eso no alcanza para decidir: un
+ * negocio que creció de a poco se cobra, y un salto de un día es un bug o un
+ * abuso. Las dos cosas suman el mismo total y se resuelven distinto.
+ *
+ * POR QUÉ LA LÍNEA PUNTEADA
+ *
+ * Es el promedio diario del mes anterior. Sin una referencia, una serie de
+ * barras es un dibujo: todas las series de gasto tienen picos. Con la línea, un
+ * pico es "tres veces lo que gastaba por día el mes pasado", que ya es una
+ * afirmación. Es el mismo criterio que usa el detector de anomalías —comparar
+ * al comercio contra sí mismo— pero sobre el mes y no sobre el día.
+ *
+ * SE PIDE AL ABRIR ESTE DIÁLOGO Y NO CON EL REPORTE: son treinta y un valores
+ * por comercio, y la pantalla general se abre para mirar el total.
+ */
+function EvolucionDelComercio({ tenantId, period }) {
+  const { dinero } = useDinero()
+  const [estado, setEstado] = useState({ cargando: true, error: '', detalle: null })
+
+  useEffect(() => {
+    const signal = { cancelled: false }
+
+    setEstado({ cargando: true, error: '', detalle: null })
+
+    getTenantAiSpendDetail(tenantId, period)
+      .then(detalle => {
+        if (signal.cancelled) return
+
+        // Una respuesta vacía se trata como una falla y no como un detalle en
+        // blanco: destructurar `undefined` tumbaría el diálogo entero, y lo
+        // que se viene a hacer acá —acotar, pausar— no depende del gráfico.
+        setEstado({
+          cargando: false,
+          error: detalle ? '' : 'No se pudo cargar la evolución de este comercio.',
+          detalle: detalle || null,
+        })
+      })
+      .catch(err => {
+        if (signal.cancelled) return
+
+        setEstado({
+          cargando: false,
+          error: err?.response?.data?.message || 'No se pudo cargar la evolución de este comercio.',
+          detalle: null,
+        })
+      })
+
+    return () => {
+      signal.cancelled = true
+    }
+  }, [tenantId, period])
+
+  if (estado.cargando) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    )
+  }
+
+  // Que falle la evolución no puede dejar sin usar el diálogo: lo que se viene
+  // a hacer acá es acotar o pausar, y eso no depende de este gráfico.
+  if (estado.error) {
+    return (
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        {estado.error}
+      </Alert>
+    )
+  }
+
+  // Con los valores por defecto puestos acá y no en cada uso: un backend más
+  // viejo que esta pantalla puede no mandar alguna de las listas, y que falte
+  // una no puede dejar el diálogo sin abrir.
+  const {
+    daily = [],
+    previousDaily = [],
+    previousTotals = { costUsd: 0 },
+    comparison = {},
+    byMetric = [],
+  } = estado.detalle
+
+  const maximo = Math.max(...daily.map(d => d.costUsd), 0)
+
+  if (maximo <= 0) {
+    return (
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Sin consumo registrado en el período.
+        {previousTotals.costUsd > 0 &&
+          ` El mes anterior gastó ${dinero(previousTotals.costUsd)}: dejó de consumir.`}
+      </Alert>
+    )
+  }
+
+  const promedioAnterior = previousDaily.length ? previousTotals.costUsd / previousDaily.length : 0
+  const peorDia = daily.reduce((peor, d) => (d.costUsd > peor.costUsd ? d : peor), daily[0])
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+        Cómo gastó el mes
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        {comparison.days > 0 && comparison.previousCostUsd !== null
+          ? `${dinero(comparison.costUsd)} en los primeros ${comparison.days} días, contra ${dinero(comparison.previousCostUsd)} en los mismos días de ${estado.detalle.previousPeriod}.`
+          : 'Todavía no hay días cerrados para comparar contra el mes anterior.'}{' '}
+        Día más caro: el {peorDia.day}, {dinero(peorDia.costUsd)}.
+      </Typography>
+
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: '2px',
+          height: 96,
+          mb: 0.5,
+          position: 'relative',
+        }}
+      >
+        {/* El promedio diario del mes anterior, para que cada barra se lea
+            contra algo. Solo se dibuja si entra en el gráfico: con un pico que
+            la deja muy abajo, la línea pegada al piso no dice nada, y arriba
+            del máximo quedaría fuera del recuadro. */}
+        {promedioAnterior > 0 && promedioAnterior <= maximo && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: `${(promedioAnterior / maximo) * 100}%`,
+              borderTop: '1px dashed',
+              borderColor: 'warning.main',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {daily.map(dia => (
+          <Tooltip
+            key={dia.day}
+            title={`Día ${dia.day}: ${dinero(dia.costUsd)} · ${formatTokens(dia.operations)} operaciones`}
+          >
+            <Box
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                alignSelf: 'flex-end',
+                // Los días en cero dejan una marca de 2px en vez de nada: una
+                // barra ausente y una barra de valor chico se tienen que poder
+                // distinguir, o el eje no se puede leer.
+                height: dia.costUsd > 0 ? `${Math.max(4, (dia.costUsd / maximo) * 100)}%` : '2px',
+                bgcolor: dia.costUsd > 0 ? 'primary.main' : 'divider',
+                borderRadius: '2px 2px 0 0',
+              }}
+            />
+          </Tooltip>
+        ))}
+      </Box>
+
+      {/* La referencia va en texto y no solo como línea: una línea punteada sin
+          leyenda es decoración. */}
+      <Stack direction="row" justifyContent="space-between">
+        <Typography variant="caption" color="text.secondary">
+          Día 1
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {promedioAnterior > 0
+            ? `Promedio diario de ${estado.detalle.previousPeriod}: ${dinero(promedioAnterior)}`
+            : `Sin consumo en ${estado.detalle.previousPeriod}`}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Día {daily.length}
+        </Typography>
+      </Stack>
+
+      {/* EN QUÉ se le fue. El mismo total repartido en análisis de mercado o en
+          mensajes del agente lleva a palancas distintas: una se apaga, la otra
+          se cambia de modelo. */}
+      {byMetric.length > 0 && (
+        <Stack spacing={0.25} sx={{ mt: 1.5 }}>
+          {byMetric.slice(0, 4).map(fila => (
+            <Stack key={fila.metric} direction="row" justifyContent="space-between">
+              <Typography variant="caption" color="text.secondary">
+                {metricLabel(fila.metric)}
+              </Typography>
+              <Typography variant="caption" sx={{ fontWeight: 500 }}>
+                {dinero(fila.costUsd)}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      )}
+    </Paper>
+  )
+}
+
+function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
   const { dinero } = useDinero()
   const [share, setShare] = useState('')
   const [usdCap, setUsdCap] = useState('')
@@ -922,6 +1205,13 @@ function TenantPolicyDialog({ row, budget, onClose, onSaved }) {
           cargo de HENKO en el período. Los cambios rigen de inmediato y solo afectan a este
           comercio.
         </Typography>
+
+        {/* ARRIBA DE LAS PALANCAS, A PROPÓSITO.
+            Lo que se decide acá —acotarlo, pausarlo— depende de si el comercio
+            creció de a poco o se desbocó un día, y ese es justo el dato que la
+            tabla no tiene. Con el gráfico debajo de los campos, la decisión se
+            toma antes de verlo. */}
+        <EvolucionDelComercio tenantId={row.tenantId} period={period} />
 
         <TextField
           label="Su parte del techo"
@@ -1142,6 +1432,10 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
     forecast,
     degradation,
     anomalies,
+    // Contra qué se comparó cada comercio. Sin esto, el porcentaje de la
+    // columna «vs anterior» no se puede leer: «+180%» significa una cosa si
+    // son doce días contra doce y otra si es un mes entero contra otro.
+    comparison,
     settingHistory,
   } = report
   const percent = consumption.percentUsed
@@ -1332,6 +1626,9 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
               governing.tenantStatus || margenPorComercio.get(governing.tenantId)?.status || null,
           }}
           budget={budget}
+          // El período que se está mirando, para que la evolución del comercio
+          // sea la del mismo mes que la tabla y no la del mes actual.
+          period={report.period}
           onClose={() => setGoverning(null)}
           // Al suspender hay que recargar las dos cosas: el gasto por el
           // cambio de política, y el margen porque de ahí sale el estado.
@@ -1403,6 +1700,24 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                       derecha, no contesta lo mismo: entre modelos de la cadena
                       hay 5x de tarifa. */}
                   <TableCell align="right">De su techo</TableCell>
+                  {/* CONTRA SÍ MISMO, no contra un techo.
+
+                      Las demás columnas comparan contra un tope, y eso deja
+                      ciego al comercio que se desliza: duplica su consumo
+                      todos los meses y sigue lejos del suyo, así que no
+                      enciende ninguna alarma hasta que ya se comió el
+                      presupuesto. */}
+                  <TableCell align="right">
+                    <Tooltip
+                      title={
+                        comparison?.partial
+                          ? `Contra los mismos ${comparison?.days ?? 0} días de ${comparison?.previousPeriod}: el mes en curso va por la mitad y compararlo entero mostraría a todos cayendo.`
+                          : `Contra ${comparison?.previousPeriod || 'el mes anterior'}, mes completo.`
+                      }
+                    >
+                      <span>vs anterior</span>
+                    </Tooltip>
+                  </TableCell>
                   {/* EL MARGEN, AL LADO DEL COSTO.
 
                       Vivía en otra pantalla, y ésa es la razón por la que no
@@ -1539,6 +1854,9 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                           </Typography>
                         </Tooltip>
                       )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <TendenciaDelComercio row={row} comparison={comparison} />
                     </TableCell>
                     <TableCell align="right">
                       <MargenDelComercio margen={margenPorComercio.get(row.tenantId)} />

@@ -8,7 +8,7 @@
 // techo es cero", que son situaciones distintas.
 
 import { jest } from '@jest/globals'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 // config/env.js valida esto al cargarse y aborta sin ella. La cadena llega acá
@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event'
 process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 
 const mockGetAiSpend = jest.fn()
+const mockGetTenantDetail = jest.fn()
 const mockUpdateBudget = jest.fn()
 const mockUpdateTenantPolicy = jest.fn()
 const mockGetUsdRate = jest.fn()
@@ -38,6 +39,10 @@ const TIPO_DE_CAMBIO = {
 
 jest.unstable_mockModule('../services/platformService', () => ({
   getPlatformAiSpend: mockGetAiSpend,
+  // UN comercio día por día. Se pide al abrir su ficha y no con el reporte:
+  // son treinta y un valores por comercio y la pantalla general se abre para
+  // mirar el total.
+  getTenantAiSpendDetail: mockGetTenantDetail,
   updatePlatformAiBudget: mockUpdateBudget,
   // Acotar o pausar a UN comercio. El mock tiene que declarar todos los
   // exports que la pantalla importa: con uno de menos, el módulo entero no
@@ -149,6 +154,11 @@ beforeEach(() => {
   // pruebas que miran el caso sin cargar lo pisan.
   mockGetUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
   mockGetMargin.mockResolvedValue(MARGEN)
+  // La ficha del comercio se pide al abrir el diálogo. Un jest.fn() sin valor
+  // devuelve undefined y la pantalla le encadena un .then: sin este default,
+  // cada prueba que abre «Gobernar» fallaría por la lectura del gráfico y no
+  // por lo que esa prueba mira.
+  mockGetTenantDetail.mockResolvedValue(null)
 })
 
 test('muestra el gasto del mes y qué lo consume', async () => {
@@ -1135,5 +1145,178 @@ describe('techo en plata por comercio', () => {
         expect.objectContaining({ tenantId: 't1', usdCap: null }),
       ),
     )
+  })
+})
+
+// ─── CONTRA EL MES ANTERIOR ──────────────────────────────────────────────────
+//
+// Todas las demás columnas comparan contra un TECHO, y eso deja ciego al caso
+// que más plata cuesta: el comercio que se desliza. Duplica su consumo todos
+// los meses y sigue lejos de su tope, así que no enciende ninguna alarma hasta
+// que ya se comió el presupuesto.
+
+// Doce días cerrados del mes en curso contra los mismos doce del anterior.
+const COMPARACION = { previousPeriod: '2026-08', days: 12, partial: true }
+
+const TRIPLICO = [
+  {
+    ...UN_COMERCIO[0],
+    comparableUsd: 12,
+    previousComparableUsd: 4,
+    previousUsd: 9,
+    changePercent: 200,
+  },
+]
+
+describe('tendencia contra el mes anterior', () => {
+  test('un comercio que triplicó lo muestra en la tabla', async () => {
+    load({ byTenant: TRIPLICO, comparison: COMPARACION })
+
+    await waitFor(() => expect(screen.getByText('Moto Norte')).toBeInTheDocument())
+
+    // Con el signo adelante: es lo que permite barrer la columna con la vista
+    // sin leer cada número.
+    expect(screen.getByText('+200%')).toBeInTheDocument()
+  })
+
+  test('una caída se muestra con su signo, sin inventarle un más', async () => {
+    load({
+      byTenant: [
+        {
+          ...UN_COMERCIO[0],
+          comparableUsd: 2,
+          previousComparableUsd: 4,
+          previousUsd: 9,
+          changePercent: -50,
+        },
+      ],
+      comparison: COMPARACION,
+    })
+
+    await waitFor(() => expect(screen.getByText('-50%')).toBeInTheDocument())
+  })
+
+  test('un comercio que antes no gastaba se marca como nuevo', async () => {
+    // Dividir por cero daría infinito. El backend manda null, y null no es un
+    // 0% —que significaría que gastó lo mismo— sino "antes no gastaba".
+    load({
+      byTenant: [
+        {
+          ...UN_COMERCIO[0],
+          comparableUsd: 12,
+          previousComparableUsd: 0,
+          previousUsd: 0,
+          changePercent: null,
+        },
+      ],
+      comparison: COMPARACION,
+    })
+
+    await waitFor(() => expect(screen.getByText('nuevo')).toBeInTheDocument())
+  })
+
+  test('un reporte sin los campos de tendencia no rompe la tabla', async () => {
+    // El panel puede quedar desplegado antes que el backend, y es el caso
+    // normal durante un deploy: UN_COMERCIO no trae ninguno de los campos.
+    load({ byTenant: UN_COMERCIO })
+
+    await waitFor(() => expect(screen.getByText('Moto Norte')).toBeInTheDocument())
+
+    // La fila se dibuja igual y la celda de tendencia queda en guión: sin
+    // comparación no se inventa un 0%, que significaría "gastó lo mismo".
+    const fila = within(screen.getByText('Moto Norte').closest('tr'))
+
+    expect(fila.getByText('—')).toBeInTheDocument()
+    // Y el resto de la fila sigue entero: lo que falta es la comparación, no
+    // el consumo.
+    expect(fila.getByText('80%')).toBeInTheDocument()
+  })
+})
+
+// ─── LA FICHA DEL COMERCIO ───────────────────────────────────────────────────
+//
+// La tabla dice que un comercio triplicó. Eso no alcanza para decidir: un
+// negocio que creció de a poco se cobra, y un salto de un día es un bug o un
+// abuso. Las dos cosas suman el mismo total y se resuelven distinto.
+
+const DETALLE = {
+  tenantId: 't1',
+  name: 'Moto Norte',
+  period: '2026-09',
+  previousPeriod: '2026-08',
+  // Treinta días, con el gasto concentrado en el 20: el caso del salto.
+  daily: Array.from({ length: 30 }, (_, i) => ({
+    day: i + 1,
+    costUsd: i + 1 === 20 ? 9 : 0.1,
+    tokens: 1000,
+    operations: 10,
+  })),
+  previousDaily: Array.from({ length: 31 }, (_, i) => ({
+    day: i + 1,
+    costUsd: 0.1,
+    tokens: 100,
+    operations: 1,
+  })),
+  totals: { costUsd: 11.9, tokens: 30000, operations: 300 },
+  previousTotals: { costUsd: 3.1, tokens: 3100, operations: 31 },
+  comparison: { days: 30, costUsd: 11.9, previousCostUsd: 3.1, changePercent: 283.9 },
+  byMetric: [{ metric: 'vision', costUsd: 11.9, tokens: 30000, operations: 300 }],
+  byModel: [],
+}
+
+describe('evolución del comercio', () => {
+  test('al abrir la ficha pide el detalle y muestra el día más caro', async () => {
+    const user = userEvent.setup()
+    mockGetTenantDetail.mockResolvedValue(DETALLE)
+    load({ byTenant: TRIPLICO, comparison: COMPARACION })
+
+    await waitFor(() => expect(screen.getByText('Moto Norte')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    // Se pide con el período que se está mirando, no con el mes actual: la
+    // tabla puede estar mostrando un mes cerrado.
+    await waitFor(() => expect(mockGetTenantDetail).toHaveBeenCalledWith('t1', '2026-09'))
+
+    // El día del salto, que es lo que distingue "creció" de "se desbocó".
+    expect(await screen.findByText(/Día más caro: el 20/)).toBeInTheDocument()
+
+    // Y en qué se le fue: el mismo total repartido en otra función lleva a
+    // otra palanca. Se busca DENTRO del diálogo: la tabla de atrás tiene la
+    // misma etiqueta y una búsqueda global encontraría las dos.
+    const dialogo = within(screen.getByRole('dialog'))
+
+    expect(dialogo.getByText('Análisis de imágenes')).toBeInTheDocument()
+    // El promedio diario del mes anterior, que es contra lo que se lee cada
+    // barra: sin referencia, una serie de barras es un dibujo.
+    expect(dialogo.getByText(/Promedio diario de 2026-08/)).toBeInTheDocument()
+  })
+
+  test('si la evolución falla, el diálogo sigue sirviendo para acotar', async () => {
+    // Lo que se viene a hacer acá es acotar o pausar, y eso no depende del
+    // gráfico. Que se caiga una lectura de más no puede dejar sin la palanca.
+    const user = userEvent.setup()
+    mockGetTenantDetail.mockRejectedValue(new Error('timeout'))
+    load({ byTenant: TRIPLICO, comparison: COMPARACION })
+
+    await waitFor(() => expect(screen.getByText('Moto Norte')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    expect(await screen.findByText(/No se pudo cargar la evolución/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^motivo$/i)).toBeInTheDocument()
+  })
+
+  test('un comercio que dejó de consumir lo dice, en vez de un gráfico vacío', async () => {
+    const user = userEvent.setup()
+    mockGetTenantDetail.mockResolvedValue({
+      ...DETALLE,
+      daily: DETALLE.daily.map(d => ({ ...d, costUsd: 0, tokens: 0, operations: 0 })),
+      totals: { costUsd: 0, tokens: 0, operations: 0 },
+    })
+    load({ byTenant: TRIPLICO, comparison: COMPARACION })
+
+    await waitFor(() => expect(screen.getByText('Moto Norte')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    expect(await screen.findByText(/dejó de consumir/)).toBeInTheDocument()
   })
 })

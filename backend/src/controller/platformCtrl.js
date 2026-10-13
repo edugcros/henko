@@ -9,8 +9,11 @@ import mongoose from 'mongoose'
 import Tenant from '../models/tenantModel.js'
 import logger from '../../config/logger.js'
 import { getPlatformMarginReport } from '../services/platform/platformMarginService.js'
-import { getPlatformSpendSnapshot } from '../services/ai/aiSpendReportService.js'
-import { isValidPeriod } from '../services/ai/aiPeriod.js'
+import {
+  getPlatformSpendSnapshot,
+  getTenantSpendDetail,
+} from '../services/ai/aiSpendReportService.js'
+import { isValidPeriod, getCurrentPeriod } from '../services/ai/aiPeriod.js'
 import {
   setPlatformAiOverride,
   getPlatformAiSettingHistory,
@@ -64,6 +67,57 @@ export const getAiSpendReport = expressAsyncHandler(async (req, res) => {
   const report = await getPlatformSpendSnapshot(requested || undefined)
 
   return res.status(200).json({ success: true, data: report })
+})
+
+/**
+ * GET /api/platform/ai-spend/tenant/:tenantId
+ *
+ * UN comercio, día por día, contra el mes anterior y repartido por función.
+ *
+ * POR QUÉ NO VIENE EN EL REPORTE GENERAL
+ *
+ * Porque es una serie de treinta y un valores POR COMERCIO, y el reporte
+ * general se abre para mirar el total. Con cientos de comercios, meterla
+ * adentro convertiría cada apertura de la pantalla en una descarga enorme para
+ * contestar una pregunta que se hace sobre uno solo. Se pide cuando se abre la
+ * ficha del comercio y no antes.
+ *
+ * QUÉ CONTESTA QUE LA TABLA NO
+ *
+ * La tabla dice que un comercio triplicó. Esto dice CUÁNDO —de a poco, que es
+ * un negocio que crece, o en un día, que es un bug o un abuso— y EN QUÉ, que
+ * es lo que decide qué palanca se toca.
+ */
+export const getTenantAiSpendDetail = expressAsyncHandler(async (req, res) => {
+  const { tenantId } = req.params
+  const requested = String(req.query.period || '').trim()
+
+  if (!mongoose.Types.ObjectId.isValid(String(tenantId || '').trim())) {
+    return res.status(400).json({ success: false, message: 'Comercio inválido.' })
+  }
+
+  // Mismo criterio que el reporte general: un período inválido se rechaza en
+  // vez de caer al mes actual en silencio.
+  if (requested && !isValidPeriod(requested)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Período inválido. Se espera el formato YYYY-MM.',
+    })
+  }
+
+  const detail = await getTenantSpendDetail(
+    String(tenantId).trim(),
+    requested || getCurrentPeriod(),
+  )
+
+  // El servicio devuelve null solo si el id no es válido, y eso ya se filtró
+  // arriba. Un comercio borrado NO es null: tiene filas en el libro y esa plata
+  // se pagó, así que su detalle existe igual y viene marcado.
+  if (!detail) {
+    return res.status(400).json({ success: false, message: 'Comercio inválido.' })
+  }
+
+  return res.status(200).json({ success: true, data: detail })
 })
 
 /**
@@ -763,6 +817,7 @@ export const deleteTenant = expressAsyncHandler(async (req, res) => {
 export default {
   getMarginReport,
   getAiSpendReport,
+  getTenantAiSpendDetail,
   updateAiBudget,
   getUsdRate,
   updateUsdRate,

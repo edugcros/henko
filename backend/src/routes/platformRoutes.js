@@ -13,6 +13,7 @@ import { requirePlatformOwner } from '../middlewares/platformOwnerMiddleware.js'
 import {
   getMarginReport,
   getAiSpendReport,
+  getTenantAiSpendDetail,
   updateAiBudget,
   updateTenantAiPolicy,
   getPlanPrices,
@@ -29,6 +30,15 @@ router.use(authMiddleware, isAdmin, requirePlatformOwner)
 
 router.get('/margin', getMarginReport)
 router.get('/ai-spend', getAiSpendReport)
+
+// UN comercio día por día, contra el mes anterior y repartido por función.
+// Aparte del reporte general y no adentro: es una serie de treinta y un
+// valores por comercio, y la pantalla se abre para mirar el total.
+//
+// Misma ruta que la escritura de política, distinto verbo: las dos hablan del
+// mismo comercio en la misma pantalla, y partirlas en dos espacios de nombres
+// obligaría a recordar cuál es cuál.
+router.get('/ai-spend/tenant/:tenantId', getTenantAiSpendDetail)
 
 // Mueve un límite de seguridad, así que queda registrada con autor y motivo
 // (ver models/platformAiSettingModel.js).

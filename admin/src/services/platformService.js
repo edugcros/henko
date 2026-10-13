@@ -19,6 +19,22 @@ export const getPlatformAiSpend = async period => {
 }
 
 /**
+ * UN comercio día por día, contra el mes anterior y repartido por función.
+ *
+ * Aparte del reporte general y no adentro: es una serie de treinta y un valores
+ * POR COMERCIO, y la pantalla se abre para mirar el total. Con cientos de
+ * comercios, meterla en el reporte convertiría cada apertura en una descarga
+ * enorme para contestar una pregunta que se hace sobre uno solo.
+ */
+export const getTenantAiSpendDetail = async (tenantId, period) => {
+  const response = await api.get(`/platform/ai-spend/tenant/${tenantId}`, {
+    params: period ? { period } : undefined,
+  })
+
+  return unwrap(response)
+}
+
+/**
  * Mueve el techo de gasto. `tokens: null` quita el override y devuelve el mando
  * a la variable de entorno. Responde con el reporte ya actualizado.
  */
@@ -101,6 +117,7 @@ export const updatePlanPrice = async ({ plan, priceArs, reason }) => {
 export default {
   getPlatformMarginReport,
   getPlatformAiSpend,
+  getTenantAiSpendDetail,
   updatePlatformAiBudget,
   updateTenantAiPolicy,
   getPlanPrices,
