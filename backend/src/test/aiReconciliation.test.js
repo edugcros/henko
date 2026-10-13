@@ -730,6 +730,16 @@ describe('auditoría contable · detectar, no corregir', () => {
       byok: 0,
       platformUsage: 82.31,
       tenantUsage: 80.21,
+      // LO COMPROMETIDO VA EN EL INFORME AUNQUE NO ENTRE EN LA COMPARACIÓN.
+      //
+      // Se compara contra `platformUsage` —lo gastado— porque una reserva sin
+      // liquidar todavía no tiene fila de consumo en el libro. Pero el
+      // disyuntor NO corta con ese campo solo: corta con gastado MÁS
+      // reservado. Sin estos dos renglones, quien lee el aviso no puede
+      // distinguir «el contador mide de menos» de «hay reservas colgadas»,
+      // que son diagnósticos opuestos.
+      platformReserved: 0,
+      platformUsageConReservas: 82.31,
     })
 
     // La diferencia dice DÓNDE mirar: el libro y la plataforma coinciden, así
@@ -738,6 +748,71 @@ describe('auditoría contable · detectar, no corregir', () => {
       { between: ['ledger', 'tenantUsage'], difference: 2.1 },
       { between: ['platformUsage', 'tenantUsageSinByok'], difference: 2.1 },
     ])
+  })
+
+  test('el informe dice EN QUÉ se compone el libro, no sólo cuánto falta', async () => {
+    // EL CASO REAL QUE LO PIDIÓ.
+    //
+    // El 13/10/2026 esta auditoría venía avisando cada hora que faltaban USD
+    // 0,194564 en el contador de plataforma. Un número y nada más. Con eso no
+    // se diagnostica: hay cinco caminos distintos que escriben al libro y al
+    // contador, y el aviso no decía por cuál se escapó la plata — hubo que ir
+    // a leer los cinco a mano.
+    //
+    // El contador de plataforma es UN total y no se puede desglosar, así que
+    // la atribución es por eliminación: con los renglones del libro al lado,
+    // la métrica que el total no alcanza a cubrir se lee de un vistazo.
+    const period = '2060-03'
+
+    const movimiento = extra => ({
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      keySource: 'platform',
+      ...extra,
+    })
+
+    await AiConsumptionLedger.create([
+      movimiento({
+        metric: 'vision',
+        unit: 'units',
+        amount: 1,
+        operationId: 'vis-1',
+        costUsd: 0.19,
+      }),
+      movimiento({
+        metric: AI_METRICS.AGENT_TOKENS,
+        unit: 'tokens',
+        amount: 1000,
+        operationId: 'tok-1',
+        costUsd: 0.04,
+      }),
+      // Con key propia queda FUERA del desglose: el contador de plataforma no
+      // la incluye, así que sumarla haría que los renglones no cierren contra
+      // el total con el que se comparan.
+      movimiento({
+        metric: 'vision',
+        unit: 'units',
+        amount: 1,
+        operationId: 'vis-byok',
+        keySource: 'tenant',
+        costUsd: 9,
+      }),
+    ])
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.ledgerByMetric).toEqual([
+      { metric: 'vision', unit: 'units', costUsd: 0.19, rows: 1 },
+      { metric: 'agentTokens', unit: 'tokens', costUsd: 0.04, rows: 1 },
+    ])
+
+    // Los renglones suman exactamente el total contra el que se compara, y no
+    // uno parecido: si no cerraran, el desglose confundiría más de lo que
+    // explica.
+    const suma = auditoria.ledgerByMetric.reduce((total, f) => total + f.costUsd, 0)
+
+    expect(suma).toBeCloseTo(auditoria.cost.ledgerSinByok, 6)
   })
 
   test('el ciclo automático NO corrige nada', async () => {
