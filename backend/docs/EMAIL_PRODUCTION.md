@@ -62,6 +62,57 @@ No hay SMTP en ninguno: el plan Free de Render bloquea esos puertos (abajo
 el detalle). El valor por omisión sigue siendo SendGrid, así que desplegar
 esta versión no cambia por dónde sale el correo — hay que pedirlo.
 
+### La cadena de respaldo
+
+`EMAIL_PROVIDER` elige quién lo intenta **primero**. Si ese falla, el envío
+cae al siguiente proveedor que tenga credenciales cargadas.
+
+**No hay una variable nueva que configurar.** Cargar una API key ya es la
+declaración de que ese proveedor está disponible; quien quiera uno solo, no
+carga los otros. Pedir además una lista explícita de respaldos significaría
+que el respaldo sólo funciona para quien previó la caída, y nadie configura
+variables para algo que todavía no se rompió.
+
+> **El incidente que lo motivó.** El 13/10/2026 a las 02:07 UTC SendGrid
+> empezó a contestar `401 {"message":"Maximum credits exceeded"}` a todo
+> envío: se venció el trial. Los tres drivers estaban escritos y probados, y
+> el sistema usaba uno. Una factura impaga dejó sin correo a **todas** las
+> tiendas a la vez —confirmación de compra, verificación de cuenta, reseteo
+> de contraseña, recuperación de carrito— y como el 401 se clasifica como
+> falla definitiva, esos correos no quedaron ni en cola.
+
+Qué cruza al proveedor siguiente y qué no:
+
+| Falla | ¿Pasa al siguiente? | Por qué |
+| --- | --- | --- |
+| `EMAIL_AUTH_FAILED` (401/403) | Sí | La key sigue rota en dos segundos; otro proveedor es lo único que puede sacar ese correo |
+| `EMAIL_SENDING_PAUSED` | Sí | Misma forma: no se destraba sola |
+| `EMAIL_RATE_LIMITED`, `EMAIL_PROVIDER_UNAVAILABLE`, `EMAIL_TIMEOUT` | Sí | Pasajeras, y el otro puede estar bien ahora |
+| `EMAIL_PROVIDER_NOT_CONFIGURED` | Sí | Sin credenciales no hay nada que esperar de éste |
+| `EMAIL_REQUEST_INVALID` | **No** | Una dirección mal formada la rechazan todos igual: recorrer la cadena son tres fallas idénticas y tres veces la demora |
+| `EMAIL_ATTACHMENTS_NOT_SUPPORTED` | **No** | Ningún driver los implementa |
+| Un error **sin código** | **No** | No se sabe si el mensaje salió —puede haberse roto después de que el proveedor lo aceptó— y reenviarlo lo duplicaría |
+
+Es una pregunta distinta de «¿reintento con el mismo?» (`esReintentable`), y
+confundirlas era el bug: con un 401 no tiene sentido reintentar y tiene todo
+el sentido probar con otro.
+
+**Lo que la cadena no arregla.** Un comercio con dominio propio verificado
+sale con su dominio, y ese dominio está autorizado en el proveedor que lo
+verificó y en ninguno otro: el respaldo lo va a rechazar. No se cambia el
+remitente a escondidas para salvar el envío —un correo que llega desde un
+dominio distinto al de la tienda se parece demasiado a una estafa—. Para
+esos comercios el respaldo real es verificar el dominio también en el
+segundo proveedor.
+
+**Cómo se ve en los logs.** En el primer correo de cada arranque:
+`[EMAIL] Proveedor: SendGrid` con la lista de respaldos, o
+`[EMAIL] Proveedor: SendGrid — SIN RESPALDO` en nivel `warn` si no hay
+ninguno detrás. Cuando el respaldo entra en acción:
+`[EMAIL] Salió por un proveedor de respaldo`, también en `warn`, porque es
+la única señal que va a haber — el aviso por correo tampoco puede salir por
+el proveedor que está caído.
+
 Esto no siempre fue así. Durante un tiempo el comentario en el código decía
 que SMTP "muere en Render", basado en un incidente real contra
 `smtp.gmail.com:465`, y después se corrigió a "eso era solo el plan free, y

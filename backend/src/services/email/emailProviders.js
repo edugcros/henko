@@ -780,30 +780,186 @@ export const proveedorActivo = () => {
   return proveedor
 }
 
+// =====================================================
+// CADENA DE RESPALDO
+// =====================================================
+//
+// POR QUÉ EXISTE, CON FECHA Y HORA
+//
+// El 13/10/2026 a las 02:07 UTC SendGrid empezó a contestar
+// `401 {"message":"Maximum credits exceeded"}` a todo envío: se venció el
+// trial. El sistema tenía los tres drivers escritos y probados, y usaba UNO,
+// elegido por EMAIL_PROVIDER. Resultado: una factura impaga dejó sin correo a
+// TODAS las tiendas a la vez —confirmación de compra, verificación de cuenta,
+// reseteo de contraseña, recuperación de carrito— y como 401 se clasifica
+// como falla definitiva, ninguno de esos correos quedó en cola siquiera.
+//
+// La causa de fondo no era el vencimiento: era que el proveedor elegido fuera
+// un punto único de falla teniendo dos suplentes listos al lado.
+//
+// QUIÉN ENTRA EN LA CADENA, SIN UNA VARIABLE NUEVA
+//
+// Entra todo proveedor que TENGA CREDENCIALES CARGADAS. Cargar una API key ya
+// es la declaración de que ese proveedor está disponible: pedir además una
+// lista explícita de respaldos significaría que el respaldo sólo funciona
+// para quien previó la caída, y nadie configura variables para algo que
+// todavía no se rompió. Quien quiera un solo proveedor, no carga los otros.
+//
+// El activo va SIEMPRE primero, tenga credenciales o no. Si no las tiene,
+// falla al instante sin tocar la red y su problema queda primero en el log,
+// que es donde hay que verlo — pero el correo sale igual por otro.
+//
+// LO QUE ESTA CADENA NO ARREGLA, Y HAY QUE SABERLO
+//
+// Un comercio con dominio propio VERIFICADO sale con su dominio (ver
+// resolveSenderAddress), y ese dominio está autorizado en el proveedor que lo
+// verificó y en ninguno otro: el respaldo lo va a rechazar por dominio no
+// verificado. No se cambia el remitente a escondidas para salvar el envío —un
+// correo que llega desde un dominio distinto al de la tienda se parece
+// demasiado a una estafa, y eso cuesta más caro que el correo perdido. Para
+// esos comercios el respaldo real es verificar el dominio también en el
+// segundo proveedor.
+
 /**
- * Manda un correo por el proveedor activo.
+ * Qué fallas justifican probar con el proveedor siguiente.
  *
- * Devuelve {messageId, proveedor}. Lanza un Error con `code` de CODIGOS, que
- * es lo único que quien llama necesita mirar para decidir si reintenta.
+ * NO ES LA MISMA PREGUNTA QUE `esReintentable`, Y CONFUNDIRLAS ERA EL BUG.
+ *
+ * «¿Reintento con el MISMO?» y «¿pruebo con OTRO?» se contestan distinto para
+ * el caso que motivó todo esto: con un 401 no tiene ningún sentido reintentar
+ * —la key va a seguir rota dentro de dos segundos— y tiene todo el sentido
+ * probar con otro proveedor, que es lo único que puede sacar ese correo.
+ *
+ * Al revés sólo quedan dos casos. Un pedido mal armado o una dirección
+ * inválida los va a rechazar cualquiera igual, así que recorrer la cadena son
+ * tres fallas idénticas y tres veces la demora adentro de una petición que
+ * alguien está esperando. Y los adjuntos no los implementa ningún driver.
+ */
+const NO_CAMBIAN_DE_PROVEEDOR = new Set([CODIGOS.PEDIDO_INVALIDO, CODIGOS.ADJUNTOS_NO_SOPORTADOS])
+
+/**
+ * Sólo se pasa al siguiente proveedor ante una falla CLASIFICADA.
+ *
+ * POR QUÉ UN ERROR DESCONOCIDO NO ACTIVA EL RESPALDO
+ *
+ * Todo error que nace acá adentro —de `pedir`, de cada driver, de la
+ * traducción de SES— lleva un código de CODIGOS. Uno sin código es algo que
+ * nadie previó: un TypeError en el driver, por ejemplo al leer el id del
+ * mensaje de una respuesta que YA FUE ACEPTADA por el proveedor.
+ *
+ * Y ahí está el problema: ante lo desconocido no se sabe si el mensaje salió
+ * o no, y mandarlo por otro proveedor le duplicaría el correo al destinatario.
+ * Un error raro se propaga tal cual, como antes de que existiera la cadena.
+ *
+ * El timeout sí cruza, y eso es una decisión distinta y consciente: también
+ * puede haber sido aceptado del otro lado, pero el sistema ya eligió hace
+ * rato que un correo de más es mejor que uno de menos —sendWithRetry
+ * reintenta los timeouts desde siempre— y esta cadena no cambia esa postura.
+ */
+const CODIGOS_CONOCIDOS = new Set(Object.values(CODIGOS))
+
+export const justificaRespaldo = codigo =>
+  CODIGOS_CONOCIDOS.has(codigo) && !NO_CAMBIAN_DE_PROVEEDOR.has(codigo)
+
+/**
+ * El activo primero, y detrás los que tengan credenciales.
+ *
+ * Se arma en cada envío y no una vez al arranque: las credenciales son
+ * variables de entorno y un redeploy que agrega una tiene que ampliar la
+ * cadena sin que nadie se acuerde de reiniciar nada.
+ */
+export const cadenaDeEnvio = () => {
+  const principal = proveedorActivo()
+  const respaldos = Object.values(PROVEEDORES).filter(
+    proveedor => proveedor !== principal && proveedor.estaConfigurado(),
+  )
+
+  return [principal, ...respaldos]
+}
+
+/**
+ * La falla de la cadena entera, como un solo error.
+ *
+ * EL CÓDIGO QUE LLEVA DECIDE SI RÍO ARRIBA SE VUELVE A INTENTAR, así que no
+ * puede ser cualquiera de los tres. Se elige el primero REINTENTABLE que haya
+ * aparecido: si alguno de los proveedores falló por algo pasajero —un 503, un
+ * timeout— volver a recorrer la cadena puede sacar el correo, y el paso por
+ * el que ya falló definitivamente cuesta nada porque falla al instante. Si
+ * ninguno fue pasajero, manda el del proveedor principal, que es el que hay
+ * que ir a arreglar.
+ */
+const errorDeCadena = fallas => {
+  const pasajera = fallas.find(falla => esReintentable(falla.code))
+  const resumen = fallas.map(falla => `${falla.proveedor}: ${falla.message}`).join(' · ')
+
+  return fallar(
+    (pasajera || fallas[0]).code,
+    `Ningún proveedor de correo pudo enviar — ${resumen}`,
+    { cadena: fallas },
+  )
+}
+
+/**
+ * Manda un correo, cayendo al proveedor siguiente si el anterior no pudo.
+ *
+ * Devuelve {messageId, proveedor, respaldo}. `proveedor` es quien EFECTIVAMENTE
+ * lo aceptó, que no siempre es el configurado — quien lo registre tiene que
+ * usar éste y no `proveedorActivo()`, o el log va a decir que salió por uno
+ * cuando salió por otro.
+ *
+ * Lanza un Error con `code` de CODIGOS, que es lo único que quien llama
+ * necesita mirar para decidir si reintenta.
  */
 export const enviarConProveedor = async correo => {
-  const proveedor = proveedorActivo()
-
   if (Array.isArray(correo.attachments) && correo.attachments.length > 0) {
     // Antes se aceptaban y se descartaban sin decir nada: quien llamaba se
     // quedaba creyendo que el adjunto había salido. Ningún driver los
-    // implementa todavía, así que se dice en voz alta en vez de mentir.
+    // implementa todavía, así que se dice en voz alta en vez de mentir. Va
+    // antes de la cadena porque no hay proveedor que lo resuelva.
     throw fallar(
       CODIGOS.ADJUNTOS_NO_SOPORTADOS,
-      `El envío con adjuntos todavía no está implementado para ${proveedor.nombre}`,
+      'El envío con adjuntos todavía no está implementado por ningún proveedor',
     )
   }
 
-  const correoAEnviar = await conInquilinoAsegurado(proveedor, correo)
+  const cadena = cadenaDeEnvio()
+  const fallas = []
 
-  const resultado = await proveedor.enviar(correoAEnviar)
+  for (const proveedor of cadena) {
+    try {
+      // Por proveedor y no una vez afuera: el aislamiento de reputación por
+      // inquilino es una función de SES, y para los que no la tienen esto no
+      // hace nada. Resolverlo con el principal y mandárselo al respaldo sería
+      // prepararle a uno lo que necesita el otro.
+      const correoAEnviar = await conInquilinoAsegurado(proveedor, correo)
+      const resultado = await proveedor.enviar(correoAEnviar)
 
-  return { ...resultado, proveedor: proveedor.nombre }
+      // Que haya salido por un respaldo es la señal de que el principal está
+      // roto, y es la única que va a haber: el aviso por correo tampoco puede
+      // salir por el principal. Nivel warn para que se encuentre sin filtrar.
+      if (fallas.length > 0) {
+        logger.warn('[EMAIL] Salió por un proveedor de respaldo', {
+          envioPor: proveedor.nombre,
+          fallaron: fallas.map(falla => `${falla.proveedor} (${falla.code})`),
+        })
+      }
+
+      return { ...resultado, proveedor: proveedor.nombre, respaldo: fallas.length > 0 }
+    } catch (error) {
+      // Lo que ningún otro proveedor va a poder arreglar se devuelve tal cual,
+      // sin recorrer la cadena ni envolverlo: quien llama recibe exactamente
+      // el mismo error que recibía antes de que esto existiera.
+      if (!justificaRespaldo(error.code)) throw error
+
+      fallas.push({
+        proveedor: proveedor.nombre,
+        code: error.code,
+        message: error.message,
+      })
+    }
+  }
+
+  throw errorDeCadena(fallas)
 }
 
 /**
@@ -866,7 +1022,9 @@ export const dominiosDelProveedor = () => {
 export default {
   CODIGOS,
   esReintentable,
+  justificaRespaldo,
   proveedorActivo,
+  cadenaDeEnvio,
   enviarConProveedor,
   dominiosDelProveedor,
   NOMBRES_DE_PROVEEDOR,
