@@ -443,9 +443,184 @@ export const handleSesEvents = async (req, res) => {
   return res.status(204).end()
 }
 
+// =====================================================
+// RESEND — eventos firmados con Svix
+// =====================================================
+//
+// POR QUÉ APARECE RECIÉN AHORA
+//
+// Los dos webhooks de arriba se escribieron para los dos proveedores que
+// había. El 13/10/2026 el envío pasó a Resend —SendGrid se quedó sin créditos
+// y la cadena de respaldo lo puso de principal— y con eso los rebotes dejaron
+// de llegar por ningún lado: un correo descartado volvió a verse exactamente
+// igual que uno entregado, que es el problema que este archivo existe para
+// cerrar. Cambiar de proveedor reabrió el agujero.
+//
+// TERCERA RUTA, NO UN ENDPOINT QUE ADIVINE
+//
+// Mismo criterio que entre SendGrid y SES: Resend firma con Svix, que no se
+// parece ni al ECDSA de uno ni a la cadena de SNS del otro. Un endpoint único
+// que mirara el cuerpo para elegir verificador le daría al atacante justo eso.
+
+/**
+ * Eventos que significan que el correo NO llegó.
+ *
+ * `email.delivery_delayed` queda afuera por lo mismo que `deferred` en
+ * SendGrid y `deliverydelay` en SES: es un reintento en curso, no un fallo.
+ */
+const EVENTOS_DE_FALLO_RESEND = new Set(['email.bounced', 'email.complained', 'email.failed'])
+
+/**
+ * La ventana de reenvío tolerada, en Svix.
+ *
+ * Cinco minutos y no diez como en SendGrid porque es lo que recomienda la
+ * propia documentación de Svix. Sin ventana, una firma capturada sirve para
+ * siempre: el atacante reenvía el mismo cuerpo firmado cuando quiera.
+ */
+const VENTANA_SVIX_MS = 5 * 60 * 1000
+
+/**
+ * La clave de firma, en bytes.
+ *
+ * El secreto viene como `whsec_` + base64. Se quita el prefijo y se decodifica
+ * el resto: la clave del HMAC son esos BYTES, no el texto. Usar la cadena tal
+ * cual da una firma que nunca coincide, y el síntoma —"todo rebota como firma
+ * inválida"— no señala para nada a este renglón.
+ */
+const claveDeSvix = secreto =>
+  Buffer.from(secreto.startsWith('whsec_') ? secreto.slice('whsec_'.length) : secreto, 'base64')
+
+/**
+ * ¿La firma es de Resend?
+ *
+ * Svix firma HMAC-SHA256 sobre `id.timestamp.cuerpo`, con el CUERPO CRUDO: el
+ * JSON reserializado no reproduce byte a byte lo que se firmó. Mismo motivo
+ * por el que el verificador de SendGrid usa req.rawBody.
+ *
+ * La cabecera trae una LISTA de firmas separadas por espacios, cada una con su
+ * versión adelante (`v1,<base64>`). Son varias porque durante una rotación de
+ * secreto conviven la vieja y la nueva: alcanza con que UNA coincida, y
+ * quedarse sólo con la primera haría fallar toda rotación.
+ */
+export const verificarFirmaDeResend = req => {
+  const secreto = String(process.env.RESEND_WEBHOOK_SECRET || '').trim()
+
+  if (!secreto) {
+    // Mismo criterio que los otros dos: en producción, sin con qué verificar,
+    // no se procesa nada. Un endpoint público sin firma deja que cualquiera
+    // invente rebotes y ensucie el historial de entrega de los comercios.
+    if (process.env.NODE_ENV === 'production') {
+      logger.error('❌ RESEND_WEBHOOK_SECRET no configurada en producción')
+      return false
+    }
+
+    logger.warn('⚠️ RESEND_WEBHOOK_SECRET sin configurar; no se verifica en desarrollo')
+    return true
+  }
+
+  const id = req.headers['svix-id']
+  const timestamp = req.headers['svix-timestamp']
+  const firmas = req.headers['svix-signature']
+
+  if (!id || !timestamp || !firmas) return false
+
+  const edad = Math.abs(Date.now() - Number(timestamp) * 1000)
+
+  if (!Number.isFinite(edad) || edad > VENTANA_SVIX_MS) {
+    logger.warn('[RESEND] Evento con timestamp fuera de ventana', { timestamp })
+    return false
+  }
+
+  const cuerpo = req.rawBody
+
+  if (!cuerpo) {
+    logger.error('[RESEND] Falta req.rawBody: no se puede verificar la firma')
+    return false
+  }
+
+  try {
+    const esperada = crypto
+      .createHmac('sha256', claveDeSvix(secreto))
+      .update(`${id}.${timestamp}.${cuerpo}`, 'utf8')
+      .digest()
+
+    return String(firmas)
+      .split(' ')
+      .some(entrada => {
+        // `v1,<base64>`. Se parte en la PRIMERA coma y no con split(','),
+        // porque el base64 no lleva comas pero la versión sí podría cambiar.
+        const coma = entrada.indexOf(',')
+        if (coma === -1) return false
+
+        const recibida = Buffer.from(entrada.slice(coma + 1), 'base64')
+
+        // Longitudes distintas hacen que timingSafeEqual LANCE en vez de
+        // devolver false, así que se compara antes. Y la comparación es en
+        // tiempo constante: con `===` sobre el base64, el tiempo de respuesta
+        // filtra cuántos bytes acertó quien está probando firmas.
+        return recibida.length === esperada.length && crypto.timingSafeEqual(recibida, esperada)
+      })
+  } catch (error) {
+    logger.warn('[RESEND] No se pudo verificar la firma', { message: error.message })
+    return false
+  }
+}
+
+/**
+ * POST /api/webhooks/resend/events
+ *
+ * Resend manda UN evento por pedido, a diferencia de los lotes de SendGrid.
+ * Se responde 204 con firma válida: un error nuestro procesando no tiene que
+ * hacer que Resend reintente en bucle.
+ */
+export const handleResendEvents = async (req, res) => {
+  if (!verificarFirmaDeResend(req)) {
+    logger.error('🔴 Webhook de Resend con firma inválida', {
+      hasSignature: Boolean(req.headers['svix-signature']),
+    })
+
+    return sendResponse(res, 401, false, 'Firma inválida')
+  }
+
+  // Con el cuerpo crudo disponible se parsea de ahí, igual que en SES: es lo
+  // mismo que se verificó, y no depende de que express haya parseado este
+  // content-type.
+  let evento = req.body
+
+  if (req.rawBody?.length) {
+    try {
+      evento = JSON.parse(String(req.rawBody))
+    } catch {
+      logger.warn('[RESEND] Cuerpo ilegible pese a firma válida')
+      return res.status(204).end()
+    }
+  }
+
+  const tipo = String(evento?.type || '').toLowerCase()
+  const datos = {
+    evento: tipo,
+    to: Array.isArray(evento?.data?.to) ? evento.data.to.join(', ') : evento?.data?.to || null,
+    // El mismo id que queda registrado al enviar («Email aceptado por el
+    // proveedor»), así que este evento se cruza con aquella línea del log.
+    messageId: evento?.data?.email_id || null,
+    motivo: evento?.data?.bounce?.message || evento?.data?.reason || null,
+    tipoRebote: evento?.data?.bounce?.type || evento?.data?.bounce?.subType || null,
+  }
+
+  if (EVENTOS_DE_FALLO_RESEND.has(tipo)) {
+    logger.error('📭 Correo NO entregado', datos)
+  } else {
+    logger.info('📬 Evento de correo', datos)
+  }
+
+  return res.status(204).end()
+}
+
 export default {
   handleSendgridEvents,
   verifySendgridSignature,
   handleSesEvents,
   verificarFirmaDeSns,
+  handleResendEvents,
+  verificarFirmaDeResend,
 }

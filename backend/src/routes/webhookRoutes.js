@@ -3,11 +3,16 @@
 
 import express from 'express'
 import { handleSubscriptionWebhook } from '../controller/subscriptionWebhookCtrl.js'
-import { handleSendgridEvents, handleSesEvents } from '../controller/emailWebhookCtrl.js'
+import {
+  handleSendgridEvents,
+  handleSesEvents,
+  handleResendEvents,
+} from '../controller/emailWebhookCtrl.js'
 import {
   SUBSCRIPTION_WEBHOOK_ROUTE,
   SENDGRID_WEBHOOK_ROUTE,
   SES_WEBHOOK_ROUTE,
+  RESEND_WEBHOOK_ROUTE,
 } from '../config/subscriptionConfig.js'
 
 const router = express.Router()
@@ -56,5 +61,17 @@ router.post(SENDGRID_WEBHOOK_ROUTE, handleSendgridEvents)
  * quien contesta lo controla.
  */
 router.post(SES_WEBHOOK_ROUTE, handleSesEvents)
+
+/**
+ * POST /api/webhooks/resend/events
+ *
+ * Lo mismo para Resend, que desde el 13/10/2026 es el proveedor activo:
+ * email.bounced, email.complained, email.failed. Firma con Svix —HMAC sobre
+ * id.timestamp.cuerpo— y manda un evento por pedido, no lotes.
+ *
+ * Sin esto, cambiar de proveedor dejaba los rebotes sin llegar por ningún
+ * lado y un correo descartado volvía a verse igual que uno entregado.
+ */
+router.post(RESEND_WEBHOOK_ROUTE, handleResendEvents)
 
 export default router

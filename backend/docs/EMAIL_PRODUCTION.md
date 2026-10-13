@@ -105,6 +105,49 @@ dominio distinto al de la tienda se parece demasiado a una estafa—. Para
 esos comercios el respaldo real es verificar el dominio también en el
 segundo proveedor.
 
+### Los rebotes: un webhook por proveedor
+
+Que el proveedor acepte un correo significa *"lo recibí, después veré qué
+hago"*. El rebote, el descarte por lista de supresión y la queja de spam
+ocurren **más tarde y por otro canal**, y sin ese canal un cliente que no
+recibe su correo de verificación es indistinguible de uno que sí lo recibió.
+
+Hay tres rutas, una por proveedor, porque cada uno firma distinto:
+
+| Proveedor | Ruta | Firma | Variable |
+| --- | --- | --- | --- |
+| SendGrid | `/api/webhooks/sendgrid/events` | ECDSA sobre el cuerpo crudo | `SENDGRID_WEBHOOK_PUBLIC_KEY` |
+| Amazon SES | `/api/webhooks/ses/events` | SNS, certificado de AWS + tópico propio | `SES_SNS_TOPIC_ARN` |
+| Resend | `/api/webhooks/resend/events` | Svix: HMAC-SHA256 sobre `id.timestamp.cuerpo` | `RESEND_WEBHOOK_SECRET` |
+
+**Tres rutas y no una que adivine.** Un endpoint único que mirara la forma del
+cuerpo para elegir el verificador le daría al atacante exactamente eso: elegir
+con qué firma lo van a verificar.
+
+**El webhook que importa es el del proveedor ACTIVO.** Tener cargado el de
+SendGrid no cubre a Resend; si Resend es quien está enviando, los rebotes que
+no llegan son los suyos. `npm run check:env:prod` lo marca como 🟠 sólo para el
+activo, justamente para que una clave cargada no dé por cubierto al otro.
+
+> **Por qué Resend aparece recién ahora.** Los dos primeros webhooks se
+> escribieron para los dos proveedores que había. Cuando el 13/10/2026 el
+> envío pasó a Resend, los rebotes dejaron de llegar por ningún lado y un
+> correo descartado volvió a verse igual que uno entregado. **Cambiar de
+> proveedor reabre este agujero si no se agrega su webhook.**
+
+Detalles de la verificación de Svix que cuestan caro si se pasan por alto:
+
+- La clave del HMAC son los **bytes** del secreto: hay que quitarle el prefijo
+  `whsec_` y decodificar el base64. Usar la cadena tal cual da una firma que
+  nunca coincide, y el síntoma —"todo rebota como firma inválida"— no señala
+  para nada a ese renglón.
+- Se firma el **cuerpo crudo**. El JSON reserializado no reproduce byte a byte
+  lo que se firmó.
+- La cabecera trae una **lista** de firmas separadas por espacios; alcanza con
+  que una coincida. Son varias porque durante una rotación de secreto conviven
+  la vieja y la nueva, y quedarse con la primera haría fallar toda rotación.
+- Ventana de **cinco minutos** contra el reenvío de una firma capturada.
+
 **Cómo se ve en los logs.** En el primer correo de cada arranque:
 `[EMAIL] Proveedor: SendGrid` con la lista de respaldos, o
 `[EMAIL] Proveedor: SendGrid — SIN RESPALDO` en nivel `warn` si no hay

@@ -7,6 +7,7 @@ import {
   SUBSCRIPTION_WEBHOOK_PATH,
   SENDGRID_WEBHOOK_PATH,
   SES_WEBHOOK_PATH,
+  RESEND_WEBHOOK_PATH,
 } from '../config/subscriptionConfig.js'
 
 /**
@@ -73,6 +74,13 @@ export const csrfExemptRoutes = [
   // nuestro — una firma válida de AWS sola no distingue nuestro tópico del de
   // cualquier otra cuenta.
   { method: 'POST', path: `${env.apiPrefix}${SES_WEBHOOK_PATH}` },
+
+  // Eventos de entrega de Resend, el proveedor activo desde el 13/10/2026.
+  // Verifica la firma Svix —HMAC-SHA256 sobre id.timestamp.cuerpo crudo, con
+  // ventana de cinco minutos contra el reenvío— en verificarFirmaDeResend.
+  // Mismo razonamiento que los tres de arriba: sin cookies, el CSRF no puede
+  // protegerlo y la firma sí.
+  { method: 'POST', path: `${env.apiPrefix}${RESEND_WEBHOOK_PATH}` },
 
   // Webhook externo real de WhatsApp/Meta. Valida firma propia x-hub-signature-256.
   { method: 'POST', path: `${env.apiPrefix}/whatsapp/webhook` },
