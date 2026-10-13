@@ -61,6 +61,17 @@ export const SENDGRID_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SENDGRID_WE
 export const SES_WEBHOOK_ROUTE = '/ses/events'
 export const SES_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SES_WEBHOOK_ROUTE}`
 
+// Eventos de entrega de Resend. Tercera ruta por el mismo motivo que las dos
+// de arriba: Resend firma con Svix, que no se parece ni al ECDSA de SendGrid
+// ni a la cadena de SNS.
+//
+// Faltaba, y la ausencia se volvió visible el 13/10/2026: al pasar el envío a
+// Resend, los rebotes dejaron de llegar por ningún lado y un correo descartado
+// volvió a verse igual que uno entregado — exactamente el problema que estos
+// webhooks existen para cerrar.
+export const RESEND_WEBHOOK_ROUTE = '/resend/events'
+export const RESEND_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${RESEND_WEBHOOK_ROUTE}`
+
 const getApiPrefix = () => `/${clean(process.env.API_PREFIX || 'api').replace(/^\/+|\/+$/g, '')}`
 
 /**

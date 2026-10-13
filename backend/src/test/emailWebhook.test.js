@@ -609,3 +609,281 @@ describe('eventos de entrega de SES · la ruta llega al controlador', () => {
     expect(config.SES_WEBHOOK_ROUTE).not.toBe(config.SENDGRID_WEBHOOK_ROUTE)
   })
 })
+
+// =====================================================
+// RESEND — firma Svix
+// =====================================================
+//
+// POR QUÉ ESTE BLOQUE EXISTE
+//
+// El 13/10/2026 el envío pasó a Resend: SendGrid se quedó sin créditos y la
+// cadena de respaldo lo puso de principal. Con eso los rebotes dejaron de
+// llegar por ningún lado —no había webhook de Resend— y un correo descartado
+// volvió a verse exactamente igual que uno entregado. Cambiar de proveedor
+// reabrió el agujero que este archivo cerró en septiembre.
+
+describe('eventos de entrega de Resend · firma Svix', () => {
+  // Un secreto con la forma real: `whsec_` + base64.
+  const SECRETO = `whsec_${Buffer.alloc(24, 9).toString('base64')}`
+
+  let previo
+
+  beforeEach(() => {
+    previo = process.env.RESEND_WEBHOOK_SECRET
+    process.env.RESEND_WEBHOOK_SECRET = SECRETO
+    errores.length = 0
+    infos.length = 0
+  })
+
+  afterEach(() => {
+    if (previo === undefined) delete process.env.RESEND_WEBHOOK_SECRET
+    else process.env.RESEND_WEBHOOK_SECRET = previo
+  })
+
+  /** Firma como firma Svix: HMAC-SHA256 sobre `id.timestamp.cuerpo`. */
+  const firmar = (id, timestamp, cuerpo, secreto = SECRETO) => {
+    const clave = Buffer.from(secreto.slice('whsec_'.length), 'base64')
+
+    return crypto
+      .createHmac('sha256', clave)
+      .update(`${id}.${timestamp}.${cuerpo}`)
+      .digest('base64')
+  }
+
+  const pedido = ({ cuerpo, id = 'msg_1', timestamp, firma }) => {
+    const ts = timestamp ?? Math.floor(Date.now() / 1000)
+    const crudo = typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo)
+
+    return {
+      headers: {
+        'svix-id': id,
+        'svix-timestamp': String(ts),
+        'svix-signature': firma ?? `v1,${firmar(id, String(ts), crudo)}`,
+      },
+      rawBody: Buffer.from(crudo),
+      body: typeof cuerpo === 'string' ? {} : cuerpo,
+    }
+  }
+
+  const respuesta = () => {
+    const res = { statusCode: null, cuerpo: null }
+
+    res.status = codigo => {
+      res.statusCode = codigo
+      return res
+    }
+    res.json = datos => {
+      res.cuerpo = datos
+      return res
+    }
+    res.end = () => res
+
+    return res
+  }
+
+  const mandar = async opciones => {
+    const { handleResendEvents } = await import('../controller/emailWebhookCtrl.js')
+    const res = respuesta()
+
+    await handleResendEvents(pedido(opciones), res)
+
+    return res
+  }
+
+  test('reproduce el vector de prueba publicado por Svix', async () => {
+    // LA PRUEBA MÁS IMPORTANTE DEL BLOQUE.
+    //
+    // Las demás verifican que el verificador acepta lo que firmó este mismo
+    // archivo, o sea que el código es coherente consigo mismo — pasarían
+    // igual si el algoritmo entero estuviera mal. Este vector sale de la
+    // documentación de Svix, así que es lo único que prueba que lo que
+    // calculamos es lo que Resend va a mandar de verdad.
+    const { verificarFirmaDeResend } = await import('../controller/emailWebhookCtrl.js')
+
+    const SECRETO_SVIX = 'whsec_plJ3nmyCDGBKInavdOK15jsl'
+    const CUERPO = '{"event_type":"ping","data":{"success":true}}'
+    const ID = 'msg_loFOjxBNrRLzqYUf'
+    const TS = '1731705121'
+    const FIRMA = 'v1,rAvfW3dJ/X/qxhsaXPOyyCGmRKsaKWcsNccKXlIktD0='
+
+    process.env.RESEND_WEBHOOK_SECRET = SECRETO_SVIX
+
+    // El timestamp del vector es de 2024, así que la ventana de cinco minutos
+    // lo rechazaría por viejo. Se congela el reloj en ese momento para probar
+    // el ALGORITMO, que es lo que este test mira; la ventana tiene el suyo.
+    const ahora = jest.spyOn(Date, 'now').mockReturnValue(Number(TS) * 1000)
+
+    try {
+      const valido = verificarFirmaDeResend({
+        headers: { 'svix-id': ID, 'svix-timestamp': TS, 'svix-signature': FIRMA },
+        rawBody: Buffer.from(CUERPO),
+      })
+
+      expect(valido).toBe(true)
+    } finally {
+      ahora.mockRestore()
+    }
+  })
+
+  test('un rebote se registra como correo NO entregado', async () => {
+    const res = await mandar({
+      cuerpo: {
+        type: 'email.bounced',
+        data: {
+          email_id: 'res-123',
+          to: ['compradora@ejemplo.com'],
+          bounce: { type: 'Permanent', message: 'mailbox does not exist' },
+        },
+      },
+    })
+
+    expect(res.statusCode).toBe(204)
+
+    const fallo = errores.find(e => /📭/.test(e.msg))
+
+    expect(fallo).toBeDefined()
+    expect(fallo.datos.messageId).toBe('res-123')
+    expect(fallo.datos.motivo).toMatch(/mailbox/)
+  })
+
+  test('una entrega normal no se registra como fallo', async () => {
+    await mandar({
+      cuerpo: { type: 'email.delivered', data: { email_id: 'res-ok', to: ['a@b.com'] } },
+    })
+
+    expect(errores.some(e => /📭/.test(e.msg))).toBe(false)
+    expect(infos.some(e => /📬/.test(e.msg))).toBe(true)
+  })
+
+  test('un retraso NO es un fallo', async () => {
+    // Es un reintento en curso. Tratarlo como error llenaría los logs de
+    // alarmas que se resuelven solas — mismo criterio que `deferred` en
+    // SendGrid y `deliverydelay` en SES.
+    await mandar({
+      cuerpo: { type: 'email.delivery_delayed', data: { email_id: 'res-x', to: ['a@b.com'] } },
+    })
+
+    expect(errores.some(e => /📭/.test(e.msg))).toBe(false)
+  })
+
+  test('una firma ajena se rechaza con 401', async () => {
+    const otro = `whsec_${Buffer.alloc(24, 1).toString('base64')}`
+    const cuerpo = JSON.stringify({ type: 'email.bounced', data: { email_id: 'x' } })
+    const ts = String(Math.floor(Date.now() / 1000))
+
+    const res = await mandar({
+      cuerpo,
+      timestamp: ts,
+      firma: `v1,${firmar('msg_1', ts, cuerpo, otro)}`,
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  test('un cuerpo cambiado después de firmar se rechaza', async () => {
+    // Es el ataque que la firma existe para frenar: interceptar el evento y
+    // cambiarle el contenido conservando la firma original.
+    const original = JSON.stringify({ type: 'email.bounced', data: { email_id: 'x' } })
+    const ts = String(Math.floor(Date.now() / 1000))
+
+    const res = await mandar({
+      cuerpo: JSON.stringify({ type: 'email.bounced', data: { email_id: 'OTRO' } }),
+      timestamp: ts,
+      firma: `v1,${firmar('msg_1', ts, original)}`,
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  test('una firma vieja se rechaza aunque sea válida', async () => {
+    // Sin ventana, una firma capturada sirve para siempre: el atacante
+    // reenvía el mismo cuerpo firmado cuando quiera.
+    const viejo = Math.floor(Date.now() / 1000) - 10 * 60
+
+    const res = await mandar({
+      cuerpo: { type: 'email.bounced', data: { email_id: 'x' } },
+      timestamp: viejo,
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  test('se firma el cuerpo CRUDO, no el reserializado', async () => {
+    // ESTE TEST EXISTE PORQUE SU AUSENCIA NO SE NOTABA.
+    //
+    // Al verificar por el lado negativo —cambiando el verificador para que
+    // firmara `JSON.stringify(JSON.parse(cuerpo))`— los 37 tests seguían en
+    // verde: todos los cuerpos de prueba se armaban con JSON.stringify, que
+    // round-trippea idéntico. O sea que el bloque entero no probaba lo único
+    // que de verdad importa de esta verificación.
+    //
+    // Un cuerpo real no round-trippea: Resend manda el JSON con SU formato, y
+    // reserializarlo cambia los bytes y la firma deja de coincidir SIEMPRE.
+    // Acá se usa un cuerpo con espacios después de los dos puntos, que
+    // JSON.stringify eliminaría.
+    const crudo = '{"type": "email.delivered", "data": {"email_id": "con-espacios"}}'
+
+    expect(JSON.stringify(JSON.parse(crudo))).not.toBe(crudo)
+
+    const res = await mandar({ cuerpo: crudo })
+
+    expect(res.statusCode).toBe(204)
+    expect(infos.find(e => /📬/.test(e.msg)).datos.messageId).toBe('con-espacios')
+  })
+
+  test('acepta cualquiera de las firmas de la lista', async () => {
+    // Svix manda varias durante una rotación de secreto: la vieja y la nueva
+    // conviven. Quedarse sólo con la primera haría fallar toda rotación.
+    const cuerpo = JSON.stringify({ type: 'email.delivered', data: { email_id: 'x' } })
+    const ts = String(Math.floor(Date.now() / 1000))
+    const ajena = Buffer.alloc(32, 3).toString('base64')
+
+    const res = await mandar({
+      cuerpo,
+      timestamp: ts,
+      firma: `v1,${ajena} v1,${firmar('msg_1', ts, cuerpo)}`,
+    })
+
+    expect(res.statusCode).toBe(204)
+  })
+
+  test('sin secreto en producción no se procesa nada', async () => {
+    const antes = process.env.NODE_ENV
+
+    delete process.env.RESEND_WEBHOOK_SECRET
+    process.env.NODE_ENV = 'production'
+
+    try {
+      const res = await mandar({ cuerpo: { type: 'email.bounced', data: { email_id: 'x' } } })
+
+      expect(res.statusCode).toBe(401)
+    } finally {
+      process.env.NODE_ENV = antes
+    }
+  })
+})
+
+describe('eventos de entrega de Resend · la ruta llega al controlador', () => {
+  test('está exenta de CSRF', async () => {
+    const { csrfExemptRoutes } = await import('../middlewares/csrfMiddleware.js')
+
+    const exenta = csrfExemptRoutes.some(
+      ruta => ruta.method === 'POST' && ruta.path.endsWith(config.RESEND_WEBHOOK_PATH),
+    )
+
+    expect(exenta).toBe(true)
+  })
+
+  test('la ruta registrada es la misma que se declara', async () => {
+    const { default: webhookRoutes } = await import('../routes/webhookRoutes.js')
+
+    const rutas = webhookRoutes.stack.filter(capa => capa.route).map(capa => capa.route.path)
+
+    expect(rutas).toContain(config.RESEND_WEBHOOK_ROUTE)
+  })
+
+  test('es una ruta distinta de las otras dos', async () => {
+    expect(config.RESEND_WEBHOOK_ROUTE).not.toBe(config.SENDGRID_WEBHOOK_ROUTE)
+    expect(config.RESEND_WEBHOOK_ROUTE).not.toBe(config.SES_WEBHOOK_ROUTE)
+  })
+})

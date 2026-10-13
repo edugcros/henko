@@ -147,6 +147,7 @@ const CATALOGO = [
     gravedad: 'critica',
     pista: forma,
     rompe: 'SendGrid no autentica',
+    esCredencial: true,
     // Sólo se exige si es el proveedor activo: con EMAIL_PROVIDER=resend esta
     // variable deja de ser crítica y pasa a ser el respaldo.
     siProveedor: 'sendgrid',
@@ -157,6 +158,7 @@ const CATALOGO = [
     gravedad: 'critica',
     pista: forma,
     rompe: 'Resend no autentica',
+    esCredencial: true,
     siProveedor: 'resend',
   },
   {
@@ -165,6 +167,7 @@ const CATALOGO = [
     gravedad: 'critica',
     pista: forma,
     rompe: 'Amazon SES no autentica',
+    esCredencial: true,
     siProveedor: 'ses',
   },
   {
@@ -173,13 +176,37 @@ const CATALOGO = [
     gravedad: 'critica',
     pista: forma,
     rompe: 'Amazon SES no autentica',
+    esCredencial: true,
     siProveedor: 'ses',
+  },
+  // Los rebotes, UNO POR PROVEEDOR Y NO LOS TRES JUNTOS.
+  //
+  // Agrupados en una sola entrada, tener cargada la clave de SendGrid daría
+  // por cubierto el webhook de Resend — y si Resend es el proveedor activo,
+  // los rebotes que no llegan son los suyos. La misma falsa tranquilidad que
+  // la detección de respaldo evita más abajo.
+  {
+    grupo: 'Correo',
+    nombres: ['SENDGRID_WEBHOOK_PUBLIC_KEY'],
+    gravedad: 'seria',
+    pista: forma,
+    rompe: 'no llegan los rebotes de SendGrid: un correo descartado se ve como entregado',
+    siProveedor: 'sendgrid',
   },
   {
     grupo: 'Correo',
-    nombres: ['SENDGRID_WEBHOOK_PUBLIC_KEY', 'SES_SNS_TOPIC_ARN'],
+    nombres: ['RESEND_WEBHOOK_SECRET'],
     gravedad: 'seria',
-    rompe: 'no llegan los rebotes: un correo aceptado y después descartado se ve como entregado',
+    pista: forma,
+    rompe: 'no llegan los rebotes de Resend: un correo descartado se ve como entregado',
+    siProveedor: 'resend',
+  },
+  {
+    grupo: 'Correo',
+    nombres: ['SES_SNS_TOPIC_ARN'],
+    gravedad: 'seria',
+    rompe: 'no llegan los rebotes de SES: un correo descartado se ve como entregado',
+    siProveedor: 'ses',
   },
 
   // ── Techos de gasto de IA ─────────────────────────────────────────────
@@ -371,7 +398,12 @@ for (const entrada of CATALOGO) {
 
     if (corta) faltantes[gravedad].push(etiqueta)
   } else {
-    const nota = esDeOtroProveedor ? ' (sería el respaldo de correo)' : ''
+    // El motivo por el que esta falta no es grave: no es el proveedor que
+    // está enviando. Se dice distinto según qué sea la variable — para una
+    // credencial, cargarla te DA un respaldo; para un webhook, no.
+    const nota = esDeOtroProveedor
+      ? ` (${entrada.esCredencial ? 'sería el respaldo de correo' : 'de un proveedor que no es el activo'})`
+      : ''
 
     filas.push({ ok: false, texto: `${ICONO[gravedad]} ${etiqueta} — ${entrada.rompe}${nota}` })
     faltantes[gravedad].push(etiqueta)
