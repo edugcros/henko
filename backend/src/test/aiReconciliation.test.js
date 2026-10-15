@@ -1561,3 +1561,178 @@ describe('ciclo de auditoría · mira si el libro está completo', () => {
     expect(resultado.balanced).toBe(true)
   })
 })
+
+// ─── LO QUE PAGÓ HENKO NO ES LO MISMO QUE «NO ES BYOK» ──────────────────────
+
+describe('reconciliación · las herramientas las paga la plataforma', () => {
+  const OTRO = '64b7f0000000000000000002'
+
+  test('una herramienta de un comercio BYOK cuenta como gasto de plataforma', async () => {
+    // EL CASO DESTRUCTIVO QUE CERRABA.
+    //
+    // «Con key propia el comercio le paga a Google, pero la herramienta la
+    // paga HENKO igual: la clave de Tavily es de la plataforma» — eso está
+    // escrito en recordToolSpend, y por eso esa función incrementa
+    // AiPlatformUsage aunque el comercio sea BYOK.
+    //
+    // Pero la fila del libro lleva el keySource del COMERCIO. Filtrando por
+    // `keySource != 'tenant'` quedaba afuera, así que reconstruir el contador
+    // BORRABA plata que HENKO pagó de verdad — y la auditoría posterior daba
+    // el número rebajado por bueno.
+    const period = '2061-01'
+
+    await AiConsumptionLedger.create([
+      // Tokens con key propia: esto NO lo paga HENKO.
+      {
+        tenantId: TENANT,
+        period,
+        event: 'consumed',
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: 1000,
+        unit: 'tokens',
+        operationId: 'byok-tokens',
+        keySource: 'tenant',
+        costUsd: 5,
+      },
+      // La herramienta del MISMO comercio: la clave de Tavily es nuestra.
+      {
+        tenantId: TENANT,
+        period,
+        event: 'consumed',
+        metric: AI_METRICS.MARKET_TOKENS,
+        amount: 2,
+        unit: 'toolCalls',
+        operationId: 'byok-tool',
+        keySource: 'tenant',
+        costUsd: 0.16,
+      },
+    ])
+
+    const informe = await rebuildPlatformProjection({ period })
+
+    // Los 5 de tokens quedan afuera; los 0,16 de la herramienta, adentro.
+    expect(informe.cost.ledger).toBeCloseTo(0.16, 6)
+
+    // Y la auditoría tiene que contar lo mismo: si las dos definiciones
+    // discreparan, el descuadre sería permanente y sin síntoma.
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.cost.ledgerSinByok).toBeCloseTo(0.16, 6)
+    expect(auditoria.cost.byok).toBeCloseTo(5, 6)
+  })
+
+  test('el barrido del libro distingue comercios con la misma clave', async () => {
+    // aiOperationModel lo dice: «dos comercios pueden derivar la misma clave
+    // de sus propios datos —el id de un job, el hash de una imagen— sin tener
+    // nada que ver entre sí». La verificación usaba un conjunto plano de
+    // operationId sin comercio, así que la fila faltante de uno quedaba tapada
+    // por la fila presente del otro — y el guard de «el libro está completo»
+    // decía que sí sobre un libro al que le faltaba plata.
+    const period = '2061-02'
+
+    await AiProviderCall.create({
+      tenantId: TENANT,
+      period,
+      operationId: 'clave-compartida',
+      callId: 'llamada-1',
+      metric: AI_METRICS.AGENT_TOKENS,
+      totalTokens: 100,
+      costUsd: 1,
+    })
+
+    // La MISMA clave compuesta, pero la fila es del OTRO comercio: la de
+    // TENANT se perdió. Antes esto se daba por presente.
+    await AiConsumptionLedger.create({
+      tenantId: OTRO,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 100,
+      unit: 'tokens',
+      operationId: 'clave-compartida:llamada-1',
+      keySource: 'platform',
+      costUsd: 1,
+    })
+
+    const informe = await backfillLedgerFromProviderCalls({ period })
+
+    expect(informe.missing).toHaveLength(1)
+    expect(informe.missing[0]).toMatchObject({
+      tenantId: TENANT,
+      operationId: 'clave-compartida:llamada-1',
+    })
+  })
+})
+
+describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
+  test('un consumo que entra durante el recálculo sobrevive', async () => {
+    // LA CARRERA, INYECTADA A PROPÓSITO.
+    //
+    // Entre el aggregate del libro y la escritura del contador pasan
+    // milisegundos, y ahí puede entrar una operación de IA que incrementa el
+    // mismo documento. Con `$set` de la foto ese incremento se pisa y el
+    // disyuntor queda midiendo de menos — el problema que esta función viene
+    // a arreglar, reintroducido por el arreglo.
+    //
+    // Se simula envolviendo el aggregate para que incremente el contador justo
+    // DESPUÉS de leer el libro y antes de que se escriba. Sin eso, `$set` y
+    // `$inc` dan el mismo resultado y el test no probaría nada.
+    const period = '2061-03'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 100,
+      unit: 'tokens',
+      operationId: 'base',
+      keySource: 'platform',
+      costUsd: 1,
+    })
+
+    await AiPlatformUsage.updateOne(
+      { period },
+      { $set: { tokens: 0, estimatedCostUsd: 0 } },
+      { upsert: true },
+    )
+
+    const aggregateOriginal = AiConsumptionLedger.aggregate.bind(AiConsumptionLedger)
+    let inyectado = false
+
+    AiConsumptionLedger.aggregate = function (...args) {
+      const consulta = aggregateOriginal(...args)
+      const thenOriginal = consulta.then.bind(consulta)
+
+      consulta.then = (resolve, reject) =>
+        thenOriginal(async filas => {
+          // Una sola vez: la operación concurrente que llega en el hueco.
+          if (!inyectado) {
+            inyectado = true
+            await AiPlatformUsage.updateOne(
+              { period },
+              { $inc: { tokens: 50, estimatedCostUsd: 0.5 } },
+            )
+          }
+
+          return resolve(filas)
+        }, reject)
+
+      return consulta
+    }
+
+    try {
+      await rebuildPlatformProjection({ period, apply: true })
+    } finally {
+      AiConsumptionLedger.aggregate = aggregateOriginal
+    }
+
+    const contador = await AiPlatformUsage.findOne({ period }).lean()
+
+    expect(inyectado).toBe(true)
+    // El libro vale 1 USD / 100 tokens, y en el medio entraron 0,5 y 50 más.
+    // Con `$set` quedaría en 1 y 100: el consumo concurrente, perdido.
+    expect(contador.estimatedCostUsd).toBeCloseTo(1.5, 6)
+    expect(contador.tokens).toBe(150)
+  })
+})

@@ -67,16 +67,35 @@ import {
 } from '../services/ai/aiAccountingService.js'
 import { getCurrentPeriod, isValidPeriod } from '../services/ai/aiPeriod.js'
 
+/**
+ * El período a corregir. Sin la bandera, el mes en curso.
+ *
+ * SE DISTINGUE «NO LA PASÓ» DE «LA PASÓ MAL», Y NO ES UNA SUTILEZA
+ *
+ * Antes esto miraba sólo el valor: `--periodo=` daba cadena vacía y caía al
+ * mes actual, y `--periodo=2026-09=extra` se truncaba a un `2026-09`
+ * perfectamente válido. En una invocación con --apply armada desde una
+ * variable de shell que quedó vacía, eso reescribe el contador del MES EN
+ * CURSO creyendo que corrige uno cerrado — el error más caro que puede
+ * cometer este script, y en silencio.
+ *
+ * Ahora la presencia de la bandera y la validez del valor se comprueban por
+ * separado: si la pasaste, tiene que estar bien.
+ */
 const leerPeriodo = () => {
-  const arg = process.argv.find(a => a.startsWith('--periodo='))
-  const valor = arg?.split('=')[1]?.trim()
+  const arg = process.argv.find(a => a === '--periodo' || a.startsWith('--periodo='))
 
-  if (!valor) return getCurrentPeriod()
+  if (!arg) return getCurrentPeriod()
 
-  // Un período inválido se rechaza en vez de caer al mes actual en silencio:
-  // corregir el contador del mes equivocado es peor que no corregir nada.
+  // Se corta en el PRIMER '=' y se conserva el resto tal cual, para que
+  // '2026-09=extra' llegue entero a la validación y la falle, en vez de
+  // perder la cola y pasar.
+  const valor = arg.slice('--periodo='.length).trim()
+
   if (!isValidPeriod(valor)) {
-    throw new Error(`--periodo="${valor}" no es un período válido. Se espera YYYY-MM.`)
+    throw new Error(
+      `--periodo="${valor}" no es un período válido. Se espera YYYY-MM, por ejemplo 2026-09.`,
+    )
   }
 
   return valor
@@ -108,10 +127,32 @@ const run = async () => {
       )
     })
 
-  if (auditoria.balanced) {
+  /**
+   * EL DESVÍO DE TOKENS NO ENTRA EN `balanced`, Y HAY UN DISYUNTOR QUE LO MIRA.
+   *
+   * `auditAccounting` compara PLATA: los tres totales en dólares. Si una
+   * escritura parcial dejó mal el contador de TOKENS pero el de dólares
+   * coincide, `balanced` da true — y salir acá dejaría el techo de volumen
+   * mal contado sin que nada vuelva a mirarlo.
+   *
+   * Por eso se le pregunta además a la reconciliación en modo lectura, que sí
+   * compara las dos magnitudes. Dos preguntas distintas, las dos antes de
+   * decidir que no hay nada que hacer.
+   */
+  const previo = await rebuildPlatformProjection({ period })
+
+  if (auditoria.balanced && !previo.hasDrift) {
     logger.info('[RECONCILIAR IA] Las cuentas cuadran: no hay nada que corregir', { period })
     await mongoose.disconnect()
     return
+  }
+
+  if (auditoria.balanced) {
+    logger.warn('[RECONCILIAR IA] La plata cuadra pero el contador de TOKENS no', {
+      period,
+      tokens: previo.tokens,
+      nota: 'El techo de volumen se mide con este número.',
+    })
   }
 
   // ── 2. ¿El libro está completo? ────────────────────────────────────────
@@ -124,14 +165,33 @@ const run = async () => {
   // por el que un comercio se quede sin IA—, así que una fila puede faltar.
   // Reescribir el agregado desde un libro incompleto no arregla el desvío:
   // reemplaza el número bueno por uno más chico y borra la evidencia.
+  //
+  // Y SI LA VERIFICACIÓN FALLA, FALLA CERRADO.
+  //
+  // Esto devolvía `null` ante un error y seguía de largo: `faltanFilas`
+  // quedaba en cero y `--apply` atravesaba la guarda. O sea que el único
+  // control que impide reescribir el contador desde un libro incompleto se
+  // desactivaba justo cuando no se podía saber si el libro estaba completo —
+  // una caída transitoria de Mongo alcanzaba. «No sé» no es «está todo bien».
   const relleno = await backfillLedgerFromProviderCalls({ period }).catch(error => {
-    logger.warn('[RECONCILIAR IA] No se pudo verificar si el libro está completo', {
+    logger.error('[RECONCILIAR IA] No se pudo verificar si el libro está completo: NO se corrige', {
+      period,
       error: error.message,
+      queHacer:
+        'Sin esa verificación no se puede saber si el libro está entero, y corregir contra uno ' +
+        'incompleto destruye el número bueno. Probá de nuevo cuando la base responda.',
     })
+
     return null
   })
 
-  const faltanFilas = Number(relleno?.missing?.length || 0)
+  if (!relleno) {
+    await mongoose.disconnect()
+    process.exitCode = 1
+    return
+  }
+
+  const faltanFilas = Number(relleno.missing?.length || 0)
 
   if (faltanFilas > 0) {
     logger.error('[RECONCILIAR IA] El libro está incompleto: NO se corrige', {

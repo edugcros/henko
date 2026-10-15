@@ -304,17 +304,69 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
  * Solo cuenta las filas de tokens que NO son de una key del comercio: un
  * consumo BYOK gasta la cuota de Google del comercio, no la de la plataforma.
  */
+/**
+ * QUÉ FILAS DEL LIBRO LAS PAGÓ HENKO, QUE NO ES LO MISMO QUE «NO ES BYOK».
+ *
+ * EL CASO QUE ROMPÍA, Y ERA DESTRUCTIVO
+ *
+ * «Con key propia el comercio le paga a Google, pero la herramienta la paga
+ * HENKO igual: la clave de Tavily es de la plataforma, no del comercio.» Eso
+ * está escrito en recordToolSpend, y por eso esa función incrementa
+ * AiPlatformUsage aunque el comercio sea BYOK.
+ *
+ * Pero la fila que escribe al libro lleva el `keySource` del COMERCIO
+ * ('tenant'), porque describe con qué key corrió la operación. Filtrar por
+ * `keySource != 'tenant'` dejaba esas filas afuera: el contador tenía ese
+ * gasto y el libro reconstruido no.
+ *
+ * Con `apply` eso no es un informe inexacto, es destructivo — reescribe el
+ * contador SIN el costo de las herramientas de los comercios BYOK, borrando
+ * plata que HENKO pagó de verdad, y la auditoría posterior da el número
+ * rebajado por bueno.
+ *
+ * Hoy no muerde porque no hay ningún comercio con key propia; muerde el día
+ * que se active el primero. Las dos definiciones viven acá juntas y no una en
+ * cada función, porque si discrepan el descuadre es permanente y sin síntoma.
+ */
+const PAGADO_POR_LA_PLATAFORMA = {
+  $or: [{ keySource: { $ne: 'tenant' } }, { unit: 'toolCalls' }],
+}
+
+/** La misma regla, como expresión, para los `$group` que separan BYOK. */
+const ES_BYOK = {
+  $and: [
+    { $eq: [{ $ifNull: ['$keySource', 'platform'] }, 'tenant'] },
+    { $ne: [{ $ifNull: ['$unit', 'units'] }, 'toolCalls'] },
+  ],
+}
+
 export const rebuildPlatformProjection = async ({ period, apply = false }) => {
   if (!period) throw new Error('rebuildPlatformProjection requiere period')
 
   const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+
+  /**
+   * EL CONTADOR SE LEE PRIMERO, Y EL ORDEN ES PARTE DE LA CORRECCIÓN.
+   *
+   * Esto leía el libro y DESPUÉS el contador. Con esa secuencia, una
+   * operación que entra en el medio queda contada de los dos lados de la
+   * resta —su fila todavía no está en el libro pero su incremento ya está en
+   * el contador— así que el desvío la toma por error y la corrección se la
+   * come. Da igual que la escritura sea `$set` o `$inc`: el número ya venía
+   * mal calculado.
+   *
+   * Leyendo el contador primero, todo lo que entra después queda fuera de la
+   * foto y sobrevive como un `$inc` más encima de la corrección. El resultado
+   * es `libro + lo que entró`, que es exactamente la verdad.
+   */
+  const almacenado = await AiPlatformUsage.findOne({ period }).lean()
 
   const [fila] = await AiConsumptionLedger.aggregate([
     {
       $match: {
         period,
         event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
-        keySource: { $ne: 'tenant' },
+        ...PAGADO_POR_LA_PLATAFORMA,
       },
     },
     {
@@ -338,8 +390,6 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
       },
     },
   ]).option({ ignoreTenant: true, platformScope: 'platform:reconciliacion-ia' })
-
-  const almacenado = await AiPlatformUsage.findOne({ period }).lean()
 
   const tokensLedger = Math.round(Number(fila?.tokens || 0))
   const tokensAlmacenados = Math.round(Number(almacenado?.tokens || 0))
@@ -368,9 +418,31 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
 
   if (!apply || !hasDrift) return report
 
+  /**
+   * SE CORRIGE CON $inc DEL DESVÍO, NO CON $set DE LA FOTO.
+   *
+   * LA CARRERA QUE CERRABA, SOBRE EL CONTADOR DE LA PLATA
+   *
+   * Entre el `aggregate` de arriba y esta escritura pasan milisegundos, y en
+   * ese hueco una operación de IA puede incrementar el mismo documento. Con
+   * `$set` de la foto, ese incremento se pisa: el gasto desaparece del
+   * contador y el disyuntor queda midiendo de menos — exactamente el problema
+   * que esta función viene a arreglar, reintroducido por el arreglo.
+   *
+   * `$inc` del desvío es atómico y CONMUTA con los incrementos normales: el
+   * consumo que entra en el medio sobrevive, porque se suma en vez de
+   * perderse. El resultado es el mismo cuando no hay concurrencia, y es el
+   * correcto cuando la hay.
+   *
+   * El upsert conserva `$set` para los campos del documento nuevo: si no
+   * existía, no hay nada que pisar y el desvío ES el total.
+   */
   await AiPlatformUsage.updateOne(
     { period },
-    { $set: { tokens: tokensLedger, estimatedCostUsd: costoLedger } },
+    {
+      $inc: { tokens: -tokenDrift, estimatedCostUsd: -costDrift },
+      $setOnInsert: { period },
+    },
     { upsert: true },
   )
 
@@ -447,14 +519,39 @@ export const backfillLedgerFromProviderCalls = async ({
     return { period, checked: 0, missing: [], applied: false, written: 0 }
   }
 
-  const enElLibro = new Set(
-    await AiConsumptionLedger.distinct('operationId', {
-      period,
-      event: LEDGER_EVENT.CONSUMED,
-    }).setOptions({ ignoreTenant: true, platformScope: 'platform:relleno-libro' }),
-  )
+  /**
+   * Qué filas ya están, POR COMERCIO Y NO SÓLO POR CLAVE.
+   *
+   * EL FALSO NEGATIVO QUE CERRABA
+   *
+   * Esto usaba `distinct('operationId')` con ignoreTenant: un conjunto plano
+   * de claves de TODOS los comercios. La unicidad del libro, en cambio, es
+   * (tenantId, operationId) — y aiOperationModel documenta por qué: «dos
+   * comercios pueden derivar la misma clave de sus propios datos —el id de un
+   * job, el hash de una imagen— sin tener nada que ver entre sí».
+   *
+   * O sea que si al comercio A se le perdía la fila de una operación cuya
+   * clave compuesta también existe para el comercio B, el barrido la daba por
+   * presente. Dos consecuencias, y la segunda es la grave: no se reponía esa
+   * fila, y el guard de «el libro está completo» que usa reconcileAiAccounting
+   * decía que sí sobre un libro al que le faltaba el gasto de A.
+   */
+  const clavePorComercio = (tenantId, operationId, callId) =>
+    `${String(tenantId)}|${claveDeLibro(operationId, callId)}`
 
-  const faltantes = llamadas.filter(ll => !enElLibro.has(claveDeLibro(ll.operationId, ll.callId)))
+  const presentes = await AiConsumptionLedger.find({
+    period,
+    event: LEDGER_EVENT.CONSUMED,
+  })
+    .select('tenantId operationId')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:relleno-libro' })
+    .lean()
+
+  const enElLibro = new Set(presentes.map(fila => `${String(fila.tenantId)}|${fila.operationId}`))
+
+  const faltantes = llamadas.filter(
+    ll => !enElLibro.has(clavePorComercio(ll.tenantId, ll.operationId, ll.callId)),
+  )
 
   const report = {
     period,
@@ -569,7 +666,10 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
       { $match: { period } },
       {
         $group: {
-          _id: { $eq: [{ $ifNull: ['$keySource', 'platform'] }, 'tenant'] },
+          // La MISMA regla que usa rebuildPlatformProjection, y por eso es una
+          // constante compartida: una herramienta la paga HENKO aunque la
+          // operación haya corrido con la key del comercio.
+          _id: ES_BYOK,
           costUsd: { $sum: conSigno('$costUsd') },
         },
       },
@@ -596,7 +696,7 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
      * uno parecido.
      */
     AiConsumptionLedger.aggregate([
-      { $match: { period, keySource: { $ne: 'tenant' } } },
+      { $match: { period, ...PAGADO_POR_LA_PLATAFORMA } },
       {
         $group: {
           _id: { metric: '$metric', unit: { $ifNull: ['$unit', 'units'] } },
