@@ -33,6 +33,13 @@
 
 import dotenv from 'dotenv'
 
+// La MISMA función que usa el runtime para armar el ARN del inquilino. Se
+// importa de emailShared porque ese módulo no tiene dependencias: traerla
+// desde emailProviders arrastraría el logger y con él config/env.js, que en
+// producción lanza ante la primera variable que falta — justo lo que este
+// script existe para informar sin morirse.
+import { isValidAwsAccountId } from '../services/email/emailShared.js'
+
 // Las mismas dos líneas que config/env.js, y a propósito: hay que leer el
 // entorno ANTES de importarlo. En Render no hay archivo .env —las variables
 // vienen del entorno del proceso— así que esto es un no-op allá.
@@ -220,6 +227,10 @@ const CATALOGO = [
     nombres: ['AWS_ACCOUNT_ID'],
     gravedad: 'seria',
     pista: forma,
+    // Doce dígitos exactos: un alias de cuenta pasa el "está cargada" y
+    // falla al armar el ARN, degradando a reputación compartida sin avisar.
+    valido: isValidAwsAccountId,
+    malFormado: 'tiene que ser el número de cuenta de AWS: doce dígitos exactos',
     rompe:
       'sin el número de cuenta no se arma el ARN y NO se aísla la reputación por comercio: ' +
       'una tienda que rebota puede frenar el envío de todas',
@@ -420,16 +431,36 @@ for (const entrada of CATALOGO) {
 
   if (cargada) {
     const pista = entrada.pista ? entrada.pista(cargada) : ''
-    const corta = entrada.minimo && largo(cargada) < entrada.minimo
+
+    /**
+     * ESTAR CARGADA NO ES ESTAR BIEN, Y DARLO POR EQUIVALENTE YA COSTÓ.
+     *
+     * Este chequeo miraba sólo presencia. Con `AWS_ACCOUNT_ID` puesto a un
+     * alias de cuenta en vez de los doce dígitos, el informe decía ✅ y el
+     * runtime lo trataba como ausente: el ARN no se arma, la asociación del
+     * inquilino falla, y el envío degrada a reputación compartida EN
+     * SILENCIO. O sea que el preflight declaraba sana justo la migración que
+     * no iba a aislar nada — el mismo defecto que vino a cerrar.
+     *
+     * `valido` lo comprueba con la MISMA función que usa el runtime, no con
+     * una copia: dos reglas que tienen que coincidir y viven en dos archivos
+     * terminan discrepando, que es exactamente cómo apareció esto.
+     */
+    const problema =
+      entrada.minimo && largo(cargada) < entrada.minimo
+        ? `${pista}, y hacen falta al menos ${entrada.minimo}`
+        : entrada.valido && !entrada.valido(process.env[cargada])
+          ? entrada.malFormado
+          : null
 
     filas.push({
-      ok: !corta,
-      texto: corta
-        ? `❌ ${etiqueta} — ${pista}, y hacen falta al menos ${entrada.minimo}`
+      ok: !problema,
+      texto: problema
+        ? `❌ ${etiqueta} — ${problema}`
         : `✅ ${cargada}${pista ? ` — ${pista}` : ''}`,
     })
 
-    if (corta) faltantes[gravedad].push(etiqueta)
+    if (problema) faltantes[gravedad].push(etiqueta)
   } else {
     // El motivo por el que esta falta no es grave: no es el proveedor que
     // está enviando. Se dice distinto según qué sea la variable — para una

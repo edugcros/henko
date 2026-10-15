@@ -9,6 +9,31 @@
 
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * El número de cuenta de AWS: doce dígitos, ni uno más ni uno menos.
+ *
+ * POR QUÉ VIVE ACÁ Y NO AL LADO DE QUIEN LO USA
+ *
+ * Lo necesitan dos lugares que NO se pueden importar entre sí:
+ *
+ *   arnDeSes (emailProviders)   lo exige para armar el ARN del inquilino
+ *   checkEnv (script)           lo comprueba ANTES de desplegar
+ *
+ * El script no puede importar emailProviders porque eso arrastra el logger y
+ * con él config/env.js, que en producción LANZA ante la primera variable que
+ * falta — justo lo que el script existe para informar sin morirse. Y este
+ * módulo no tiene dependencias, así que es el único punto común.
+ *
+ * Que estuvieran separados ya costó: el preflight daba por buena cualquier
+ * cadena no vacía mientras el runtime exigía el formato, así que un alias de
+ * cuenta pasaba el chequeo, fallaba al armar el ARN, y el envío degradaba a
+ * reputación compartida EN SILENCIO. El chequeo declaraba sana una migración
+ * que no aislaba nada.
+ */
+export const AWS_ACCOUNT_ID_REGEX = /^\d{12}$/
+
+export const isValidAwsAccountId = value => AWS_ACCOUNT_ID_REGEX.test(String(value ?? '').trim())
+
 export const normalizeEmail = value =>
   String(value || '')
     .trim()

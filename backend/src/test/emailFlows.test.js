@@ -831,6 +831,33 @@ describe('aislamiento por comercio · se sabe si está activo de verdad', () => 
     expect(estadoDeAislamiento().faltan).toEqual(['SES_CONFIGURATION_SET'])
   })
 
+  test('la regla del número de cuenta es UNA sola para los tres que la usan', async () => {
+    // LA SEPARACIÓN YA COSTÓ UNA VEZ.
+    //
+    // El runtime exigía doce dígitos y el preflight sólo miraba que la
+    // variable no estuviera vacía, así que un alias de cuenta pasaba el
+    // chequeo previo al deploy, fallaba al armar el ARN, y el envío degradaba
+    // a reputación compartida sin avisar: el chequeo declaraba sana
+    // justamente la migración que no iba a aislar nada.
+    //
+    // Ahora la regla vive en emailShared —el único módulo sin dependencias
+    // que los tres pueden importar— y la usan arnDeSes, estadoDeAislamiento
+    // y checkEnv.
+    const { isValidAwsAccountId } = await import('../services/email/emailShared.js')
+
+    expect(isValidAwsAccountId('123456789012')).toBe(true)
+    expect(isValidAwsAccountId(' 123456789012 ')).toBe(true)
+
+    // Un alias de cuenta: lo que un humano escribe cuando no sabe que pide
+    // el número.
+    expect(isValidAwsAccountId('mi-cuenta-aws')).toBe(false)
+    // Once dígitos: el error que no se ve a simple vista.
+    expect(isValidAwsAccountId('12345678901')).toBe(false)
+    expect(isValidAwsAccountId('1234567890123')).toBe(false)
+    expect(isValidAwsAccountId('')).toBe(false)
+    expect(isValidAwsAccountId(undefined)).toBe(false)
+  })
+
   test('con todo cargado, está listo', async () => {
     const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
 
