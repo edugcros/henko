@@ -43,6 +43,7 @@ import AiOperation from '../../models/aiOperationModel.js'
 import AiProviderCall, { CALL_ID } from '../../models/aiProviderCallModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import AiUsage from '../../models/aiUsageModel.js'
+import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { AI_METRICS, AI_METRIC_LIST } from './aiPlanPolicy.js'
 import { getCurrentPeriod } from './aiPeriod.js'
@@ -289,11 +290,33 @@ export const rebuildTenantProjection = async ({ tenantId, period, apply = false 
    * desvío se vuelve a medir en cada corrida: la segunda vez vale cero.
    */
   const incrementos = { estimatedCostUsd: -costDrift }
+  // El filtro lleva los valores leídos, por el mismo motivo que en la
+  // proyección de plataforma: `$inc` no pisa lo concurrente pero tampoco
+  // vuelve coherentes dos lecturas independientes. Si algo cambió desde la
+  // foto, no se escribe y se informa.
+  const filtro = { tenantId, period, estimatedCostUsd: costoAlmacenado }
+
   for (const [metric, valores] of Object.entries(counters)) {
-    if (valores.drift !== 0) incrementos[`counters.${metric}`] = -valores.drift
+    if (valores.drift === 0) continue
+
+    incrementos[`counters.${metric}`] = -valores.drift
+    filtro[`counters.${metric}`] = valores.stored
   }
 
-  await AiUsage.updateOne({ tenantId, period }, { $inc: incrementos }).setOptions({ tenantId })
+  const escritura = await AiUsage.updateOne(filtro, { $inc: incrementos }).setOptions({ tenantId })
+
+  if (escritura.matchedCount === 0) {
+    logger.warn(
+      '[AI RECONCILE] El contador del comercio cambió durante el cálculo: no se corrigió',
+      {
+        tenantId: String(tenantId),
+        period,
+        nota: 'Hubo consumo concurrente. Volvé a correrlo con el sistema quieto.',
+      },
+    )
+
+    return { ...report, applied: false, raced: true }
+  }
 
   logger.warn('[AI RECONCILE] Contadores corregidos desde el ledger', {
     tenantId: String(tenantId),
@@ -452,14 +475,40 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
    * El upsert conserva `$set` para los campos del documento nuevo: si no
    * existía, no hay nada que pisar y el desvío ES el total.
    */
-  await AiPlatformUsage.updateOne(
-    { period },
+  /**
+   * Y LA CORRECCIÓN VA CONDICIONADA A QUE LA FOTO SIGA SIENDO LA FOTO.
+   *
+   * `$inc` evita PISAR un incremento concurrente, pero no vuelve coherentes
+   * dos lecturas independientes. El caso: se lee el contador en 0, una
+   * operación lo sube a 1 y su fila del libro entra antes de la agregación,
+   * así que el desvío sale −1 y el `$inc` deja el contador en 2. Donde antes
+   * se perdía plata, ahora se contaba dos veces.
+   *
+   * El filtro lleva los valores leídos: si el documento cambió desde
+   * entonces, no hay match, no se escribe nada y se informa. Mejor no
+   * corregir y decirlo que corregir mal en silencio — y como el desvío se
+   * vuelve a medir en cada corrida, repetirla cuando el sistema está quieto
+   * la resuelve.
+   */
+  const escritura = await AiPlatformUsage.updateOne(
+    almacenado
+      ? { period, tokens: tokensAlmacenados, estimatedCostUsd: costoAlmacenado }
+      : { period },
     {
       $inc: { tokens: -tokenDrift, estimatedCostUsd: -costDrift },
       $setOnInsert: { period },
     },
-    { upsert: true },
+    { upsert: !almacenado },
   )
+
+  if (almacenado && escritura.matchedCount === 0) {
+    logger.warn('[AI RECONCILE] El contador cambió durante el cálculo: no se corrigió', {
+      period,
+      nota: 'Hubo consumo concurrente. Volvé a correrlo con el sistema quieto.',
+    })
+
+    return { ...report, applied: false, raced: true }
+  }
 
   logger.error('[AI RECONCILE] Contador de plataforma corregido desde el ledger', {
     period,
@@ -814,7 +863,52 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
    * siendo el total real; lo que cambia es contra qué se lo compara.
    */
   const conContador = new Set((comercios?.[0]?.comercios || []).map(String))
-  const esHuerfano = fila => !conContador.has(String(fila._id?.tenantId))
+
+  /**
+   * NO ALCANZA CON QUE FALTE EL CONTADOR: HAY QUE MIRAR SI EL COMERCIO EXISTE.
+   *
+   * «Sin contador» tiene DOS causas y son opuestas:
+   *
+   *   el comercio ya no está       → huérfano legítimo, nada que reparar
+   *   el comercio existe y activo  → se perdió la escritura del contador
+   *
+   * La segunda pasa de verdad: recordAiConsumption envuelve el update de
+   * AiUsage en un try/catch que solo loguea, y escribe el libro igual. Si
+   * esas dos se tratan igual, la auditoría EXIME un contador que se puede —y
+   * se debe— reparar, y encima devuelve `balanced: true`. Sería cambiar un
+   * falso positivo permanente por un falso negativo silencioso, que es peor.
+   *
+   * Tampoco sirve asumir que dar de baja borra el contador: deleteTenant solo
+   * mueve `status` a 'deleted' y no toca AiUsage. O sea que un comercio dado
+   * de baja CONSERVA su contador y se sigue comparando normalmente — el
+   * huérfano real es el que ya no tiene documento, como el que apareció el
+   * 15/10/2026: borrado a mano de la base.
+   */
+  const sinContador = [
+    ...new Set(
+      (libro || [])
+        .map(f => f._id?.tenantId)
+        .filter(id => id && !conContador.has(String(id)))
+        .map(String),
+    ),
+  ]
+
+  const vivos = sinContador.length
+    ? await Tenant.find({ _id: { $in: sinContador }, status: { $ne: 'deleted' } })
+        .select('_id')
+        .setOptions({ ignoreTenant: true, platformScope: 'platform:auditoria-contable-ia' })
+        .lean()
+        .then(filas => new Set(filas.map(t => String(t._id))))
+        .catch(() => new Set())
+    : new Set()
+
+  // Huérfano SOLO si además el comercio no existe o está dado de baja. Si
+  // sigue vivo, su gasto se compara como el de cualquiera y la diferencia se
+  // reporta: es un contador que falta, no una baja.
+  const esHuerfano = fila => {
+    const id = String(fila._id?.tenantId)
+    return !conContador.has(id) && !vivos.has(id)
+  }
 
   const sumar = filtro =>
     (libro || []).filter(filtro).reduce((total, f) => total + Number(f.costUsd || 0), 0)
@@ -893,6 +987,11 @@ export const auditAccounting = async (period = getCurrentPeriod()) => {
       // agregado por comercio dejó de existir. Se informa para que el total
       // del libro siga cerrando y para que se vea cuánto es.
       orphanUsd: round(huerfanoCost, 6),
+      // Comercios VIVOS cuyo contador no existe en este período: una
+      // escritura de AiUsage que se perdió. No se exime —se compara y la
+      // diferencia aparece en findings— y además se nombra, porque es
+      // reparable con rebuildTenantProjection y sin el id no se sabe a quién.
+      missingCounterTenants: sinContador.filter(id => vivos.has(id)),
       platformUsage: round(platformCost, 6),
       platformReserved: round(reservedCost, 6),
       // Lo que el disyuntor realmente mira. Si ESTE número cuadra con el

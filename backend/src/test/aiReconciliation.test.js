@@ -23,6 +23,7 @@ const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
+const { default: Tenant } = await import('../models/tenantModel.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
 const {
@@ -733,6 +734,8 @@ describe('auditoría contable · detectar, no corregir', () => {
       // Gasto de comercios sin contador. Cero acá: el comercio de esta prueba
       // existe y tiene el suyo. Ver el bloque de huérfanos más abajo.
       orphanUsd: 0,
+      // Y ninguno vivo al que le falte el contador entero.
+      missingCounterTenants: [],
       // LO COMPROMETIDO VA EN EL INFORME AUNQUE NO ENTRE EN LA COMPARACIÓN.
       //
       // Se compara contra `platformUsage` —lo gastado— porque una reserva sin
@@ -1730,14 +1733,74 @@ describe('auditoría · el gasto de un comercio dado de baja', () => {
     expect(auditoria.findings).toEqual([])
     expect(auditoria.balanced).toBe(true)
   })
+
+  test('un comercio VIVO sin contador NO se exime: es una escritura perdida', async () => {
+    // CAMBIAR UN FALSO POSITIVO POR UN FALSO NEGATIVO HABRÍA SIDO PEOR.
+    //
+    // «Sin contador» tiene dos causas opuestas. recordAiConsumption envuelve
+    // el update de AiUsage en un try/catch que sólo loguea y escribe el libro
+    // igual, así que un comercio ACTIVO puede quedarse sin contador — y eso
+    // se repara. Si se eximiera por el solo hecho de faltar, la auditoría
+    // devolvería `balanced: true` sobre un contador que se puede arreglar.
+    //
+    // (Y dar de baja tampoco borra el contador: deleteTenant sólo mueve
+    // `status`. El huérfano real es el que ya no tiene documento.)
+    const period = '2062-06'
+    const VIVO = new mongoose.Types.ObjectId()
+
+    await Tenant.collection.insertOne({
+      _id: VIVO,
+      name: 'Sigue Operando',
+      status: 'active',
+      domains: [],
+    })
+
+    await AiConsumptionLedger.create({
+      tenantId: VIVO,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 100,
+      unit: 'tokens',
+      operationId: 'del-vivo',
+      keySource: 'platform',
+      costUsd: 2,
+    })
+
+    const auditoria = await auditAccounting(period)
+
+    // No cuenta como huérfano...
+    expect(auditoria.cost.orphanUsd).toBe(0)
+    // ...se lo nombra para poder repararlo...
+    expect(auditoria.cost.missingCounterTenants).toEqual([String(VIVO)])
+    // ...y la diferencia se reporta en vez de taparse.
+    expect(auditoria.balanced).toBe(false)
+
+    await Tenant.collection.deleteOne({ _id: VIVO })
+  })
 })
 
+// ─── CONSUMO CONCURRENTE: NO CORREGIR A CIEGAS ──────────────────────────────
+//
+// POR QUÉ EL CONTRATO ES «NO ESCRIBE», Y NO «ESCRIBE BIEN»
+//
+// La corrección se calcula con DOS lecturas independientes —el contador y el
+// libro— y el consumo normal escribe en los dos lados sin atomicidad entre
+// ellos. Según cómo se intercalen, el mismo arreglo puede quedarse corto o
+// contar de más:
+//
+//   $set de la foto     pisa el incremento concurrente     → se pierde plata
+//   $inc del desvío     si la fila del libro llegó antes
+//                       que la lectura del contador        → se cuenta dos veces
+//
+// No hay orden de lecturas que salve los dos casos. Así que la escritura va
+// CONDICIONADA a que el contador siga igual que cuando se lo leyó: si cambió,
+// no se escribe y se avisa. Mejor no corregir y decirlo que corregir mal en
+// silencio — y como el desvío se vuelve a medir en cada corrida, repetirla
+// con el sistema quieto la resuelve.
+
 describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
-  test('el contador de un comercio tampoco pisa lo concurrente', async () => {
-    // El mismo defecto que el de plataforma, en la función de al lado: leía
-    // el libro antes que el contador y escribía con $set. Acá pisar es peor
-    // en un sentido: `counters` son CUOTA, así que un incremento perdido le
-    // regala consumo al comercio.
+  test('el contador de un comercio no se corrige si cambió en el medio', async () => {
     const period = '2061-04'
 
     await AiConsumptionLedger.create({
@@ -1781,8 +1844,10 @@ describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
       return consulta
     }
 
+    let informe
+
     try {
-      await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
+      informe = await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
     } finally {
       AiConsumptionLedger.aggregate = aggregateOriginal
     }
@@ -1792,22 +1857,23 @@ describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
       .lean()
 
     expect(inyectado).toBe(true)
-    expect(contador.estimatedCostUsd).toBeCloseTo(1.5, 6)
-    expect(contador.counters.agentTokens).toBe(150)
+    expect(informe.raced).toBe(true)
+    expect(informe.applied).toBe(false)
+
+    // Lo concurrente quedó intacto: no se pisó ni se duplicó. Son contadores
+    // de CUOTA, así que cualquiera de los dos errores le cambia el cupo al
+    // comercio.
+    expect(contador.estimatedCostUsd).toBeCloseTo(0.5, 6)
+    expect(contador.counters.agentTokens).toBe(50)
   })
 
-  test('un consumo que entra durante el recálculo sobrevive', async () => {
+  test('el contador de plataforma no se corrige si cambió en el medio', async () => {
     // LA CARRERA, INYECTADA A PROPÓSITO.
     //
-    // Entre el aggregate del libro y la escritura del contador pasan
-    // milisegundos, y ahí puede entrar una operación de IA que incrementa el
-    // mismo documento. Con `$set` de la foto ese incremento se pisa y el
-    // disyuntor queda midiendo de menos — el problema que esta función viene
-    // a arreglar, reintroducido por el arreglo.
-    //
-    // Se simula envolviendo el aggregate para que incremente el contador justo
-    // DESPUÉS de leer el libro y antes de que se escriba. Sin eso, `$set` y
-    // `$inc` dan el mismo resultado y el test no probaría nada.
+    // Se envuelve el aggregate para que una operación incremente el contador
+    // justo entre las dos lecturas. Sin inyectarla, cualquier implementación
+    // —$set, $inc o condicional— da el mismo resultado y el test no probaría
+    // nada.
     const period = '2061-03'
 
     await AiConsumptionLedger.create({
@@ -1852,8 +1918,10 @@ describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
       return consulta
     }
 
+    let informe
+
     try {
-      await rebuildPlatformProjection({ period, apply: true })
+      informe = await rebuildPlatformProjection({ period, apply: true })
     } finally {
       AiConsumptionLedger.aggregate = aggregateOriginal
     }
@@ -1861,9 +1929,13 @@ describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
     const contador = await AiPlatformUsage.findOne({ period }).lean()
 
     expect(inyectado).toBe(true)
-    // El libro vale 1 USD / 100 tokens, y en el medio entraron 0,5 y 50 más.
-    // Con `$set` quedaría en 1 y 100: el consumo concurrente, perdido.
-    expect(contador.estimatedCostUsd).toBeCloseTo(1.5, 6)
-    expect(contador.tokens).toBe(150)
+    expect(informe.raced).toBe(true)
+    expect(informe.applied).toBe(false)
+
+    // Queda lo que dejó la operación concurrente, sin pisar ni duplicar. Con
+    // `$set` habría quedado en 1 (perdida) y con un `$inc` a ciegas en 2
+    // (contada dos veces).
+    expect(contador.estimatedCostUsd).toBeCloseTo(0.5, 6)
+    expect(contador.tokens).toBe(50)
   })
 })

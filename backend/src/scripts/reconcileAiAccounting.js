@@ -143,13 +143,26 @@ const run = async () => {
    */
   const previo = await rebuildPlatformProjection({ period })
 
+  /**
+   * NO SE SALE TEMPRANO AUNQUE LAS DOS PRIMERAS PREGUNTAS DEN BIEN.
+   *
+   * Hay una tercera clase de desvío que ninguna de las dos ve: un contador de
+   * CUOTA de un comercio —`counters.agentMessages`, por ejemplo— puede estar
+   * mal sin que cambie ningún total en dólares ni los tokens de plataforma.
+   * La auditoría da `balanced`, la reconciliación de plataforma no ve desvío,
+   * y el comercio queda con cupo de más o denegado de menos.
+   *
+   * Así que el recorrido por comercio corre SIEMPRE y la conclusión de «no
+   * hay nada que corregir» se saca al final, cuando ya se preguntaron las
+   * tres cosas.
+   */
   if (auditoria.balanced && !previo.hasDrift) {
-    logger.info('[RECONCILIAR IA] Las cuentas cuadran: no hay nada que corregir', { period })
-    await mongoose.disconnect()
-    return
+    logger.info('[RECONCILIAR IA] Plata y plataforma cuadran; falta revisar por comercio', {
+      period,
+    })
   }
 
-  if (auditoria.balanced) {
+  if (auditoria.balanced && previo.hasDrift) {
     logger.warn('[RECONCILIAR IA] La plata cuadra pero el contador de TOKENS no', {
       period,
       tokens: previo.tokens,
@@ -298,8 +311,27 @@ const run = async () => {
     period,
     revisados: comercios.length,
     desviados: desviados.length,
-    corregidos: applyChanges ? desviados.filter(d => d.ledgerComplete).length : 0,
+    corregidos: applyChanges ? desviados.filter(d => d.applied).length : 0,
   })
+
+  // Comercios VIVOS a los que les falta el contador entero: no son huérfanos
+  // —ésos ya no existen— sino una escritura de AiUsage que se perdió. El
+  // recorrido de arriba no los alcanza, justamente porque no tienen
+  // documento que recorrer.
+  if (auditoria.cost.missingCounterTenants?.length) {
+    logger.error('[RECONCILIAR IA] Comercios activos SIN contador en el período', {
+      period,
+      comercios: auditoria.cost.missingCounterTenants,
+      queHacer:
+        'Tienen filas en el libro y ningún AiUsage. Se repara con ' +
+        'rebuildTenantProjection({ tenantId, period, apply: true }), que lo crea desde el libro.',
+    })
+    process.exitCode = 1
+  }
+
+  if (auditoria.balanced && !previo.hasDrift && desviados.length === 0) {
+    logger.info('[RECONCILIAR IA] Las cuentas cuadran: no hay nada que corregir', { period })
+  }
 
   if (!applyChanges) {
     logger.warn('[RECONCILIAR IA] Simulación: no se escribió nada', {
