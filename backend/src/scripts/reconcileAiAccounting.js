@@ -60,9 +60,11 @@ import mongoose from 'mongoose'
 
 import connectDB from '../../config/connectDB.js'
 import logger from '../../config/logger.js'
+import AiUsage from '../models/aiUsageModel.js'
 import {
   auditAccounting,
   rebuildPlatformProjection,
+  rebuildTenantProjection,
   backfillLedgerFromProviderCalls,
 } from '../services/ai/aiAccountingService.js'
 import { getCurrentPeriod, isValidPeriod } from '../services/ai/aiPeriod.js'
@@ -141,13 +143,26 @@ const run = async () => {
    */
   const previo = await rebuildPlatformProjection({ period })
 
+  /**
+   * NO SE SALE TEMPRANO AUNQUE LAS DOS PRIMERAS PREGUNTAS DEN BIEN.
+   *
+   * Hay una tercera clase de desvío que ninguna de las dos ve: un contador de
+   * CUOTA de un comercio —`counters.agentMessages`, por ejemplo— puede estar
+   * mal sin que cambie ningún total en dólares ni los tokens de plataforma.
+   * La auditoría da `balanced`, la reconciliación de plataforma no ve desvío,
+   * y el comercio queda con cupo de más o denegado de menos.
+   *
+   * Así que el recorrido por comercio corre SIEMPRE y la conclusión de «no
+   * hay nada que corregir» se saca al final, cuando ya se preguntaron las
+   * tres cosas.
+   */
   if (auditoria.balanced && !previo.hasDrift) {
-    logger.info('[RECONCILIAR IA] Las cuentas cuadran: no hay nada que corregir', { period })
-    await mongoose.disconnect()
-    return
+    logger.info('[RECONCILIAR IA] Plata y plataforma cuadran; falta revisar por comercio', {
+      period,
+    })
   }
 
-  if (auditoria.balanced) {
+  if (auditoria.balanced && previo.hasDrift) {
     logger.warn('[RECONCILIAR IA] La plata cuadra pero el contador de TOKENS no', {
       period,
       tokens: previo.tokens,
@@ -208,25 +223,123 @@ const run = async () => {
     return
   }
 
-  // ── 3. Qué cambiaría ───────────────────────────────────────────────────
+  // ── 3. El contador de PLATAFORMA ──────────────────────────────────────
   const informe = await rebuildPlatformProjection({ period, apply: applyChanges })
 
   if (!informe.hasDrift) {
     logger.info('[RECONCILIAR IA] El contador de plataforma ya coincide con el libro', { period })
-    await mongoose.disconnect()
-    return
+  } else {
+    logger.info('[RECONCILIAR IA] Diferencia del contador de plataforma', {
+      period,
+      tokens: informe.tokens,
+      costo: informe.cost,
+    })
+
+    if (applyChanges) {
+      // Nivel warn y no info: se acaba de reescribir el contador con el que
+      // corta el disyuntor. Es el renglón que alguien va a buscar dentro de
+      // tres meses para entender por qué el número saltó.
+      logger.warn('[RECONCILIAR IA] Contador de plataforma corregido desde el libro', {
+        period,
+        antes: { tokens: informe.tokens.stored, costUsd: informe.cost.stored },
+        ahora: { tokens: informe.tokens.ledger, costUsd: informe.cost.ledger },
+        nota: 'El libro no se tocó. Sólo se reescribió el agregado que se deriva de él.',
+      })
+    }
   }
 
-  logger.info('[RECONCILIAR IA] Diferencia del contador de plataforma', {
+  // ── 4. Los contadores POR COMERCIO ────────────────────────────────────
+  //
+  // SON DOS AGREGADOS DISTINTOS Y DECIDEN COSAS DISTINTAS.
+  //
+  // El de plataforma decide si se corta la IA de TODOS. El del comercio
+  // decide el cupo de UNO —y alimenta la columna de margen—, así que uno
+  // desviado hacia abajo le regala consumo a ese comercio y hace parecer que
+  // cuesta menos de lo que cuesta.
+  //
+  // Corregir sólo el primero dejaba al script diciendo «se corrigió y aún no
+  // cuadra» sin poder hacer nada al respecto, que es la misma mitad de
+  // herramienta que este script vino a completar.
+  //
+  // Se recorren los comercios QUE TIENEN CONTADOR del período y no la lista
+  // entera de comercios: los que nunca consumieron no tienen nada que
+  // reconciliar, y con miles de tiendas la diferencia es el tiempo de la
+  // corrida.
+  const comercios = await AiUsage.find({ period })
+    .select('tenantId')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:reconciliacion-ia' })
+    .lean()
+
+  const desviados = []
+
+  for (const { tenantId } of comercios) {
+    const porComercio = await rebuildTenantProjection({
+      tenantId: String(tenantId),
+      period,
+      apply: applyChanges,
+    })
+
+    if (!porComercio.hasDrift) continue
+
+    desviados.push(porComercio)
+
+    // El libro incompleto de UN comercio no frena a los demás: cada contador
+    // es independiente, y negarse a corregir los sanos porque a uno le faltan
+    // filas sería castigar a todos por el estado de uno.
+    if (!porComercio.ledgerComplete) {
+      logger.error('[RECONCILIAR IA] Comercio con el libro incompleto: NO se corrigió', {
+        tenantId: String(tenantId),
+        period,
+        faltan: porComercio.missingFromLedger.length,
+      })
+      process.exitCode = 1
+      continue
+    }
+
+    logger.info(
+      `[RECONCILIAR IA]   comercio ${tenantId}: costo ${porComercio.cost.drift} USD · ` +
+        `contadores ${
+          Object.entries(porComercio.counters)
+            .filter(([, v]) => v.drift !== 0)
+            .map(([k, v]) => `${k} ${v.drift > 0 ? '+' : ''}${v.drift}`)
+            .join(', ') || 'sin desvío'
+        }`,
+    )
+  }
+
+  logger.info('[RECONCILIAR IA] Contadores por comercio', {
     period,
-    tokens: informe.tokens,
-    costo: informe.cost,
+    revisados: comercios.length,
+    desviados: desviados.length,
+    corregidos: applyChanges ? desviados.filter(d => d.applied).length : 0,
   })
+
+  // Comercios VIVOS a los que les falta el contador entero: no son huérfanos
+  // —ésos ya no existen— sino una escritura de AiUsage que se perdió. El
+  // recorrido de arriba no los alcanza, justamente porque no tienen
+  // documento que recorrer.
+  if (auditoria.cost.missingCounterTenants?.length) {
+    logger.error('[RECONCILIAR IA] Comercios activos SIN contador en el período', {
+      period,
+      comercios: auditoria.cost.missingCounterTenants,
+      queHacer:
+        'Tienen filas en el libro y ningún AiUsage. Se repara con ' +
+        'rebuildTenantProjection({ tenantId, period, apply: true }), que lo crea desde el libro.',
+    })
+    process.exitCode = 1
+  }
+
+  if (auditoria.balanced && !previo.hasDrift && desviados.length === 0) {
+    logger.info('[RECONCILIAR IA] Las cuentas cuadran: no hay nada que corregir', { period })
+  }
 
   if (!applyChanges) {
     logger.warn('[RECONCILIAR IA] Simulación: no se escribió nada', {
       period,
-      quedaria: { tokens: informe.tokens.ledger, costUsd: informe.cost.ledger },
+      plataformaQuedaria: informe.hasDrift
+        ? { tokens: informe.tokens.ledger, costUsd: informe.cost.ledger }
+        : 'sin cambios',
+      comerciosACorregir: desviados.length,
       paraAplicar: 'volvé a correrlo con --apply',
     })
 
@@ -234,15 +347,10 @@ const run = async () => {
     return
   }
 
-  // Nivel warn y no info: se acaba de reescribir el contador con el que corta
-  // el disyuntor. Es el renglón que alguien va a buscar dentro de tres meses
-  // para entender por qué el número saltó.
-  logger.warn('[RECONCILIAR IA] Contador de plataforma corregido desde el libro', {
-    period,
-    antes: { tokens: informe.tokens.stored, costUsd: informe.cost.stored },
-    ahora: { tokens: informe.tokens.ledger, costUsd: informe.cost.ledger },
-    nota: 'El libro no se tocó. Sólo se reescribió el agregado que se deriva de él.',
-  })
+  if (!informe.hasDrift && desviados.length === 0) {
+    await mongoose.disconnect()
+    return
+  }
 
   // La verificación va acá y no en la confianza de que el update anduvo: si
   // después de corregir el informe sigue sin cuadrar, hay algo más que este
