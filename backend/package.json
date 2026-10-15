@@ -37,7 +37,10 @@
     "prune:ai-ledger": "cross-env NODE_ENV=development node src/scripts/pruneAiLedger.js",
     "prune:ai-ledger:prod": "cross-env NODE_ENV=production node src/scripts/pruneAiLedger.js",
     "prune:user-metrics": "cross-env NODE_ENV=development node src/scripts/pruneUserMetrics.js",
-    "prune:user-metrics:prod": "cross-env NODE_ENV=production node src/scripts/pruneUserMetrics.js"
+    "prune:user-metrics:prod": "cross-env NODE_ENV=production node src/scripts/pruneUserMetrics.js",
+    "reconcile:ai": "cross-env NODE_ENV=development node src/scripts/reconcileAiAccounting.js",
+    "reconcile:ai:prod": "cross-env NODE_ENV=production node src/scripts/reconcileAiAccounting.js",
+    "reconcile:ai:prod:apply": "cross-env NODE_ENV=production node src/scripts/reconcileAiAccounting.js --apply"
   },
   "jest": {
     "testTimeout": 30000,
