@@ -209,6 +209,39 @@ const CATALOGO = [
     siProveedor: 'ses',
   },
 
+  // LO QUE HACE QUE MIGRAR A SES SIRVA PARA ALGO.
+  //
+  // El aislamiento de reputación por comercio es la única razón de peso para
+  // mudarse a SES, y degrada en silencio: sin estas dos el correo sale igual
+  // y la reputación vuelve a ser compartida. O sea que el día de la migración
+  // todo parece andar y lo que se fue a buscar no está pasando.
+  {
+    grupo: 'Correo',
+    nombres: ['AWS_ACCOUNT_ID'],
+    gravedad: 'seria',
+    pista: forma,
+    rompe:
+      'sin el número de cuenta no se arma el ARN y NO se aísla la reputación por comercio: ' +
+      'una tienda que rebota puede frenar el envío de todas',
+    siProveedor: 'ses',
+  },
+  {
+    grupo: 'Correo',
+    nombres: ['SES_CONFIGURATION_SET'],
+    gravedad: 'seria',
+    rompe:
+      'SES lo exige asociado al inquilino para enviar en su nombre: sin él el alta del ' +
+      'comercio queda a medias y no se aísla la reputación',
+    siProveedor: 'ses',
+  },
+  {
+    grupo: 'Correo',
+    nombres: ['AWS_REGION'],
+    gravedad: 'aviso',
+    rompe: 'se usa us-east-1 por omisión; para Argentina conviene sa-east-1',
+    siProveedor: 'ses',
+  },
+
   // ── Techos de gasto de IA ─────────────────────────────────────────────
   {
     grupo: 'Gasto de IA',

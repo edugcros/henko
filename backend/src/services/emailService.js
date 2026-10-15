@@ -14,6 +14,7 @@ import {
   cadenaDeEnvio,
   enviarConProveedor,
   esReintentable,
+  estadoDeAislamiento,
   proveedorActivo,
 } from './email/emailProviders.js'
 
@@ -534,11 +535,29 @@ const announceTransportOnce = cadena => {
     logger.warn(`[EMAIL] Proveedor: ${principal} — SIN RESPALDO`, {
       nota: 'Si este proveedor se cae, no sale ningún correo. Cargá las credenciales de otro.',
     })
-
-    return
+  } else {
+    logger.info(`[EMAIL] Proveedor: ${principal}`, { respaldos })
   }
 
-  logger.info(`[EMAIL] Proveedor: ${principal}`, { respaldos })
+  /**
+   * Y SI EL PROVEEDOR PUEDE AISLAR POR COMERCIO, SI ESTÁ AISLANDO DE VERDAD.
+   *
+   * El aislamiento degrada en silencio a propósito: ante un fallo se manda el
+   * correo sin inquilino antes que no mandarlo. Bien para un fallo puntual,
+   * pésimo para una configuración incompleta — ahí NUNCA aísla, y el día de
+   * la migración a SES todo parece andar mientras lo único que se fue a
+   * buscar no está pasando.
+   *
+   * Una tienda con la lista sucia seguiría hundiendo el envío de todas.
+   */
+  const aislamiento = estadoDeAislamiento()
+
+  if (aislamiento.soportado && !aislamiento.listo) {
+    logger.warn(`[EMAIL] ${aislamiento.proveedor} SIN AISLAMIENTO POR COMERCIO`, {
+      faltan: aislamiento.faltan,
+      nota: 'Los correos salen, pero la reputación vuelve a ser compartida: una tienda que rebota puede frenar a todas.',
+    })
+  }
 }
 
 // =====================================================
