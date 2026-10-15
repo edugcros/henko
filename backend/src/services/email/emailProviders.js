@@ -24,7 +24,7 @@
 // Detalle completo en docs/EMAIL_PRODUCTION.md.
 
 import logger from '../../../config/logger.js'
-import { sanitizeString as limpiar } from './emailShared.js'
+import { sanitizeString as limpiar, isValidAwsAccountId } from './emailShared.js'
 
 const TIMEOUT_MS = 15000
 
@@ -451,7 +451,7 @@ const obtenerClienteSes = async () => {
 const arnDeSes = (tipo, nombre) => {
   const cuenta = limpiar(process.env.AWS_ACCOUNT_ID)
 
-  if (!/^\d{12}$/.test(cuenta)) {
+  if (!isValidAwsAccountId(cuenta)) {
     throw fallar(
       CODIGOS.SIN_CONFIGURAR,
       'AWS_ACCOUNT_ID tiene que ser el número de cuenta de AWS (12 dígitos): sin eso no se ' +
@@ -901,7 +901,7 @@ export const estadoDeAislamiento = () => {
 
   const faltan = []
 
-  if (!/^\d{12}$/.test(limpiar(process.env.AWS_ACCOUNT_ID))) faltan.push('AWS_ACCOUNT_ID')
+  if (!isValidAwsAccountId(process.env.AWS_ACCOUNT_ID)) faltan.push('AWS_ACCOUNT_ID')
   if (!limpiar(process.env.SES_CONFIGURATION_SET)) faltan.push('SES_CONFIGURATION_SET')
 
   return { proveedor: proveedor.nombre, soportado: true, listo: faltan.length === 0, faltan }
