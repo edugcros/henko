@@ -868,6 +868,45 @@ export const justificaRespaldo = codigo =>
  * variables de entorno y un redeploy que agrega una tiene que ampliar la
  * cadena sin que nadie se acuerde de reiniciar nada.
  */
+/**
+ * ¿Puede el proveedor activo aislar la reputación por comercio, HOY?
+ *
+ * POR QUÉ ESTA PREGUNTA MERECE UNA FUNCIÓN
+ *
+ * El aislamiento por inquilino es la ÚNICA razón de peso para migrar a SES:
+ * sin él, una tienda que importa una lista comprada y rebota el 40% hunde el
+ * envío de todas las demás. Pero el camino degrada en silencio y a propósito
+ * —conInquilinoAsegurado prefiere mandar el correo sin aislar antes que no
+ * mandarlo— así que una cuenta a la que le falte `AWS_ACCOUNT_ID` o
+ * `SES_CONFIGURATION_SET` manda perfecto y NO aísla nada.
+ *
+ * O sea: el día de la migración todo parece funcionar y lo que se fue a
+ * buscar no está. Es la forma de fallar más cara que hay, porque no se nota
+ * hasta que un comercio arrastra a los demás.
+ *
+ * Esta función es lo que permite decirlo en voz alta antes.
+ *
+ *   AWS_ACCOUNT_ID         arma el ARN de la identidad y del conjunto. Sin
+ *                          él arnDeSes lanza y la asociación no ocurre.
+ *   SES_CONFIGURATION_SET  SES lo exige asociado al inquilino para enviar en
+ *                          su nombre; sin él el alta queda a medias y el
+ *                          primer envío falla con un error que no lo menciona.
+ */
+export const estadoDeAislamiento = () => {
+  const proveedor = proveedorActivo()
+
+  if (!proveedor.inquilinos?.soportado) {
+    return { proveedor: proveedor.nombre, soportado: false, listo: false, faltan: [] }
+  }
+
+  const faltan = []
+
+  if (!/^\d{12}$/.test(limpiar(process.env.AWS_ACCOUNT_ID))) faltan.push('AWS_ACCOUNT_ID')
+  if (!limpiar(process.env.SES_CONFIGURATION_SET)) faltan.push('SES_CONFIGURATION_SET')
+
+  return { proveedor: proveedor.nombre, soportado: true, listo: faltan.length === 0, faltan }
+}
+
 export const cadenaDeEnvio = () => {
   const principal = proveedorActivo()
   const respaldos = Object.values(PROVEEDORES).filter(

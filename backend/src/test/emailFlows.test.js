@@ -749,6 +749,105 @@ describe('proveedor de envío · forma del pedido y traducción de fallas', () =
 })
 
 // =====================================================
+// Aislamiento de reputación por comercio
+// =====================================================
+//
+// POR QUÉ ESTE BLOQUE IMPORTA MÁS DE LO QUE PARECE
+//
+// Es la ÚNICA razón de peso para migrar a SES: sin aislamiento, una tienda
+// que importa una lista comprada y rebota el 40% hunde el envío de todas las
+// demás. Pero el camino degrada en silencio a propósito —se prefiere mandar
+// el correo sin aislar antes que no mandarlo— así que una cuenta a la que le
+// falte configuración manda perfecto y no aísla nada.
+//
+// El día de la migración todo parecería andar mientras lo que se fue a buscar
+// no está pasando. Eso es lo que estas pruebas impiden.
+
+describe('aislamiento por comercio · se sabe si está activo de verdad', () => {
+  let restaurar
+
+  beforeEach(() => {
+    restaurar = guardarEntorno([
+      ...CREDENCIALES_DE_CORREO,
+      'AWS_ACCOUNT_ID',
+      'SES_CONFIGURATION_SET',
+    ])
+  })
+
+  afterEach(() => restaurar())
+
+  const conSes = () =>
+    soloEsteProveedor('ses', {
+      AWS_ACCESS_KEY_ID: 'clave',
+      AWS_SECRET_ACCESS_KEY: 'secreto',
+    })
+
+  test('los proveedores que no lo soportan lo dicen', async () => {
+    const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
+
+    soloEsteProveedor('sendgrid', { SENDGRID_API_KEY: 'clave' })
+    expect(estadoDeAislamiento()).toMatchObject({ soportado: false, listo: false })
+
+    soloEsteProveedor('resend', { RESEND_API_KEY: 'clave' })
+    expect(estadoDeAislamiento()).toMatchObject({ soportado: false })
+  })
+
+  test('con SES pero sin el número de cuenta, NO aísla', async () => {
+    // arnDeSes exige 12 dígitos para armar el ARN de la identidad. Sin eso
+    // la asociación lanza, conInquilinoAsegurado lo atrapa y manda el correo
+    // SIN inquilino: reputación compartida, en silencio.
+    const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
+
+    conSes()
+    process.env.SES_CONFIGURATION_SET = 'henko'
+    delete process.env.AWS_ACCOUNT_ID
+
+    expect(estadoDeAislamiento()).toMatchObject({
+      soportado: true,
+      listo: false,
+      faltan: ['AWS_ACCOUNT_ID'],
+    })
+  })
+
+  test('un número de cuenta mal formado cuenta como ausente', async () => {
+    // Doce dígitos exactos. Uno de menos da un ARN que AWS rechaza con un
+    // "no existe ese recurso" que no señala a la variable.
+    const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
+
+    conSes()
+    process.env.SES_CONFIGURATION_SET = 'henko'
+    process.env.AWS_ACCOUNT_ID = '12345'
+
+    expect(estadoDeAislamiento().faltan).toContain('AWS_ACCOUNT_ID')
+  })
+
+  test('sin conjunto de configuración, el alta del comercio queda a medias', async () => {
+    const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
+
+    conSes()
+    process.env.AWS_ACCOUNT_ID = '123456789012'
+    delete process.env.SES_CONFIGURATION_SET
+
+    expect(estadoDeAislamiento().faltan).toEqual(['SES_CONFIGURATION_SET'])
+  })
+
+  test('con todo cargado, está listo', async () => {
+    const { estadoDeAislamiento } = await import('../services/email/emailProviders.js')
+
+    conSes()
+    process.env.AWS_ACCOUNT_ID = '123456789012'
+    process.env.SES_CONFIGURATION_SET = 'henko'
+
+    expect(estadoDeAislamiento()).toMatchObject({
+      proveedor: 'Amazon SES',
+      soportado: true,
+      listo: true,
+      faltan: [],
+    })
+  })
+})
+
+// =====================================================
 // Cadena de respaldo entre proveedores
 // =====================================================
 //
