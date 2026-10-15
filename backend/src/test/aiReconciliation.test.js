@@ -730,6 +730,9 @@ describe('auditoría contable · detectar, no corregir', () => {
       byok: 0,
       platformUsage: 82.31,
       tenantUsage: 80.21,
+      // Gasto de comercios sin contador. Cero acá: el comercio de esta prueba
+      // existe y tiene el suyo. Ver el bloque de huérfanos más abajo.
+      orphanUsd: 0,
       // LO COMPROMETIDO VA EN EL INFORME AUNQUE NO ENTRE EN LA COMPARACIÓN.
       //
       // Se compara contra `platformUsage` —lo gastado— porque una reserva sin
@@ -1664,7 +1667,135 @@ describe('reconciliación · las herramientas las paga la plataforma', () => {
   })
 })
 
+describe('auditoría · el gasto de un comercio dado de baja', () => {
+  const BORRADO = '64b7f0000000000000000003'
+
+  test('no se reporta como descuadre: se informa aparte', async () => {
+    // EL FALSO DESCUADRE PERMANENTE, MEDIDO EN PRODUCCIÓN.
+    //
+    // Dar de baja un comercio borra su AiUsage pero NO sus filas del libro —
+    // deliberado, porque esa plata HENKO ya la pagó. Pero la comparación
+    // `ledger vs tenantUsage` daba por sentado que todo comercio del libro
+    // tiene contador, así que desde la primera baja reportaba una diferencia
+    // IMPOSIBLE DE CERRAR: no hay contador que reparar.
+    //
+    // El 15/10/2026 sobre 2026-10 eran USD 0,004776 en 2 filas de un comercio
+    // borrado, avisando cada hora, y cada baja futura habría sumado otra.
+    const period = '2062-05'
+
+    await AiConsumptionLedger.create([
+      {
+        tenantId: TENANT,
+        period,
+        event: 'consumed',
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: 1000,
+        unit: 'tokens',
+        operationId: 'vivo',
+        keySource: 'platform',
+        costUsd: 1,
+      },
+      // Del comercio borrado: queda la fila, no queda el contador.
+      {
+        tenantId: BORRADO,
+        period,
+        event: 'consumed',
+        metric: AI_METRICS.AGENT_TOKENS,
+        amount: 50,
+        unit: 'tokens',
+        operationId: 'del-borrado',
+        keySource: 'platform',
+        costUsd: 0.004776,
+      },
+    ])
+
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 1 } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    await AiPlatformUsage.updateOne(
+      { period },
+      // El contador de plataforma SÍ tiene el gasto del borrado: se contó
+      // cuando ocurrió, y la baja no lo revierte.
+      { $set: { estimatedCostUsd: 1.004776, tokens: 1050 } },
+      { upsert: true },
+    )
+
+    const auditoria = await auditAccounting(period)
+
+    expect(auditoria.cost.orphanUsd).toBeCloseTo(0.004776, 6)
+    // Y con el huérfano contado aparte, las cuentas CIERRAN.
+    expect(auditoria.findings).toEqual([])
+    expect(auditoria.balanced).toBe(true)
+  })
+})
+
 describe('reconciliación · corregir sin pisar el consumo concurrente', () => {
+  test('el contador de un comercio tampoco pisa lo concurrente', async () => {
+    // El mismo defecto que el de plataforma, en la función de al lado: leía
+    // el libro antes que el contador y escribía con $set. Acá pisar es peor
+    // en un sentido: `counters` son CUOTA, así que un incremento perdido le
+    // regala consumo al comercio.
+    const period = '2061-04'
+
+    await AiConsumptionLedger.create({
+      tenantId: TENANT,
+      period,
+      event: 'consumed',
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount: 100,
+      unit: 'tokens',
+      operationId: 'base-comercio',
+      keySource: 'platform',
+      costUsd: 1,
+    })
+
+    await AiUsage.updateOne(
+      { tenantId: TENANT, period },
+      { $set: { estimatedCostUsd: 0, 'counters.agentTokens': 0 } },
+      { upsert: true },
+    ).setOptions({ tenantId: TENANT })
+
+    const aggregateOriginal = AiConsumptionLedger.aggregate.bind(AiConsumptionLedger)
+    let inyectado = false
+
+    AiConsumptionLedger.aggregate = function (...args) {
+      const consulta = aggregateOriginal(...args)
+      const thenOriginal = consulta.then.bind(consulta)
+
+      consulta.then = (resolve, reject) =>
+        thenOriginal(async filas => {
+          if (!inyectado) {
+            inyectado = true
+            await AiUsage.updateOne(
+              { tenantId: TENANT, period },
+              { $inc: { estimatedCostUsd: 0.5, 'counters.agentTokens': 50 } },
+            ).setOptions({ tenantId: TENANT })
+          }
+
+          return resolve(filas)
+        }, reject)
+
+      return consulta
+    }
+
+    try {
+      await rebuildTenantProjection({ tenantId: TENANT, period, apply: true })
+    } finally {
+      AiConsumptionLedger.aggregate = aggregateOriginal
+    }
+
+    const contador = await AiUsage.findOne({ tenantId: TENANT, period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(inyectado).toBe(true)
+    expect(contador.estimatedCostUsd).toBeCloseTo(1.5, 6)
+    expect(contador.counters.agentTokens).toBe(150)
+  })
+
   test('un consumo que entra durante el recálculo sobrevive', async () => {
     // LA CARRERA, INYECTADA A PROPÓSITO.
     //
