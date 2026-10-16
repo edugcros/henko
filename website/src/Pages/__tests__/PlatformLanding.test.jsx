@@ -142,6 +142,112 @@ describe('PlatformLanding · marca', () => {
   })
 })
 
+describe('PlatformLanding · carga de productos con IA', () => {
+  const seccion = () => within(document.getElementById('productos-ia'))
+
+  it('destaca la carga de productos con IA con su propia sección y su enlace en el menú', () => {
+    render(<PlatformLanding />)
+
+    expect(document.getElementById('productos-ia')).not.toBeNull()
+    expect(screen.getByRole('heading', { name: /subí una foto/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /la ia arma la ficha completa/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen
+        .getAllByRole('link', { name: 'Productos con IA' })
+        .some(link => link.getAttribute('href') === '#productos-ia'),
+    ).toBe(true)
+  })
+
+  it('lista los campos que la IA completa, los mismos que devuelve el análisis', () => {
+    // Salen de sanitizeAnalysis (productAnalysisController): título, categoría,
+    // subcategoría, marca, material, color, atributos, etiquetas, descripción, título y
+    // descripción SEO y precio sugerido. Si el backend deja de devolver alguno, hay que
+    // sacarlo de acá: la landing no puede prometer un campo que no se completa.
+    render(<PlatformLanding />)
+
+    for (const campo of [
+      'Título',
+      'Descripción',
+      'Categoría y subcategoría',
+      'Marca',
+      'Material y color',
+      'Atributos',
+      'Etiquetas',
+      'Título y descripción para buscadores',
+      'Precio sugerido',
+    ]) {
+      expect(seccion().getByText(campo, { selector: 'li' })).toBeInTheDocument()
+    }
+  })
+
+  it('explica el recorrido: varias fotos, la IA completa la ficha y se revisa antes de publicar', () => {
+    render(<PlatformLanding />)
+
+    expect(seccion().getByText(/una o varias a la vez/i)).toBeInTheDocument()
+    expect(seccion().getByText('La IA completa la ficha')).toBeInTheDocument()
+    expect(seccion().getByText(/queda como borrador/i)).toBeInTheDocument()
+  })
+
+  it('aclara que queda como borrador y que los cupos dependen del plan', () => {
+    render(<PlatformLanding />)
+
+    expect(
+      seccion().getByText(/quedan como borrador hasta que los publicás.*dependen del plan/i),
+    ).toBeInTheDocument()
+  })
+
+  it('NO promete que la IA publique sola', () => {
+    // El producto que sale del análisis nace en 'draft'. Publicar sin revisión existe
+    // como opción del servidor, pero depende de su configuración: no se ofrece.
+    render(<PlatformLanding />)
+
+    const texto = document.getElementById('productos-ia').textContent
+
+    expect(texto).not.toMatch(
+      /publica (solo|sola|automática)|sin revisión|sin revisar|automáticamente/i,
+    )
+    expect(texto).not.toMatch(/en segundos|al instante|100 ?%/i)
+  })
+
+  it('la maqueta del formulario se declara ilustrativa y sus montos son de ejemplo', () => {
+    render(<PlatformLanding />)
+
+    expect(
+      seccion().getByText(/vista ilustrativa.*datos del producto son de ejemplo/i),
+    ).toBeInTheDocument()
+    // Ningún precio inventado: el rango sugerido va con ceros, como el carrito de ejemplo.
+    expect(seccion().getByText(/0\.000 – 0\.000/)).toBeInTheDocument()
+  })
+
+  it('el CTA lleva a la pantalla de planes', () => {
+    render(<PlatformLanding />)
+
+    expect(seccion().getByRole('link', { name: /probarlo con mis productos/i })).toHaveAttribute(
+      'href',
+      'https://admin.example.test/subscripcion',
+    )
+  })
+
+  it('la pregunta frecuente coincide con la sección: borrador y cupos por plan', async () => {
+    const user = userEvent.setup()
+    render(<PlatformLanding />)
+
+    await user.click(screen.getByText('¿Cómo funciona la carga de productos con IA?'))
+
+    expect(screen.getByText(/el producto queda como borrador/i)).toBeVisible()
+    expect(screen.getByText(/cupos de análisis de imágenes dependen del plan/i)).toBeVisible()
+  })
+
+  it('el hero menciona que la IA completa la ficha de los productos', () => {
+    render(<PlatformLanding />)
+
+    expect(screen.getByText(/cargá tus productos con una foto/i)).toBeInTheDocument()
+    expect(screen.getByText(/la ia completa la ficha de tus productos/i)).toBeInTheDocument()
+  })
+})
+
 describe('PlatformLanding · funciones por pestañas', () => {
   it('abre en «Creá» y deja ocultas las otras tres', () => {
     render(<PlatformLanding />)
@@ -341,7 +447,7 @@ describe('PlatformLanding · preguntas frecuentes', () => {
 
     const items = container.querySelectorAll('details.hk-faq-item')
 
-    expect(items).toHaveLength(7)
+    expect(items).toHaveLength(8)
     expect(items[0]).not.toHaveAttribute('open')
 
     await user.click(screen.getByText(/¿cómo gestiono los envíos\?/i))
@@ -373,8 +479,8 @@ describe('PlatformLanding · no promete lo que el producto no tiene', () => {
   it('las maquetas dicen que son ilustrativas', () => {
     render(<PlatformLanding />)
 
-    // Cuatro maquetas por pestaña + el panel del hero + el chat.
-    expect(screen.getAllByText(/ilustrativ/i).length).toBeGreaterThanOrEqual(6)
+    // Cuatro maquetas por pestaña + el panel del hero + el chat + el formulario de producto.
+    expect(screen.getAllByText(/ilustrativ/i).length).toBeGreaterThanOrEqual(7)
   })
 })
 

@@ -8,7 +8,9 @@ import {
   FiCheck,
   FiChevronDown,
   FiCreditCard,
+  FiDollarSign,
   FiEdit3,
+  FiEye,
   FiFileText,
   FiGlobe,
   FiHeart,
@@ -75,6 +77,7 @@ const BrandLogo = ({ height = 52, className = '' }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 const NAV_LINKS = [
   { href: '#funciones', label: 'Funciones' },
+  { href: '#productos-ia', label: 'Productos con IA' },
   { href: '#asistente', label: 'Asistente con IA' },
   { href: '#como-funciona', label: 'Cómo funciona' },
   { href: '#planes', label: 'Planes' },
@@ -88,7 +91,7 @@ const TRUST = [
     text: 'Cobrás directo desde tu tienda',
   },
   { icon: FiGlobe, title: 'Tu propia dirección', text: 'Subdominio incluido y dominio propio' },
-  { icon: FiZap, title: 'IA que trabaja con vos', text: 'Asistente de ventas y análisis' },
+  { icon: FiZap, title: 'IA que trabaja con vos', text: 'Productos, ventas y análisis' },
   { icon: FiLayout, title: 'Todo en un panel', text: 'En español y pensado para vender' },
 ]
 
@@ -121,7 +124,7 @@ const TABS = [
       {
         icon: FiCamera,
         title: 'Fichas de producto con IA',
-        text: 'Subí una foto y la IA propone título, categoría, descripción y etiquetas para que las revises.',
+        text: 'Subí una o varias fotos y la IA completa la ficha: título, descripción, categoría, marca, atributos, etiquetas, SEO y precio sugerido.',
       },
       {
         icon: FiImage,
@@ -318,6 +321,11 @@ const FAQ = [
       'No. El catálogo, el diseño, los pedidos y los cobros se gestionan desde el panel administrativo, sin escribir código.',
   },
   {
+    question: '¿Cómo funciona la carga de productos con IA?',
+    answer:
+      'Subís una o varias fotos de tus productos y la IA completa la ficha: título, descripción, categoría y subcategoría, marca, material, color, atributos, etiquetas, título y descripción para buscadores, y un precio sugerido. El producto queda como borrador: lo revisás, lo corregís y lo publicás. Los cupos de análisis de imágenes dependen del plan.',
+  },
+  {
     question: '¿Puedo usar mi propio dominio?',
     answer:
       'Sí. Tu tienda sale con un subdominio de Henkart y podés conectar tu propio dominio. Los requisitos dependen del dominio que quieras usar.',
@@ -436,8 +444,8 @@ const usePlanCatalog = () => {
 // Dibujadas en CSS con datos de ejemplo. Todas lo dicen: no son pantallas reales
 // ni cifras de ningún comercio.
 // ─────────────────────────────────────────────────────────────────────────────
-const MockWindow = ({ address, children, caption }) => (
-  <figure className="hk-mock">
+const MockWindow = ({ address, children, caption, className = '' }) => (
+  <figure className={`hk-mock ${className}`.trim()}>
     <div className="hk-mock-bar" aria-hidden="true">
       <span className="hk-mock-dots">
         <i />
@@ -686,6 +694,173 @@ const AssistantChat = () => (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CARGA DE PRODUCTOS CON IA
+//
+// Lo que se afirma sale de productAnalysisController (sanitizeAnalysis): título,
+// categoría, subcategoría, marca, material, color, atributos, etiquetas, descripción,
+// título y descripción para buscadores, y precio sugerido con su rango.
+//
+// El producto que sale del análisis nace como BORRADOR (status: 'draft'): lo revisa una
+// persona antes de publicarlo. Y se pueden subir varias fotos de una vez. NO se dice que
+// publique solo: esa opción existe, pero depende de la configuración del servidor.
+// ─────────────────────────────────────────────────────────────────────────────
+const AI_FIELDS = [
+  'Título',
+  'Descripción',
+  'Categoría y subcategoría',
+  'Marca',
+  'Material y color',
+  'Atributos',
+  'Etiquetas',
+  'Título y descripción para buscadores',
+  'Precio sugerido',
+]
+
+const AI_STEPS = [
+  { title: 'Subí las fotos', text: 'Una o varias a la vez, directo desde el panel.' },
+  {
+    title: 'La IA completa la ficha',
+    text: 'Analiza la imagen y rellena los campos del producto.',
+  },
+  {
+    title: 'Revisás y publicás',
+    text: 'Queda como borrador: lo ajustás y lo publicás cuando quieras.',
+  },
+]
+
+const AiField = ({ label, children, wide = false }) => (
+  <div className={`hk-ai-field${wide ? ' is-wide' : ''}`}>
+    <small>
+      <FiZap aria-hidden="true" /> {label}
+    </small>
+    <b>{children}</b>
+  </div>
+)
+
+const AiProductMock = () => (
+  <MockWindow
+    className="hk-ai-mock"
+    address="panel · Crear producto"
+    caption="Vista ilustrativa · los datos del producto son de ejemplo."
+  >
+    <div className="hk-ai-layout">
+      <div className="hk-ai-photo-col">
+        <div className="hk-ai-photo">
+          <FiCamera />
+          <span>foto-producto.jpg</span>
+        </div>
+        <span className="hk-ai-status">
+          <FiCheck /> Análisis listo
+        </span>
+      </div>
+
+      <div className="hk-ai-fields">
+        <AiField label="Título" wide>
+          Balde plástico con pico y manija
+        </AiField>
+        <AiField label="Categoría">Hogar y limpieza</AiField>
+        <AiField label="Subcategoría">Baldes</AiField>
+        <AiField label="Marca">Marca de ejemplo</AiField>
+        <AiField label="Material">Plástico</AiField>
+        <AiField label="Color">Azul</AiField>
+        <AiField label="Precio sugerido">
+          <span className="hk-ai-price">
+            <FiDollarSign /> 0.000 – 0.000
+          </span>
+        </AiField>
+        <AiField label="Etiquetas" wide>
+          <span className="hk-ai-tags">
+            {['balde', 'limpieza', 'hogar', 'manija'].map(tag => (
+              <i key={tag}>{tag}</i>
+            ))}
+          </span>
+        </AiField>
+        <AiField label="Descripción" wide>
+          <span className="hk-ai-lines">
+            <i />
+            <i />
+            <i className="is-short" />
+          </span>
+        </AiField>
+        <AiField label="Para buscadores" wide>
+          <span className="hk-ai-lines">
+            <i className="is-short" />
+            <i />
+          </span>
+        </AiField>
+      </div>
+    </div>
+
+    <div className="hk-ai-foot">
+      <span className="hk-ai-draft">Borrador</span>
+      <span className="hk-ai-publish">
+        <FiEye aria-hidden="true" /> Revisar y publicar
+      </span>
+    </div>
+  </MockWindow>
+)
+
+const AiProductShowcase = ({ plansUrl }) => (
+  <section className="hk-aiproduct" id="productos-ia" aria-labelledby="hk-aiproduct-title">
+    <div className="hk-container">
+      <div className="hk-aiproduct-panel">
+        <div className="hk-aiproduct-copy">
+          <span className="hk-pill">
+            <FiCamera aria-hidden="true" /> CARGA DE PRODUCTOS CON IA
+          </span>
+          <h2 id="hk-aiproduct-title">
+            Subí una foto.
+            <br />
+            <span className="hk-gradient-text">La IA arma la ficha completa.</span>
+          </h2>
+          <p className="hk-aiproduct-lead">
+            Olvidate de escribir cada producto a mano. Subís la foto, la IA analiza la imagen y
+            completa todos los datos de la ficha; vos revisás, ajustás y publicás.
+          </p>
+
+          <ol className="hk-aiproduct-steps">
+            {AI_STEPS.map((step, index) => (
+              <li key={step.title}>
+                <span className="hk-aiproduct-num">{index + 1}</span>
+                <span>
+                  <b>{step.title}</b>
+                  <small>{step.text}</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          <div className="hk-aifields">
+            <span className="hk-aifields-title">La IA completa por vos</span>
+            <ul>
+              {AI_FIELDS.map(field => (
+                <li key={field}>
+                  <FiCheck aria-hidden="true" /> {field}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="hk-aiproduct-actions">
+            <a className="hk-button hk-button-primary" href={plansUrl}>
+              Probarlo con mis productos <FiArrowRight aria-hidden="true" />
+            </a>
+            <span className="hk-aiproduct-note">
+              Los productos quedan como borrador hasta que los publicás. Los cupos de análisis
+              dependen del plan.
+            </span>
+          </div>
+        </div>
+
+        <div className="hk-aiproduct-visual">
+          <AiProductMock />
+        </div>
+      </div>
+    </div>
+  </section>
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PIEZAS
 // ─────────────────────────────────────────────────────────────────────────────
 const FeatureTabs = ({ active, onChange }) => {
@@ -931,8 +1106,9 @@ const PlatformLanding = () => {
                 <span className="hk-gradient-text">sin límites.</span>
               </h1>
               <p className="hk-hero-lead">
-                Creá tu tienda con tu marca, cobrá con Mercado Pago, gestioná tus pedidos desde un
-                solo panel y vendé más con un asistente de IA que responde por vos.
+                Creá tu tienda con tu marca, cobrá con Mercado Pago y cargá tus productos con una
+                foto: la IA completa la ficha por vos. Gestioná todo desde un solo panel y vendé más
+                con un asistente que atiende a tus clientes.
               </p>
 
               <div className="hk-hero-actions">
@@ -952,7 +1128,7 @@ const PlatformLanding = () => {
                   <FiCheck aria-hidden="true" /> Subdominio incluido y dominio propio
                 </li>
                 <li>
-                  <FiCheck aria-hidden="true" /> Panel en español
+                  <FiCheck aria-hidden="true" /> La IA completa la ficha de tus productos
                 </li>
               </ul>
             </div>
@@ -1019,6 +1195,8 @@ const PlatformLanding = () => {
             })}
           </div>
         </section>
+
+        <AiProductShowcase plansUrl={plansUrl} />
 
         <section
           className="hk-section hk-features"
