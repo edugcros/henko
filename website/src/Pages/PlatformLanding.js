@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   FiActivity,
   FiArrowRight,
@@ -405,6 +405,61 @@ const FAQ = [
 // manda a la pantalla de planes en lugar de mostrar un número inventado.
 // ─────────────────────────────────────────────────────────────────────────────
 const PLANS_TIMEOUT_MS = 20000
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Asistente de ventas con IA
+//
+// El dominio raíz es a la vez la landing y la tienda del comercio «Henkart». El 16/10/2026
+// la landing pasó a atender todo ese dominio (index.js la monta fuera de <App>), y con eso
+// desapareció el chat: lo montaba App, y App ya no se renderiza acá.
+//
+// Se vuelve a montar sólo el chat, y sólo si el backend dice que ese comercio lo tiene
+// activo (la misma respuesta que lee la tienda: aiAssistant.enabled). Ante cualquier duda
+// —sin red, respuesta rara, flag ausente— no se muestra: una burbuja que no responde es
+// peor que no tenerla. El carrito no se monta: la landing no vende productos.
+// ─────────────────────────────────────────────────────────────────────────────
+const AiChatWidget = lazy(() => import('@components/AiChatWidget'))
+
+const PlatformAssistant = () => {
+  const [enabled, setEnabled] = useState(false)
+
+  useEffect(() => {
+    const base = String(env?.apiBaseUrl || '').replace(/\/+$/, '')
+    const host = typeof window !== 'undefined' ? window.location.hostname : ''
+
+    if (!base || !host || typeof fetch !== 'function') return undefined
+
+    let cancelled = false
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), PLANS_TIMEOUT_MS)
+
+    fetch(`${base}/tenants/resolve?domains=${encodeURIComponent(host)}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+      credentials: 'omit',
+    })
+      .then(response => (response.ok ? response.json() : Promise.reject(new Error('http'))))
+      .then(payload => {
+        if (!cancelled) setEnabled(payload?.data?.aiAssistant?.enabled === true)
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timer))
+
+    return () => {
+      cancelled = true
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [])
+
+  if (!enabled) return null
+
+  return (
+    <Suspense fallback={null}>
+      <AiChatWidget />
+    </Suspense>
+  )
+}
 
 const formatArs = value =>
   new Intl.NumberFormat('es-AR', {
@@ -1438,6 +1493,8 @@ const PlatformLanding = () => {
           <a href="#inicio">Volver arriba ↑</a>
         </div>
       </footer>
+
+      <PlatformAssistant />
     </div>
   )
 }
