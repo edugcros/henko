@@ -27,6 +27,30 @@ if (fs.existsSync(manifestPath)) {
   })
 }
 
+// El resto de lo que haya en public/: logos, imagen para compartir, robots.txt, etc.
+//
+// Esto no estaba, y era un agujero silencioso: solo se copiaba manifest.json, así
+// que cualquier archivo nuevo en public/ funcionaba en desarrollo —el dev server sí
+// sirve la carpeta— y daba 404 en producción. Pasó con los logos de Henkart: la
+// landing pedía /henkart-logo.png y el build no lo publicaba.
+//
+// index.html lo genera HtmlWebpackPlugin y favicon.ico lo emite la misma opción
+// `favicon` de más abajo, así que se excluyen para no duplicarlos.
+//
+// `info.minimized` es imprescindible. Sin él, ImageMinimizerPlugin trata estos
+// archivos como imágenes del código: los reconvierte a WebP y les cambia la
+// extensión, así que /logo-henkart.png desaparecía y quedaba un logo-henkart.webp
+// que nadie pide. Los de public/ se referencian por su URL fija (el manifest, las
+// metaetiquetas de og:image y apple-touch-icon, que además no aceptan WebP), así que
+// tienen que salir tal cual se escribieron.
+copyPatterns.push({
+  from: publicPath,
+  to: '.',
+  globOptions: { ignore: ['**/index.html', '**/favicon.ico', '**/manifest.json'] },
+  noErrorOnMissing: true,
+  info: { minimized: true },
+})
+
 export default merge(baseConfig, {
   mode: 'production',
 
