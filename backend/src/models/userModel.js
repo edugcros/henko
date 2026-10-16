@@ -398,6 +398,29 @@ userSchema.pre('save', async function (next) {
 
   this.passwordChangedAt = Date.now() - 1000
 
+  // CAMBIAR LA CONTRASEÑA CIERRA TODAS LAS SESIONES ABIERTAS
+  //
+  // passwordChangedAt invalida los ACCESS tokens emitidos antes del cambio
+  // (authMiddleware), pero el refresh no lo mira: handleRefreshToken busca la
+  // sesión por su hash y emite un access token NUEVO, con iat posterior, que
+  // pasa esa comprobación. Con las sesiones intactas, quien robó una cookie de
+  // refresco seguía entrando después de que la víctima cambiara o restableciera
+  // la contraseña — que es justo lo que se hace al sospechar un robo — durante
+  // 7 días (clientes) o mientras refrescara dentro de la hora de inactividad
+  // (admins).
+  //
+  // updatePassword y resetPassword solo limpiaban `refreshToken`, el casillero
+  // viejo. Las sesiones viven en `refreshSessions`. Se hace acá y no en cada
+  // controlador porque este hook es el único lugar donde se fija
+  // passwordChangedAt: cualquier camino que cambie la contraseña por .save()
+  // queda cubierto, también los que se agreguen después.
+  //
+  // No aplica al alta: un usuario nuevo no tiene sesiones que cerrar.
+  if (!this.isNew) {
+    this.refreshSessions = []
+    this.refreshToken = null
+  }
+
   if (!/^\$2[aby]\$/.test(this.password)) {
     const salt = await bcrypt.genSalt(12)
     this.password = await bcrypt.hash(this.password, salt)

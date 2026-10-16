@@ -7,6 +7,7 @@ import Cart from '../models/cartModel.js'
 import Tenant from '../models/tenantModel.js'
 import UserMetricEvent, { USER_METRIC_EVENTS } from '../models/userMetricEventModel.js'
 
+import { adminEmailExists } from '../services/adminIdentityService.js'
 import { resolveCartPricing } from '../services/cartPricingService.js'
 import { notifyWishlistPromotions } from '../services/wishlistPromotionNotifierService.js'
 import { env } from '../../config/env.js'
@@ -298,8 +299,8 @@ const TENANT_LOGIN_FIELDS = '_id name domains adminDomains slug status plan'
  *
  * ES UNÍVOCO, Y NO POR CASUALIDAD
  *
- * El alta de comercio (registerAdmin) rechaza un email que exista en
- * CUALQUIER comercio: User.exists({ email }) corre con ignoreTenant. Y el
+ * El alta de comercio (registerAdmin) rechaza un email que ya sea admin de
+ * CUALQUIER comercio (adminEmailExists, que corre con ignoreTenant). Y el
  * login de panel exige role === 'admin' más abajo. Así que puede haber a lo
  * sumo un admin por email en toda la plataforma.
  *
@@ -739,9 +740,9 @@ export const createUserAdmin = [
         const opts = { session }
 
         const [emailExists, slugExists, domainExists] = await Promise.all([
-          User.exists({ email })
-            .setOptions({ ignoreTenant: true, platformScope: 'auth:usuario-por-identidad' })
-            .session(session),
+          // Solo cuenta otro ADMINISTRADOR con ese email. Un comprador de
+          // cualquier tienda no impide abrir una propia: ver adminEmailExists.
+          adminEmailExists(email, session),
           Tenant.exists({ slug: finalSlug }).session(session),
           Tenant.exists({
             $or: [
@@ -1598,7 +1599,7 @@ export const forgotPasswordLimiter = rateLimit({
  * El login ya tenía esto resuelto con `resolveAdminTenantFromRequest`, que en
  * el panel deduce el comercio a partir del email. Se reusa tal cual, con su
  * garantía: filtra por `role: 'admin'`, y un email de admin es único en toda
- * la plataforma porque el alta lo rechaza si existe en cualquier comercio. Dos
+ * la plataforma porque el alta lo rechaza si ya es admin de cualquier comercio. Dos
  * COMPRADORES sí pueden repetir email entre tiendas, y por eso el filtro de
  * rol no es decorativo.
  *
