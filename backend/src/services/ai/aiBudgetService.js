@@ -37,6 +37,7 @@ import {
   getSharedKeyTenantCap,
   getSharedKeyTenantUsdCap,
   getSubscriptionState,
+  getUsdToArsRate,
   normalizeMetric,
   normalizePlan,
   DEGRADATION,
@@ -50,7 +51,7 @@ import {
   computeImageCostUsd,
   normalizeModelName,
 } from './aiModelPricing.js'
-import { getPeriodSpendByMetric } from './aiSpendReportService.js'
+import { getPeriodSpendByMetric, getTenantConsumptionBreakdown } from './aiSpendReportService.js'
 import { getCurrentPeriod } from './aiPeriod.js'
 import { notifyBudgetPressure, EMAIL_THRESHOLD } from './aiBudgetNotifier.js'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
@@ -3211,6 +3212,22 @@ export const getAiBudgetSnapshot = async tenantId => {
   const selfLimits = await loadAgentSelfLimits(id)
   const tenantPolicy = await getTenantAiPolicy(id)
 
+  // El desglose sale del LIBRO, no de este contador, y es la misma función que
+  // alimenta la pantalla de plataforma: un solo número para los dos lados.
+  //
+  // El contador no sirve para esto aunque tenga el total: no distingue tokens
+  // de llamadas a herramientas, y esa distinción es justamente la que explica
+  // el gasto. Si el libro no contesta, el panel sigue mostrando el total —que
+  // es el dato importante— sin el detalle.
+  const breakdown = await getTenantConsumptionBreakdown(id, period).catch(error => {
+    logger.warn('No se pudo leer el desglose de consumo del comercio', {
+      tenantId: id,
+      period,
+      error: error.message,
+    })
+    return null
+  })
+
   // Los topes del snapshot pasan por la misma resolución que el cobro: si el
   // panel mostrara "sin límite" y el medidor cortara igual, el comercio no
   // tendría forma de entender por qué se le apagó el asistente.
@@ -3229,6 +3246,14 @@ export const getAiBudgetSnapshot = async tenantId => {
     return acc
   }, {})
   const subscription = getSubscriptionState(profile)
+
+  // Se acota a cero por el cruce del despliegue: una edición reservada por la
+  // versión vieja (que no cobraba al reservar) y devuelta por la nueva (que sí
+  // descuenta) resta una plata que nunca se sumó. Son centavos y una ventana de
+  // minutos, pero un total negativo en el panel se lee como un error de la
+  // plataforma, no como el redondeo que es.
+  const costoUsd = Math.max(0, Number(usage?.estimatedCostUsd || 0))
+  const usdToArs = getUsdToArsRate()
 
   const metrics = AI_METRIC_LIST.reduce((acc, metric) => {
     const planLimit = limits[metric]
@@ -3280,12 +3305,29 @@ export const getAiBudgetSnapshot = async tenantId => {
     // Va el motivo pero no quién lo decidió: eso es para adentro.
     suspended: tenantPolicy.suspended,
     suspendedReason: tenantPolicy.suspendedReason,
-    // Se acota a cero por el cruce del despliegue: una edición reservada por la
-    // versión vieja (que no cobraba al reservar) y devuelta por la nueva (que
-    // sí descuenta) resta una plata que nunca se sumó. Son centavos y una
-    // ventana de minutos, pero un total negativo en el panel se lee como un
-    // error de la plataforma, no como el redondeo que es.
-    estimatedCostUsd: Math.max(0, Number(usage?.estimatedCostUsd || 0)),
+    estimatedCostUsd: costoUsd,
+    // EL MISMO COSTO EN PESOS, Y CALCULADO ACÁ Y NO EN EL FRONT.
+    //
+    // La cotización vive en platformAiSettings y la resuelve getUsdToArsRate
+    // —panel primero, después la variable de entorno—. Exponerla al panel del
+    // comercio para que multiplique sería filtrar un dato de plataforma y, peor,
+    // dejar que cada pantalla haga su propia cuenta: la de plataforma ya
+    // convierte del lado del servidor, así que hacerlo distinto acá es
+    // garantizar que los dos números se separen.
+    estimatedCostArs: Math.round(costoUsd * usdToArs),
+    usdToArs,
+    /**
+     * De dónde sale la plata, en serio.
+     *
+     * El panel mostraba el costo con la leyenda «estimación sobre los tokens
+     * consumidos» y era falso: medido en producción, los tokens eran el 1,7% y
+     * las llamadas a herramientas el 98,3%. Sin este desglose el comercio no
+     * tiene forma de saber qué palanca mover para gastar menos.
+     *
+     * Puede venir en null si el libro no respondió; el panel muestra el total
+     * igual.
+     */
+    breakdown,
     byokTokens: Number(usage?.byokTokens || 0),
     lastActivityAt: usage?.lastActivityAt || null,
   }

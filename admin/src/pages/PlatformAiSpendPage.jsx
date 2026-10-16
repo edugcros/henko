@@ -1201,9 +1201,11 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
       <DialogTitle>{row.name}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Este comercio lleva {formatTokens(row.tokens)} tokens y {dinero(row.platformCostUsd)} a
-          cargo de HENKO en el período. Los cambios rigen de inmediato y solo afectan a este
-          comercio.
+          Este comercio lleva {formatTokens(row.tokens)} tokens
+          {row.toolCalls > 0
+            ? `, ${formatTokens(row.toolCalls)} llamadas a herramientas`
+            : ''} y {dinero(row.platformCostUsd)} a cargo de HENKO en el período. Los cambios rigen
+          de inmediato y solo afectan a este comercio.
         </Typography>
 
         {/* ARRIBA DE LAS PALANCAS, A PROPÓSITO.
@@ -1732,7 +1734,10 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                       terminarían dando cifras distintas para el mismo
                       comercio. */}
                   <TableCell align="right">Margen</TableCell>
-                  <TableCell align="right">Tokens</TableCell>
+                  {/* «Consumo» y ya no «Tokens»: la celda muestra dos unidades
+                      distintas, y titularla con una sola es lo que hacía
+                      invisible a la otra. */}
+                  <TableCell align="right">Consumo</TableCell>
                   <TableCell align="right">De su parte</TableCell>
                   <TableCell align="right">Operaciones</TableCell>
                   <TableCell align="right" />
@@ -1861,7 +1866,23 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                     <TableCell align="right">
                       <MargenDelComercio margen={margenPorComercio.get(row.tenantId)} />
                     </TableCell>
-                    <TableCell align="right">{formatTokens(row.tokens)}</TableCell>
+                    <TableCell align="right">
+                      {formatTokens(row.tokens)}
+                      {/* LAS LLAMADAS A HERRAMIENTAS, DEBAJO DE LOS TOKENS.
+                          El backend las venía calculando y ninguna de las dos
+                          pantallas las mostraba, así que el gasto parecía ser
+                          todo de tokens. Medido el 16/10/2026: 1.605 tokens
+                          costaban USD 0,000553 y cuatro llamadas a Tavily USD
+                          0,032 — el 98,3% del total estaba fuera de la única
+                          columna visible. */}
+                      {row.toolCalls > 0 && (
+                        <Tooltip title="Búsquedas y extracciones web. Se cobran por llamada y suelen pesar más que los tokens.">
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            + {formatTokens(row.toolCalls)} llamadas
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     <TableCell align="right">
                       {/* El porcentaje de SU parte, no del total de la
                           plataforma. Es el número que anticipa el corte: un
