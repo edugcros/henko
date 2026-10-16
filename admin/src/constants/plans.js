@@ -39,7 +39,14 @@ export const PLAN_PRESENTATION = Object.freeze({
     icon: CrownOutlined,
     features: [
       'Productos ilimitados',
-      'Analizador de productos con IA',
+      // «Cupos de IA ampliados» y no «Analizador de productos con IA».
+      //
+      // Esa línea decía que el análisis de productos era del plan Profesional, y no lo es:
+      // los dos planes lo tienen, cada uno con su cupo mensual (300 análisis de imágenes el
+      // Emprendedor, 1.500 el Profesional). Mostrada al lado de los cupos, la pantalla de
+      // planes se contradecía a sí misma. Lo que SÍ distingue al Profesional es cuánto trae:
+      // alrededor de cinco veces los cupos de cada función. Los números salen del catálogo.
+      'Cupos de IA ampliados',
       'Múltiples administradores',
       'Reportes avanzados',
       'Soporte prioritario',
@@ -76,3 +83,29 @@ export const formatArs = (value, { sinPrecio = 'A definir' } = {}) => {
     maximumFractionDigits: 0,
   }).format(value)
 }
+
+/**
+ * Los cupos mensuales de IA que trae cada plan, para mostrarlos junto al precio.
+ *
+ * Los NÚMEROS salen del catálogo del backend (`limits` en /subscriptions/plans), que es
+ * lo que el medidor aplica de verdad: escribirlos acá volvería a abrir la puerta a que la
+ * pantalla diga una cifra y el cobro de cupo aplique otra. Acá solo está cómo se llama
+ * cada cupo. Los tokens se omiten a propósito: a quien elige un plan le dicen «cuántos
+ * análisis», no «cuántos millones de tokens».
+ */
+export const PLAN_QUOTA_LABELS = Object.freeze([
+  ['vision', 'análisis de imágenes con IA'],
+  ['agentMessages', 'mensajes del asistente de ventas'],
+  ['imageEdits', 'fondos generados con IA'],
+  ['marketAnalyses', 'análisis de mercado con IA'],
+])
+
+export const formatCount = value => new Intl.NumberFormat('es-AR').format(Number(value) || 0)
+
+/** Los cupos de un plan, solo los que el catálogo trae con un valor mayor que cero. */
+export const getPlanQuotaLines = limits =>
+  PLAN_QUOTA_LABELS.filter(([key]) => Number(limits?.[key]) > 0).map(([key, label]) => ({
+    key,
+    label,
+    amount: Number(limits[key]),
+  }))

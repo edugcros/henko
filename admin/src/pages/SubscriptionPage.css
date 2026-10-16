@@ -1,0 +1,567 @@
+/*
+ * Planes de suscripción.
+ *
+ * Es el destino de «Ver planes» y «Crear mi tienda» de la landing, así que comparte su
+ * paleta —azul eléctrico a violeta sobre azul noche, sacada del logo— y su tipografía de
+ * títulos (Montserrat, la del wordmark). La versión anterior era gris Ant Design: se
+ * pasaba de una landing de marca a una pantalla sin identidad en el mismo clic.
+ *
+ * Los botones son <button> nativos y no el Button de Ant: Ant inyecta sus estilos en
+ * tiempo de ejecución, después de este archivo, y le gana a cualquier clase que se les
+ * ponga. Con elementos nativos no hay pelea de especificidad.
+ *
+ * Todo cuelga de .hk-sub para no tocar el resto del panel.
+ */
+
+.hk-sub {
+  --hk-navy-950: #040817;
+  --hk-navy-900: #050b1f;
+  --hk-navy-800: #0a1433;
+  --hk-navy-700: #101c45;
+  --hk-blue: #0b6bff;
+  --hk-blue-soft: #5aa2ff;
+  --hk-cyan: #14d8ff;
+  --hk-violet: #7a2cff;
+  --hk-ink: #0a1230;
+  --hk-muted: #55618a;
+  --hk-paper: #f4f7ff;
+  --hk-line: #dfe6fb;
+  --hk-on-dark: #b9c6ee;
+  --hk-on-dark-soft: #8ea0d6;
+  --hk-gradient: linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%);
+  --hk-gradient-text: linear-gradient(100deg, #14d8ff 0%, #5aa2ff 38%, #a06bff 74%, #e24bff 100%);
+  --hk-display: Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif;
+
+  min-height: 100vh;
+  color: var(--hk-ink);
+  background: var(--hk-paper);
+  font-family:
+    Roboto,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  line-height: 1.55;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hk-sub *,
+.hk-sub *::before,
+.hk-sub *::after {
+  box-sizing: border-box;
+}
+
+.hk-sub :where(h1, h2, h3, p, ul, ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.hk-sub :where(ul, ol) {
+  list-style: none;
+}
+
+.hk-sub-wrap {
+  width: min(1040px, calc(100% - 40px));
+  margin-inline: auto;
+}
+
+.hk-sub :is(a, button, summary):focus-visible {
+  outline: 3px solid var(--hk-blue-soft);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* ───────────── Barra superior y portada ───────────── */
+
+.hk-sub-top {
+  background: var(--hk-navy-950);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.hk-sub-top-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+}
+.hk-sub-logo {
+  display: block;
+  height: 35px;
+  width: auto;
+}
+.hk-sub-login {
+  color: #d7e1ff;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.hk-sub-login:hover {
+  color: var(--hk-cyan);
+}
+
+.hk-sub-hero {
+  padding: 64px 0 150px;
+  color: #fff;
+  background:
+    radial-gradient(760px 440px at 90% -10%, rgba(122, 44, 255, 0.42), transparent 62%),
+    radial-gradient(700px 520px at 2% 20%, rgba(11, 107, 255, 0.36), transparent 62%),
+    var(--hk-navy-900);
+}
+.hk-sub-eyebrow {
+  display: inline-flex;
+  margin-bottom: 20px;
+  padding: 6px 14px;
+  border: 1px solid rgba(20, 216, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(20, 216, 255, 0.08);
+  color: var(--hk-cyan);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.hk-sub-hero h1 {
+  font-family: var(--hk-display);
+  font-size: clamp(2.1rem, 1.2rem + 3.6vw, 3.6rem);
+  font-weight: 800;
+  line-height: 1.07;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.hk-sub-gradient {
+  background: var(--hk-gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.hk-sub-lead {
+  max-width: 36rem;
+  margin-top: 18px;
+  color: var(--hk-on-dark);
+  font-size: 1.1rem;
+  line-height: 1.65;
+}
+.hk-sub-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 30px;
+}
+.hk-sub-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d7e1ff;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.hk-sub-step-num {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--hk-gradient);
+  color: #fff;
+  font-family: var(--hk-display);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ───────────── Planes ───────────── */
+
+/* Suben sobre la portada: las tarjetas son lo primero que se mira. */
+.hk-sub-plans {
+  position: relative;
+  margin-top: -92px;
+  padding-bottom: 28px;
+}
+.hk-sub-alert {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+.hk-sub-retry {
+  padding: 5px 14px;
+  border: 1px solid #d9a441;
+  border-radius: 8px;
+  background: #fff;
+  color: #7a5200;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hk-sub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+.hk-sub-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 34px;
+  border: 1px solid var(--hk-line);
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 30px 60px -38px rgba(11, 33, 110, 0.55);
+}
+.hk-sub-card.is-loading {
+  min-height: 560px;
+}
+.hk-sub-card.is-featured {
+  border-color: rgba(122, 100, 255, 0.55);
+  background: linear-gradient(160deg, var(--hk-navy-800), var(--hk-navy-700));
+  color: #fff;
+  box-shadow:
+    0 38px 76px -34px rgba(40, 30, 160, 0.75),
+    0 0 0 1px rgba(91, 61, 255, 0.3);
+}
+.hk-sub-badge {
+  position: absolute;
+  top: -13px;
+  left: 34px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--hk-gradient);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.hk-sub-card-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(11, 107, 255, 0.12), rgba(122, 44, 255, 0.14));
+  color: var(--hk-blue);
+  font-size: 22px;
+}
+.is-featured .hk-sub-card-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hk-cyan);
+}
+.hk-sub-card-name {
+  margin-top: 22px;
+  font-family: var(--hk-display);
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.hk-sub-card-desc {
+  min-height: 3.1em;
+  margin-top: 8px;
+  color: var(--hk-muted);
+  font-size: 14.5px;
+}
+.is-featured .hk-sub-card-desc {
+  color: var(--hk-on-dark);
+}
+
+.hk-sub-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 62px;
+  margin-top: 18px;
+}
+.hk-sub-price strong {
+  font-family: var(--hk-display);
+  font-size: 2.7rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.hk-sub-price span {
+  color: var(--hk-muted);
+  font-size: 14px;
+}
+.is-featured .hk-sub-price span {
+  color: var(--hk-on-dark-soft);
+}
+.hk-sub-price .hk-sub-price-na {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.hk-sub-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 15px 22px;
+  border: 1px solid #c9d4f5;
+  border-radius: 13px;
+  background: #fff;
+  color: var(--hk-ink);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.hk-sub-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--hk-blue);
+  color: var(--hk-blue);
+}
+.is-featured .hk-sub-cta {
+  border-color: transparent;
+  background: var(--hk-gradient);
+  color: #fff;
+  box-shadow:
+    0 14px 32px -12px rgba(11, 107, 255, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.is-featured .hk-sub-cta:hover:not(:disabled) {
+  color: #fff;
+  box-shadow:
+    0 18px 38px -12px rgba(91, 61, 255, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.hk-sub-cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hk-sub-features {
+  display: grid;
+  gap: 12px;
+  margin: 26px 0 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--hk-line);
+  font-size: 14.5px;
+}
+.is-featured .hk-sub-features {
+  border-top-color: rgba(255, 255, 255, 0.14);
+  color: #dbe5ff;
+}
+.hk-sub-features li {
+  display: flex;
+  gap: 10px;
+}
+.hk-sub-features .anticon {
+  flex: none;
+  margin-top: 5px;
+  color: var(--hk-blue);
+  font-size: 12px;
+}
+.is-featured .hk-sub-features .anticon {
+  color: var(--hk-cyan);
+}
+
+.hk-sub-quotas {
+  /* Pegado al pie de la tarjeta: con listas de distinto largo, los dos recuadros de cupos
+     quedan a la misma altura y se comparan de un vistazo. */
+  margin-top: auto;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--hk-paper);
+}
+.is-featured .hk-sub-quotas {
+  background: rgba(255, 255, 255, 0.06);
+}
+.hk-sub-quotas-title {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--hk-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.is-featured .hk-sub-quotas-title {
+  color: var(--hk-cyan);
+}
+.hk-sub-quotas ul {
+  display: grid;
+  gap: 7px;
+  font-size: 13.5px;
+  color: var(--hk-muted);
+}
+.is-featured .hk-sub-quotas ul {
+  color: var(--hk-on-dark);
+}
+.hk-sub-quotas b {
+  color: var(--hk-ink);
+  font-variant-numeric: tabular-nums;
+}
+.is-featured .hk-sub-quotas b {
+  color: #fff;
+}
+
+/* ───────────── Incluido, preguntas y cierre ───────────── */
+
+.hk-sub-included {
+  padding: 56px 0 12px;
+}
+.hk-sub-included h2,
+.hk-sub-faq h2 {
+  font-family: var(--hk-display);
+  font-size: clamp(1.4rem, 1rem + 1.2vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+.hk-sub-included ul {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 26px;
+}
+.hk-sub-included li {
+  display: flex;
+  gap: 13px;
+}
+.hk-sub-included-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(11, 107, 255, 0.12), rgba(122, 44, 255, 0.14));
+  color: var(--hk-blue);
+  font-size: 19px;
+}
+.hk-sub-included b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.hk-sub-included small {
+  display: block;
+  margin-top: 3px;
+  color: var(--hk-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.hk-sub-faq {
+  padding: 52px 0 28px;
+}
+.hk-sub-faq-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  gap: 48px;
+  align-items: start;
+}
+.hk-sub-faq details {
+  border-bottom: 1px solid var(--hk-line);
+}
+.hk-sub-faq details:first-child {
+  border-top: 1px solid var(--hk-line);
+}
+.hk-sub-faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 4px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.hk-sub-faq summary::-webkit-details-marker {
+  display: none;
+}
+.hk-sub-faq summary .anticon {
+  flex: none;
+  color: var(--hk-blue);
+  font-size: 13px;
+  transition: transform 0.25s;
+}
+.hk-sub-faq details[open] summary .anticon {
+  transform: rotate(180deg);
+}
+.hk-sub-faq details p {
+  max-width: 38rem;
+  padding: 0 4px 22px;
+  color: var(--hk-muted);
+}
+
+.hk-sub-foot {
+  padding: 22px 0 44px;
+  color: var(--hk-muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+.hk-sub-foot .hk-sub-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.hk-sub-foot .anticon {
+  color: var(--hk-blue);
+}
+
+/* ───────────── Responsive ───────────── */
+
+@media (max-width: 920px) {
+  .hk-sub-included ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .hk-sub-faq-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hk-sub-hero {
+    padding: 44px 0 124px;
+  }
+  .hk-sub-plans {
+    margin-top: -78px;
+  }
+  .hk-sub-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .hk-sub-card {
+    padding: 28px 22px;
+  }
+  .hk-sub-badge {
+    left: 22px;
+  }
+  .hk-sub-card-desc {
+    min-height: 0;
+  }
+  .hk-sub-steps li {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .hk-sub-included ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hk-sub-login {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hk-sub * {
+    transition: none !important;
+  }
+}
