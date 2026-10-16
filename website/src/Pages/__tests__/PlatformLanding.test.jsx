@@ -13,6 +13,11 @@ jest.mock('@utils/adminUrl', () => ({
   SUBSCRIPTION_PATH: '/subscripcion',
 }))
 jest.mock('../../config/env', () => ({ env: { apiBaseUrl: '/api' } }))
+// El chat real arrastra MUI, redux y el cliente HTTP: acá sólo importa si se monta o no.
+jest.mock('@components/AiChatWidget', () => ({
+  __esModule: true,
+  default: () => <div data-testid="ai-chat-widget" />,
+}))
 
 // La forma real de GET /subscriptions/plans.
 const CATALOGO = {
@@ -41,6 +46,10 @@ const respuesta = body => Promise.resolve({ ok: true, json: () => Promise.resolv
 // Solo la sección de planes: las maquetas ilustrativas de más arriba también tienen
 // importes de ejemplo («$ 0.000») y no tienen nada que ver con el catálogo.
 const planes = () => within(document.getElementById('planes'))
+
+// La landing hace más de un pedido (catálogo de planes y resolución del comercio): las pruebas
+// de cada uno miran sólo los suyos.
+const llamadasA = ruta => global.fetch.mock.calls.filter(([url]) => String(url).startsWith(ruta))
 
 beforeEach(() => {
   // Por defecto el catálogo responde bien; cada prueba de precios lo pisa si necesita
@@ -418,9 +427,9 @@ describe('PlatformLanding · planes con precios en vivo', () => {
   it('lee el catálogo público, sin sesión', async () => {
     render(<PlatformLanding />)
 
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(llamadasA('/api/subscriptions/plans')).toHaveLength(1))
 
-    const [url, opciones] = global.fetch.mock.calls[0]
+    const [url, opciones] = llamadasA('/api/subscriptions/plans')[0]
 
     expect(url).toBe('/api/subscriptions/plans')
     // Es una vidriera: no manda cookies ni nada de la sesión.
@@ -643,5 +652,76 @@ describe('Activos de marca (website/public)', () => {
     expect(html).toContain('name="theme-color" content="#050b1f"')
     // Montserrat es la tipografía de los títulos: si no se pide, cae a Rubik sin avisar.
     expect(html).toContain('family=Montserrat')
+  })
+})
+
+describe('PlatformLanding · asistente de ventas con IA', () => {
+  // El dominio raíz es la landing y la tienda del comercio «Henkart». Cuando la landing pasó a
+  // atenderlo entero, el chat desapareció porque lo montaba App. Se vuelve a mostrar sólo si el
+  // backend dice que el comercio lo tiene activo.
+  const conTenant = respuestaTenant => {
+    global.fetch = jest.fn(url =>
+      String(url).includes('/tenants/resolve') ? respuestaTenant() : respuesta(CATALOGO),
+    )
+  }
+
+  it('lo muestra cuando el comercio lo tiene activo', async () => {
+    conTenant(() => respuesta({ success: true, data: { aiAssistant: { enabled: true } } }))
+
+    render(<PlatformLanding />)
+
+    expect(await screen.findByTestId('ai-chat-widget')).toBeInTheDocument()
+  })
+
+  it('pregunta por el dominio de la página, sin cookies ni sesión', async () => {
+    conTenant(() => respuesta({ success: true, data: { aiAssistant: { enabled: true } } }))
+
+    render(<PlatformLanding />)
+
+    await waitFor(() => expect(llamadasA('/api/tenants/resolve')).toHaveLength(1))
+
+    const [url, opciones] = llamadasA('/api/tenants/resolve')[0]
+
+    expect(url).toBe(`/api/tenants/resolve?domains=${window.location.hostname}`)
+    expect(opciones.credentials).toBe('omit')
+  })
+
+  it('no lo muestra si el comercio lo tiene apagado', async () => {
+    conTenant(() => respuesta({ success: true, data: { aiAssistant: { enabled: false } } }))
+
+    render(<PlatformLanding />)
+
+    await waitFor(() => expect(llamadasA('/api/tenants/resolve')).toHaveLength(1))
+    await screen.findByText(/\$\s*15\.000/) // la landing terminó de cargar
+
+    expect(screen.queryByTestId('ai-chat-widget')).not.toBeInTheDocument()
+  })
+
+  it('ante la duda no lo muestra: sin el dato, con error o sin red', async () => {
+    const casos = [
+      () => respuesta({ success: true, data: {} }),
+      () => respuesta({ success: true, data: { aiAssistant: { enabled: 'true' } } }),
+      () => Promise.resolve({ ok: false, status: 503, json: () => ({}) }),
+      () => Promise.reject(new Error('sin red')),
+    ]
+
+    for (const caso of casos) {
+      conTenant(caso)
+      const { unmount } = render(<PlatformLanding />)
+
+      await waitFor(() => expect(llamadasA('/api/tenants/resolve')).toHaveLength(1))
+      await screen.findByText(/\$\s*15\.000/)
+
+      expect(screen.queryByTestId('ai-chat-widget')).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('un fallo al consultar no rompe la landing', async () => {
+    conTenant(() => Promise.reject(new Error('sin red')))
+
+    render(<PlatformLanding />)
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
   })
 })
