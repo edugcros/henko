@@ -38,6 +38,23 @@ const getAllowedAdminOrigins = () => {
   return new Set([...configuredOrigins, ...localOrigins].filter(Boolean))
 }
 
+// Con quién conversa esta vista previa.
+//
+// Dentro del iframe del diseñador es el padre. Pero el botón «Abrir» del admin la abre
+// en una pestaña propia, donde window.parent es la propia ventana y el admin es quien
+// la abrió (window.opener).
+//
+// Antes solo se miraba window.parent. En una pestaña propia el saludo se mandaba a sí
+// misma y se rechazaba cualquier mensaje, así que esa pestaña no tenía forma de recibir
+// el diseño: mostraba la plantilla por defecto y nunca lo que se estaba diseñando. El
+// sessionStorage tampoco ayudaba: es por pestaña, y la nueva arranca vacía.
+export const getAdminWindow = () => {
+  if (typeof window === 'undefined') return null
+  if (window.parent && window.parent !== window) return window.parent
+
+  return window.opener || null
+}
+
 const readStoredPreview = () => {
   try {
     const raw = sessionStorage.getItem(PREVIEW_STORAGE_KEY)
@@ -93,7 +110,9 @@ const ThemePreview = () => {
     const handleMessage = event => {
       const message = event.data
 
-      if (event.source !== window.parent) return
+      const adminWindow = getAdminWindow()
+
+      if (!adminWindow || event.source !== adminWindow) return
       if (!previewHandshake.allowedAdminOrigins.has(event.origin)) return
       if (!message || message.type !== 'HENKO_THEME_PREVIEW_UPDATE') return
       if (!message.payload || typeof message.payload !== 'object') return
@@ -110,11 +129,10 @@ const ThemePreview = () => {
     // Sin un parentOrigin real no hay a quién avisarle "estoy listo" —
     // mandar el postMessage igual tiraría el mismo error de origen que
     // este fix resuelve para el caso normal.
-    if (previewHandshake.parentOrigin) {
-      window.parent?.postMessage(
-        { type: 'HENKO_THEME_PREVIEW_READY' },
-        previewHandshake.parentOrigin,
-      )
+    const adminWindow = getAdminWindow()
+
+    if (adminWindow && previewHandshake.parentOrigin) {
+      adminWindow.postMessage({ type: 'HENKO_THEME_PREVIEW_READY' }, previewHandshake.parentOrigin)
     }
     setIsConnected(true)
 
