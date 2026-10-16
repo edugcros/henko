@@ -120,17 +120,31 @@ const DashboardPreview = () => (
         <span />
       </div>
       <div className="hk-dashboard-address">panel.henkart.com.ar</div>
-      <div className="hk-dashboard-avatar" aria-hidden="true">M</div>
+      <div className="hk-dashboard-avatar" aria-hidden="true">
+        M
+      </div>
     </div>
 
     <div className="hk-dashboard-body">
       <aside className="hk-dashboard-sidebar" aria-hidden="true">
-        <div className="hk-sidebar-brand"><span>h.</span></div>
-        <span className="hk-sidebar-icon is-active"><FiBarChart2 /></span>
-        <span className="hk-sidebar-icon"><FiPackage /></span>
-        <span className="hk-sidebar-icon"><FiShoppingBag /></span>
-        <span className="hk-sidebar-icon"><FiLayers /></span>
-        <span className="hk-sidebar-icon"><FiZap /></span>
+        <div className="hk-sidebar-brand">
+          <span>h.</span>
+        </div>
+        <span className="hk-sidebar-icon is-active">
+          <FiBarChart2 />
+        </span>
+        <span className="hk-sidebar-icon">
+          <FiPackage />
+        </span>
+        <span className="hk-sidebar-icon">
+          <FiShoppingBag />
+        </span>
+        <span className="hk-sidebar-icon">
+          <FiLayers />
+        </span>
+        <span className="hk-sidebar-icon">
+          <FiZap />
+        </span>
       </aside>
 
       <div className="hk-dashboard-content">
@@ -139,24 +153,32 @@ const DashboardPreview = () => (
             <span className="hk-dashboard-kicker">TU NEGOCIO, EN UN SOLO LUGAR</span>
             <h3>Panel general</h3>
           </div>
-          <span className="hk-live-status"><i /> Tienda activa</span>
+          <span className="hk-live-status">
+            <i /> Tienda activa
+          </span>
         </div>
 
         <div className="hk-metric-grid">
           <div className="hk-metric-card">
             <span>Pedidos</span>
             <strong>38</strong>
-            <small><FiTrendingUp /> Seguimiento simple</small>
+            <small>
+              <FiTrendingUp /> Seguimiento simple
+            </small>
           </div>
           <div className="hk-metric-card">
             <span>Productos</span>
             <strong>126</strong>
-            <small><FiPackage /> Catálogo organizado</small>
+            <small>
+              <FiPackage /> Catálogo organizado
+            </small>
           </div>
           <div className="hk-metric-card hk-metric-card-accent">
             <span>Estado de tienda</span>
             <strong>Lista</strong>
-            <small><FiCheck /> Configuración visible</small>
+            <small>
+              <FiCheck /> Configuración visible
+            </small>
           </div>
         </div>
 
@@ -170,18 +192,33 @@ const DashboardPreview = () => (
               <span className="hk-mini-dots">•••</span>
             </div>
             <div className="hk-order-row">
-              <span className="hk-order-icon"><FiShoppingBag /></span>
-              <div><strong>Pedido #1048</strong><small>Hace unos minutos</small></div>
+              <span className="hk-order-icon">
+                <FiShoppingBag />
+              </span>
+              <div>
+                <strong>Pedido #1048</strong>
+                <small>Hace unos minutos</small>
+              </div>
               <span className="hk-order-tag">Nuevo</span>
             </div>
             <div className="hk-order-row">
-              <span className="hk-order-icon is-lilac"><FiPackage /></span>
-              <div><strong>Pedido #1047</strong><small>Hoy</small></div>
+              <span className="hk-order-icon is-lilac">
+                <FiPackage />
+              </span>
+              <div>
+                <strong>Pedido #1047</strong>
+                <small>Hoy</small>
+              </div>
               <span className="hk-order-tag is-muted">En curso</span>
             </div>
             <div className="hk-order-row">
-              <span className="hk-order-icon is-gold"><FiCreditCard /></span>
-              <div><strong>Pago confirmado</strong><small>Hoy</small></div>
+              <span className="hk-order-icon is-gold">
+                <FiCreditCard />
+              </span>
+              <div>
+                <strong>Pago confirmado</strong>
+                <small>Hoy</small>
+              </div>
               <span className="hk-order-tag">Registrado</span>
             </div>
           </div>
@@ -193,13 +230,23 @@ const DashboardPreview = () => (
             <div className="hk-store-visual">
               <div className="hk-store-visual-orb" />
               <span className="hk-store-label">NUEVA COLECCIÓN</span>
-              <strong>Tu estilo.<br />Tu espacio.</strong>
-              <span className="hk-store-visual-button">Explorar productos <FiArrowRight /></span>
+              <strong>
+                Tu estilo.
+                <br />
+                Tu espacio.
+              </strong>
+              <span className="hk-store-visual-button">
+                Explorar productos <FiArrowRight />
+              </span>
             </div>
-            <div className="hk-store-card-foot"><span /> Diseño adaptable a tu marca</div>
+            <div className="hk-store-card-foot">
+              <span /> Diseño adaptable a tu marca
+            </div>
           </div>
         </div>
-        <p className="hk-dashboard-caption">Maqueta ilustrativa · los datos y productos no son reales.</p>
+        <p className="hk-dashboard-caption">
+          Maqueta ilustrativa · los datos y productos no son reales.
+        </p>
       </div>
     </div>
   </div>
@@ -229,24 +276,32 @@ const PlatformLanding = () => {
       <div className="hk-announcement">
         <span className="hk-announcement-dot" aria-hidden="true" />
         Una plataforma para construir tu negocio online
-        <a href="#soluciones">Conocé Henkart <FiArrowRight aria-hidden="true" /></a>
+        <a href="#soluciones">
+          Conocé Henkart <FiArrowRight aria-hidden="true" />
+        </a>
       </div>
 
       <header className="hk-site-header">
         <div className="hk-container hk-nav">
           <a className="hk-logo" href="#inicio" aria-label="Henkart, inicio" onClick={closeMenu}>
-            <span className="hk-logo-mark">h<span>.</span></span>
+            <span className="hk-logo-mark">
+              h<span>.</span>
+            </span>
             <span className="hk-logo-word">henkart</span>
           </a>
 
           <nav className="hk-desktop-nav" aria-label="Navegación principal">
             {navLinks.map(link => (
-              <a key={link.href} href={link.href}>{link.label}</a>
+              <a key={link.href} href={link.href}>
+                {link.label}
+              </a>
             ))}
           </nav>
 
           <div className="hk-nav-actions">
-            <a className="hk-login-link" href={loginUrl}>Ingresar</a>
+            <a className="hk-login-link" href={loginUrl}>
+              Ingresar
+            </a>
             <a className="hk-button hk-button-small" href={plansUrl}>
               Ver planes <FiArrowRight aria-hidden="true" />
             </a>
@@ -267,10 +322,16 @@ const PlatformLanding = () => {
         {menuOpen && (
           <nav className="hk-mobile-nav" id="hk-mobile-navigation" aria-label="Navegación móvil">
             {navLinks.map(link => (
-              <a key={link.href} href={link.href} onClick={closeMenu}>{link.label}</a>
+              <a key={link.href} href={link.href} onClick={closeMenu}>
+                {link.label}
+              </a>
             ))}
-            <a href={loginUrl} onClick={closeMenu}>Ingresar al panel</a>
-            <a href={plansUrl} className="hk-mobile-nav-cta" onClick={closeMenu}>Ver planes y precios</a>
+            <a href={loginUrl} onClick={closeMenu}>
+              Ingresar al panel
+            </a>
+            <a href={plansUrl} className="hk-mobile-nav-cta" onClick={closeMenu}>
+              Ver planes y precios
+            </a>
           </nav>
         )}
       </header>
@@ -281,11 +342,18 @@ const PlatformLanding = () => {
           <div className="hk-hero-glow hk-hero-glow-two" aria-hidden="true" />
           <div className="hk-container hk-hero-grid">
             <div className="hk-hero-copy">
-              <div className="hk-eyebrow"><span /> E-COMMERCE PARA NEGOCIOS QUE QUIEREN CRECER</div>
-              <h1>Tu tienda online.<br /><span>Tu marca. Tu manera.</span></h1>
+              <div className="hk-eyebrow">
+                <span /> E-COMMERCE PARA NEGOCIOS QUE QUIEREN CRECER
+              </div>
+              <h1>
+                Tu tienda online.
+                <br />
+                <span>Tu marca. Tu manera.</span>
+              </h1>
               <p className="hk-hero-lead">
                 Creá una experiencia de compra propia y gestioná tu negocio desde un solo lugar.
-                Henkart reúne las herramientas para vender online, ordenar tu operación y seguir creciendo.
+                Henkart reúne las herramientas para vender online, ordenar tu operación y seguir
+                creciendo.
               </p>
 
               <div className="hk-hero-actions">
@@ -298,14 +366,26 @@ const PlatformLanding = () => {
               </div>
 
               <div className="hk-hero-notes">
-                <span><FiCheck aria-hidden="true" /> Administración desde un panel</span>
-                <span><FiCheck aria-hidden="true" /> Diseño adaptable a tu marca</span>
-                <span><FiCheck aria-hidden="true" /> Preparada para múltiples tiendas</span>
+                <span>
+                  <FiCheck aria-hidden="true" /> Administración desde un panel
+                </span>
+                <span>
+                  <FiCheck aria-hidden="true" /> Diseño adaptable a tu marca
+                </span>
+                <span>
+                  <FiCheck aria-hidden="true" /> Preparada para múltiples tiendas
+                </span>
               </div>
 
               <div className="hk-hero-footnote">
-                <span className="hk-footnote-icon"><FiGlobe aria-hidden="true" /></span>
-                <span><strong>Tu negocio, tu espacio digital.</strong><br />La plataforma crece con las necesidades de tu comercio.</span>
+                <span className="hk-footnote-icon">
+                  <FiGlobe aria-hidden="true" />
+                </span>
+                <span>
+                  <strong>Tu negocio, tu espacio digital.</strong>
+                  <br />
+                  La plataforma crece con las necesidades de tu comercio.
+                </span>
               </div>
             </div>
 
@@ -313,13 +393,23 @@ const PlatformLanding = () => {
               <div className="hk-visual-orbit hk-visual-orbit-one" aria-hidden="true" />
               <div className="hk-visual-orbit hk-visual-orbit-two" aria-hidden="true" />
               <div className="hk-dashboard-badge">
-                <span className="hk-badge-check"><FiCheck aria-hidden="true" /></span>
-                <span><strong>Todo conectado</strong><small>Tu operación, más clara</small></span>
+                <span className="hk-badge-check">
+                  <FiCheck aria-hidden="true" />
+                </span>
+                <span>
+                  <strong>Todo conectado</strong>
+                  <small>Tu operación, más clara</small>
+                </span>
               </div>
               <DashboardPreview />
               <div className="hk-floating-note">
-                <span className="hk-floating-note-icon"><FiTrendingUp aria-hidden="true" /></span>
-                <span><strong>Información para decidir</strong><small>Consultá la actividad de tu tienda</small></span>
+                <span className="hk-floating-note-icon">
+                  <FiTrendingUp aria-hidden="true" />
+                </span>
+                <span>
+                  <strong>Información para decidir</strong>
+                  <small>Consultá la actividad de tu tienda</small>
+                </span>
               </div>
             </div>
           </div>
@@ -335,9 +425,33 @@ const PlatformLanding = () => {
 
         <section className="hk-value-strip" aria-label="Beneficios de Henkart">
           <div className="hk-container hk-value-strip-inner">
-            <div><span className="hk-value-icon"><FiLayers aria-hidden="true" /></span><span><strong>Todo más organizado</strong><small>Catálogo y operación en un mismo panel</small></span></div>
-            <div><span className="hk-value-icon"><FiSmartphone aria-hidden="true" /></span><span><strong>Experiencia adaptable</strong><small>Tu tienda acompaña a tus clientes</small></span></div>
-            <div><span className="hk-value-icon"><FiZap aria-hidden="true" /></span><span><strong>Herramientas que evolucionan</strong><small>Funciones según plan y configuración</small></span></div>
+            <div>
+              <span className="hk-value-icon">
+                <FiLayers aria-hidden="true" />
+              </span>
+              <span>
+                <strong>Todo más organizado</strong>
+                <small>Catálogo y operación en un mismo panel</small>
+              </span>
+            </div>
+            <div>
+              <span className="hk-value-icon">
+                <FiSmartphone aria-hidden="true" />
+              </span>
+              <span>
+                <strong>Experiencia adaptable</strong>
+                <small>Tu tienda acompaña a tus clientes</small>
+              </span>
+            </div>
+            <div>
+              <span className="hk-value-icon">
+                <FiZap aria-hidden="true" />
+              </span>
+              <span>
+                <strong>Herramientas que evolucionan</strong>
+                <small>Funciones según plan y configuración</small>
+              </span>
+            </div>
           </div>
         </section>
 
@@ -345,8 +459,15 @@ const PlatformLanding = () => {
           <div className="hk-container">
             <div className="hk-section-heading">
               <span className="hk-section-eyebrow">UNA PLATAFORMA, MUCHAS POSIBILIDADES</span>
-              <h2>Lo necesario para vender.<br /><span>Y para hacerlo crecer.</span></h2>
-              <p>Tu tienda no es solo una vidriera. También es catálogo, pedidos, pagos y decisiones de todos los días.</p>
+              <h2>
+                Lo necesario para vender.
+                <br />
+                <span>Y para hacerlo crecer.</span>
+              </h2>
+              <p>
+                Tu tienda no es solo una vidriera. También es catálogo, pedidos, pagos y decisiones
+                de todos los días.
+              </p>
             </div>
 
             <div className="hk-feature-grid">
@@ -354,7 +475,9 @@ const PlatformLanding = () => {
                 const Icon = feature.icon
                 return (
                   <article className="hk-feature-card" key={feature.title}>
-                    <div className="hk-feature-icon"><Icon aria-hidden="true" /></div>
+                    <div className="hk-feature-icon">
+                      <Icon aria-hidden="true" />
+                    </div>
                     <span className="hk-feature-eyebrow">{feature.eyebrow}</span>
                     <h3>{feature.title}</h3>
                     <p>{feature.description}</p>
@@ -372,35 +495,73 @@ const PlatformLanding = () => {
           <div className="hk-container hk-showcase-grid">
             <div className="hk-showcase-visual">
               <div className="hk-showcase-card hk-showcase-card-back">
-                <span className="hk-showcase-sticker"><FiCheck aria-hidden="true" /> Catálogo organizado</span>
+                <span className="hk-showcase-sticker">
+                  <FiCheck aria-hidden="true" /> Catálogo organizado
+                </span>
                 <div className="hk-showcase-product-grid">
-                  <div className="hk-showcase-product hk-product-one"><span>01</span><i /></div>
-                  <div className="hk-showcase-product hk-product-two"><span>02</span><i /></div>
-                  <div className="hk-showcase-product hk-product-three"><span>03</span><i /></div>
+                  <div className="hk-showcase-product hk-product-one">
+                    <span>01</span>
+                    <i />
+                  </div>
+                  <div className="hk-showcase-product hk-product-two">
+                    <span>02</span>
+                    <i />
+                  </div>
+                  <div className="hk-showcase-product hk-product-three">
+                    <span>03</span>
+                    <i />
+                  </div>
                 </div>
-                <div className="hk-showcase-product-footer"><span>Productos destacados</span><span>Ver catálogo <FiArrowRight /></span></div>
+                <div className="hk-showcase-product-footer">
+                  <span>Productos destacados</span>
+                  <span>
+                    Ver catálogo <FiArrowRight />
+                  </span>
+                </div>
               </div>
               <div className="hk-showcase-insight">
-                <span className="hk-insight-icon"><FiBarChart2 aria-hidden="true" /></span>
-                <span><strong>Una mirada más clara</strong><small>La actividad de tu tienda, a mano</small></span>
+                <span className="hk-insight-icon">
+                  <FiBarChart2 aria-hidden="true" />
+                </span>
+                <span>
+                  <strong>Una mirada más clara</strong>
+                  <small>La actividad de tu tienda, a mano</small>
+                </span>
               </div>
             </div>
 
             <div className="hk-showcase-copy">
               <span className="hk-section-eyebrow">MÁS CONTROL, MENOS FRICCIÓN</span>
-              <h2>Vos te ocupás de tu negocio.<br /><span>Henkart ordena las herramientas.</span></h2>
+              <h2>
+                Vos te ocupás de tu negocio.
+                <br />
+                <span>Henkart ordena las herramientas.</span>
+              </h2>
               <p>
-                Pasá de gestionar tareas sueltas a trabajar desde un espacio pensado para la operación
-                de una tienda: mantené el catálogo, revisá pedidos, adaptá la imagen y consultá la
-                información disponible sin perder de vista el conjunto.
+                Pasá de gestionar tareas sueltas a trabajar desde un espacio pensado para la
+                operación de una tienda: mantené el catálogo, revisá pedidos, adaptá la imagen y
+                consultá la información disponible sin perder de vista el conjunto.
               </p>
               <ul className="hk-check-list">
-                <li><FiCheck aria-hidden="true" /> Administrá productos, categorías y variantes.</li>
-                <li><FiCheck aria-hidden="true" /> Personalizá la experiencia y las secciones de tu tienda.</li>
-                <li><FiCheck aria-hidden="true" /> Configurá medios de pago desde el área administrativa.</li>
-                <li><FiCheck aria-hidden="true" /> Accedé a estadísticas y herramientas habilitadas para tu plan.</li>
+                <li>
+                  <FiCheck aria-hidden="true" /> Administrá productos, categorías y variantes.
+                </li>
+                <li>
+                  <FiCheck aria-hidden="true" /> Personalizá la experiencia y las secciones de tu
+                  tienda.
+                </li>
+                <li>
+                  <FiCheck aria-hidden="true" /> Configurá medios de pago desde el área
+                  administrativa.
+                </li>
+                <li>
+                  <FiCheck aria-hidden="true" /> Accedé a estadísticas y herramientas habilitadas
+                  para tu plan.
+                </li>
               </ul>
-              <a className="hk-text-link" href={plansUrl}>Conocer planes y funcionalidades <FiArrowRight aria-hidden="true" /></a>
+              <a className="hk-text-link" href={plansUrl}>
+                Conocer planes y funcionalidades <FiArrowRight aria-hidden="true" />
+              </a>
             </div>
           </div>
         </section>
@@ -409,7 +570,11 @@ const PlatformLanding = () => {
           <div className="hk-container">
             <div className="hk-section-heading hk-centered-heading">
               <span className="hk-section-eyebrow">EMPEZÁ EN TRES PASOS</span>
-              <h2>De la idea a tu tienda.<br /><span>Con un camino claro.</span></h2>
+              <h2>
+                De la idea a tu tienda.
+                <br />
+                <span>Con un camino claro.</span>
+              </h2>
               <p>Un proceso simple para preparar tu comercio y avanzar a tu ritmo.</p>
             </div>
 
@@ -424,7 +589,9 @@ const PlatformLanding = () => {
               ))}
             </div>
             <div className="hk-steps-cta">
-              <a className="hk-button hk-button-primary" href={plansUrl}>Elegir un plan <FiArrowRight aria-hidden="true" /></a>
+              <a className="hk-button hk-button-primary" href={plansUrl}>
+                Elegir un plan <FiArrowRight aria-hidden="true" />
+              </a>
               <span>Podés revisar los planes y precios vigentes antes de comenzar.</span>
             </div>
           </div>
@@ -435,20 +602,36 @@ const PlatformLanding = () => {
             <div className="hk-smart-graphic" aria-hidden="true">
               <div className="hk-smart-ring hk-smart-ring-one" />
               <div className="hk-smart-ring hk-smart-ring-two" />
-              <div className="hk-smart-center"><FiZap /></div>
-              <span className="hk-smart-node hk-smart-node-one"><FiPackage /></span>
-              <span className="hk-smart-node hk-smart-node-two"><FiBarChart2 /></span>
-              <span className="hk-smart-node hk-smart-node-three"><FiShoppingBag /></span>
+              <div className="hk-smart-center">
+                <FiZap />
+              </div>
+              <span className="hk-smart-node hk-smart-node-one">
+                <FiPackage />
+              </span>
+              <span className="hk-smart-node hk-smart-node-two">
+                <FiBarChart2 />
+              </span>
+              <span className="hk-smart-node hk-smart-node-three">
+                <FiShoppingBag />
+              </span>
             </div>
             <div className="hk-smart-copy">
-              <span className="hk-smart-pill"><FiZap aria-hidden="true" /> HERRAMIENTAS INTELIGENTES</span>
-              <h2>Tecnología que acompaña.<br /><span>Vos seguís al mando.</span></h2>
+              <span className="hk-smart-pill">
+                <FiZap aria-hidden="true" /> HERRAMIENTAS INTELIGENTES
+              </span>
+              <h2>
+                Tecnología que acompaña.
+                <br />
+                <span>Vos seguís al mando.</span>
+              </h2>
               <p>
                 Henkart incorpora herramientas inteligentes para tareas comerciales y de catálogo
                 cuando están disponibles para tu plan y tu configuración. Son un apoyo para trabajar
                 mejor, no una caja negra que decide por tu negocio.
               </p>
-              <a className="hk-button hk-button-light" href={plansUrl}>Explorar funcionalidades <FiArrowRight aria-hidden="true" /></a>
+              <a className="hk-button hk-button-light" href={plansUrl}>
+                Explorar funcionalidades <FiArrowRight aria-hidden="true" />
+              </a>
             </div>
           </div>
         </section>
@@ -457,15 +640,27 @@ const PlatformLanding = () => {
           <div className="hk-container hk-plan-banner">
             <div>
               <span className="hk-section-eyebrow">TU PRÓXIMO PASO</span>
-              <h2>Tu negocio merece<br />un lugar propio en internet.</h2>
-              <p>Conocé las opciones disponibles y elegí la base que mejor se adapte a tu comercio.</p>
+              <h2>
+                Tu negocio merece
+                <br />
+                un lugar propio en internet.
+              </h2>
+              <p>
+                Conocé las opciones disponibles y elegí la base que mejor se adapte a tu comercio.
+              </p>
             </div>
             <div className="hk-plan-actions">
-              <a className="hk-button hk-button-primary" href={plansUrl}>Ver planes y precios <FiArrowRight aria-hidden="true" /></a>
-              <a className="hk-secondary-text-link" href={signupUrl}>Ya sé lo que necesito: crear mi tienda</a>
+              <a className="hk-button hk-button-primary" href={plansUrl}>
+                Ver planes y precios <FiArrowRight aria-hidden="true" />
+              </a>
+              <a className="hk-secondary-text-link" href={signupUrl}>
+                Ya sé lo que necesito: crear mi tienda
+              </a>
               <small>Los precios vigentes se consultan en la pantalla de suscripción.</small>
             </div>
-            <div className="hk-plan-watermark" aria-hidden="true">h.</div>
+            <div className="hk-plan-watermark" aria-hidden="true">
+              h.
+            </div>
           </div>
         </section>
 
@@ -473,9 +668,15 @@ const PlatformLanding = () => {
           <div className="hk-container hk-faq-layout">
             <div className="hk-faq-intro">
               <span className="hk-section-eyebrow">PREGUNTAS FRECUENTES</span>
-              <h2>Antes de empezar,<br /><span>aclaramos lo importante.</span></h2>
+              <h2>
+                Antes de empezar,
+                <br />
+                <span>aclaramos lo importante.</span>
+              </h2>
               <p>Revisá las respuestas rápidas o pasá directamente a conocer los planes.</p>
-              <a className="hk-text-link" href={plansUrl}>Ir a planes y precios <FiArrowRight aria-hidden="true" /></a>
+              <a className="hk-text-link" href={plansUrl}>
+                Ir a planes y precios <FiArrowRight aria-hidden="true" />
+              </a>
             </div>
             <div className="hk-faq-list">
               {questions.map(item => (
@@ -495,10 +696,16 @@ const PlatformLanding = () => {
           <div className="hk-container hk-final-cta-inner">
             <div>
               <span>EL COMIENZO DE ALGO PROPIO</span>
-              <h2>Hacé lugar para<br />tu próxima etapa.</h2>
+              <h2>
+                Hacé lugar para
+                <br />
+                tu próxima etapa.
+              </h2>
               <p>Tu tienda empieza con una decisión. El resto, paso a paso.</p>
             </div>
-            <a className="hk-button hk-button-lime" href={plansUrl}>Empezar con Henkart <FiArrowRight aria-hidden="true" /></a>
+            <a className="hk-button hk-button-lime" href={plansUrl}>
+              Empezar con Henkart <FiArrowRight aria-hidden="true" />
+            </a>
           </div>
         </section>
       </main>
@@ -506,11 +713,20 @@ const PlatformLanding = () => {
       <footer className="hk-footer">
         <div className="hk-container hk-footer-main">
           <div className="hk-footer-brand">
-            <a className="hk-logo hk-logo-footer" href="#inicio" aria-label="Henkart, volver al inicio">
-              <span className="hk-logo-mark">h<span>.</span></span>
+            <a
+              className="hk-logo hk-logo-footer"
+              href="#inicio"
+              aria-label="Henkart, volver al inicio"
+            >
+              <span className="hk-logo-mark">
+                h<span>.</span>
+              </span>
               <span className="hk-logo-word">henkart</span>
             </a>
-            <p>Herramientas claras para vender online y gestionar tu negocio con una visión más completa.</p>
+            <p>
+              Herramientas claras para vender online y gestionar tu negocio con una visión más
+              completa.
+            </p>
           </div>
           <div className="hk-footer-links">
             <strong>Henkart</strong>
