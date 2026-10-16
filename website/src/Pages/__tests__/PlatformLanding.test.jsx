@@ -22,9 +22,7 @@ describe('PlatformLanding', () => {
   it('renders feature cards without undefined element types', () => {
     render(<PlatformLanding />)
 
-    expect(
-      screen.getByRole('heading', { name: /lo necesario para vender/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /lo necesario para vender/i })).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /productos y stock bajo control/i }),
     ).toBeInTheDocument()
