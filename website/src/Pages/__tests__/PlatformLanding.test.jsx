@@ -19,15 +19,27 @@ describe('PlatformLanding', () => {
     ).toBeGreaterThan(0)
   })
 
-  it('renders feature cards without undefined element types', () => {
+  it('renders all feature cards and their headings', () => {
     render(<PlatformLanding />)
 
     expect(screen.getByRole('heading', { name: /lo necesario para vender/i })).toBeInTheDocument()
     expect(
+      screen.getByRole('heading', { name: /una tienda que lleva tu marca/i }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('heading', { name: /productos y stock bajo control/i }),
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('heading', { name: /pedidos, clientes y gestión/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /configurá tus medios de pago/i }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('heading', { name: /diseñá una tienda a tu estilo/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /información para decidir mejor/i }),
     ).toBeInTheDocument()
   })
 })
