@@ -39,6 +39,43 @@ import { env } from '../config/env'
 import './PlatformLanding.css'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CUÁNDO SE MUESTRA LA LANDING
+//
+// La landing se monta en el dominio raíz de Henkart. Pero ese dominio NO es solo
+// marketing: el diseñador de tienda del admin carga su vista previa en un iframe de
+// <dominio raíz>/theme-preview (admin.henkart.com.ar → henkart.com.ar), y esa ruta
+// la sigue atendiendo la app del storefront.
+//
+// La decisión se tomaba solo por el hostname, sin mirar la ruta, así que desde que
+// existe la landing el diseñador mostraba la landing en lugar de la tienda que se está
+// diseñando: el iframe pedía /theme-preview, caía en el dominio raíz y se montaba la
+// página de marketing antes de que el router pudiera intervenir.
+//
+// Es una función pura, sin window ni env, para poder probarla. index.js la llama.
+// ─────────────────────────────────────────────────────────────────────────────
+export const normalizeHostname = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .replace(/:\d+$/, '')
+    .replace(/^www\./, '')
+
+// Rutas que la app sigue atendiendo en el dominio raíz. Comparación EXACTA, igual que
+// App.js, TenantContext y StoreThemeContext, que también preguntan por este path.
+const APP_PATHS_ON_PLATFORM_HOST = ['/theme-preview']
+
+export const shouldRenderPlatformLanding = ({ hostname, pathname, platformDomain } = {}) => {
+  const host = normalizeHostname(hostname)
+  const platform = normalizeHostname(platformDomain)
+
+  if (!host || !platform || host !== platform) return false
+
+  return !APP_PATHS_ON_PLATFORM_HOST.includes(String(pathname || '/'))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MARCA
 //
 // El logo es el ORIGINAL de Henkart —carrito con la H, el nombre y el lema «Tu
