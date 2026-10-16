@@ -169,6 +169,107 @@ export const registrarDominioEnBorde = async (hostname, { surface = SUPERFICIE.T
   }
 }
 
+/**
+ * Deja el subdominio de plataforma redirigiendo al dominio propio del comercio.
+ *
+ * QUÉ PROBLEMA CIERRA
+ *
+ * Un comercio nace en `sutienda.henkart.com.ar` y, cuando crece, conecta
+ * `sutienda.com`. A partir de ahí los DOS sirven el mismo catálogo: Google ve
+ * dos direcciones con idéntico contenido y reparte la autoridad entre ellas.
+ * El comercio hace el esfuerzo de posicionarse y lo cobra a medias — y la
+ * mitad se la lleva un dominio que ni siquiera es suyo.
+ *
+ * POR QUÉ ACÁ Y NO EN EL BACKEND
+ *
+ * Las páginas de la tienda no pasan por Express: las sirve el borde. Un 301
+ * en el middleware redirigiría las llamadas de la API, no las visitas — o sea
+ * rompería el SPA sin arreglar el SEO. La redirección tiene que vivir donde se
+ * atiende el hostname.
+ *
+ * POR QUÉ 301 Y NO 302
+ *
+ * Porque es permanente de verdad: es la única que transfiere la autoridad
+ * acumulada al dominio nuevo. Una 302 le dice al buscador «esto es temporal,
+ * seguí indexando el viejo», que es exactamente lo contrario de lo que se
+ * busca.
+ *
+ * El subdominio se registra primero porque el borde lo sirve por un comodín y
+ * no lo conoce individualmente: sin darlo de alta no hay a qué aplicarle la
+ * regla.
+ */
+export const redirigirDominioEnBorde = async (hostname, destino) => {
+  if (!isEdgeProvisioningEnabled(SUPERFICIE.TIENDA)) {
+    return { ok: false, motivo: 'sin_credenciales' }
+  }
+
+  if (!limpio(hostname) || !limpio(destino)) {
+    return { ok: false, motivo: 'faltan_datos' }
+  }
+
+  // Redirigir un dominio hacia sí mismo es un bucle infinito servido desde el
+  // borde. No debería poder pasar, y por eso mismo se comprueba acá.
+  if (limpio(hostname).toLowerCase() === limpio(destino).toLowerCase()) {
+    logger.error('[BORDE] Se intentó redirigir un dominio a sí mismo', { hostname })
+    return { ok: false, motivo: 'destino_igual_al_origen' }
+  }
+
+  const alta = await registrarDominioEnBorde(hostname)
+
+  if (!alta.ok) return { ok: false, motivo: alta.motivo }
+
+  const proyecto = encodeURIComponent(proyectoDe(SUPERFICIE.TIENDA))
+
+  const { ok, status, cuerpo } = await pedir(
+    `/v9/projects/${proyecto}/domains/${encodeURIComponent(hostname)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ redirect: destino, redirectStatusCode: 301 }),
+    },
+  )
+
+  if (ok) {
+    logger.info('[BORDE] Subdominio redirigido al dominio propio', { hostname, destino })
+    return { ok: true }
+  }
+
+  logger.warn('[BORDE] No se pudo redirigir el subdominio', {
+    hostname,
+    destino,
+    status,
+    code: cuerpo?.error?.code || null,
+  })
+
+  return { ok: false, motivo: cuerpo?.error?.code || `http_${status}` }
+}
+
+/**
+ * Saca la redirección, para cuando el comercio da de baja su dominio propio.
+ *
+ * Sin esto, quitar el dominio propio dejaría el subdominio apuntando a un
+ * hostname que ya no atiende nadie: el comercio se quedaría sin tienda en las
+ * DOS direcciones, que es peor que el problema que la redirección resolvía.
+ */
+export const quitarRedireccionDelBorde = async hostname => {
+  if (!isEdgeProvisioningEnabled(SUPERFICIE.TIENDA)) {
+    return { ok: false, motivo: 'sin_credenciales' }
+  }
+
+  const proyecto = encodeURIComponent(proyectoDe(SUPERFICIE.TIENDA))
+
+  const { ok, status, cuerpo } = await pedir(
+    `/v9/projects/${proyecto}/domains/${encodeURIComponent(hostname)}`,
+    { method: 'PATCH', body: JSON.stringify({ redirect: null }) },
+  )
+
+  if (ok) {
+    logger.info('[BORDE] Redirección quitada del subdominio', { hostname })
+    return { ok: true }
+  }
+
+  return { ok: false, motivo: cuerpo?.error?.code || `http_${status}` }
+}
+
 /** Baja del dominio en el borde, para cuando el comercio lo quita. */
 export const quitarDominioDelBorde = async (hostname, { surface = SUPERFICIE.TIENDA } = {}) => {
   if (!isEdgeProvisioningEnabled(surface)) {
