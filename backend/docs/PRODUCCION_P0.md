@@ -46,11 +46,18 @@ que no se puede resolver en código está en "Pasos manuales" y **no está hecho
 
 ## Cómo se probó
 
-`src/test/paymentRecovery.test.js` (30 pruebas, sin base de datos) cubre firma
-con secreto de comercio, pistas de la URL, vínculo por `external_reference`,
-reserva/liberación de stock y la auditoría de cobros sin vincular.
+- `src/test/paymentRecovery.test.js` (30 pruebas, sin base de datos): firma con
+  secreto de comercio, pistas de la URL, vínculo por `external_reference`,
+  reserva/liberación de stock y auditoría, con las dependencias simuladas.
+- `src/test/paymentRecoveryDb.test.js` (19 pruebas, **MongoDB real en replica
+  set**): que descuento y marca de reserva entran juntos o no entra ninguno
+  (incluida una carrera de dos reservas simultáneas), que liberar con un fallo
+  no devuelve nada y conserva la marca, que MongoDB **acepta** las definiciones
+  corregidas de los índices de `Order` y que impiden la clave de idempotencia
+  repetida y el id de pago repetido, y que el aviso de índices faltantes ve la
+  diferencia real.
 
-**No se pudo probar aquí**: que la transacción real revierta descuento y marca
-juntos, y que Mongo cree los índices corregidos. Ambas necesitan una réplica de
-MongoDB; el CI las ejerce con `mongodb-memory-server`, y el paso 1 de arriba lo
-confirma contra la base real.
+La suite con base real depende de `mongodb-memory-server` y la ejerce el CI; no
+se pudo ejecutar en el entorno donde se escribió (sin acceso para descargar el
+binario de MongoDB). Para confirmar contra la base real de producción hace falta
+igualmente el paso 1 de arriba.
