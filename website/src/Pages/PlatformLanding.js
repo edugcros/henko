@@ -180,6 +180,14 @@ const Icon = ({ name, size = 22 }) => {
     )
   }
 
+  if (name === 'arrow') {
+    return (
+      <svg {...common}>
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    )
+  }
+
   return (
     <svg {...common}>
       <path d="M5 12h14M13 6l6 6-6 6" />
