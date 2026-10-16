@@ -202,6 +202,157 @@ const resolveEventType = actionType => {
   return 'action_clicked'
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Formato de las respuestas del asistente
+//
+// El modelo contesta con Markdown (**negrita**, listas con «* »), y el chat lo mostraba como
+// texto plano: la persona veía los asteriscos. Se interpreta sólo el subconjunto que el
+// asistente usa de verdad —negrita, cursiva, listas, títulos y enlaces http(s)— y se
+// construye con elementos de React, nunca con HTML: lo que escriba el modelo (o alguien que
+// le haga repetir algo) no puede inyectar marcado. Se aplica sólo a los mensajes del
+// asistente; lo que escribe la persona se muestra tal cual.
+// ─────────────────────────────────────────────────────────────────────────────
+const INLINE_PATTERN =
+  /\*\*([^*\n]+?)\*\*|\*([^*\s][^*\n]*?)\*|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g
+
+export const parseChatInline = text => {
+  const source = String(text ?? '')
+  const tokens = []
+  let last = 0
+
+  for (const match of source.matchAll(INLINE_PATTERN)) {
+    if (match.index > last) tokens.push({ type: 'text', value: source.slice(last, match.index) })
+
+    if (match[1] !== undefined) tokens.push({ type: 'bold', value: match[1] })
+    else if (match[2] !== undefined) tokens.push({ type: 'italic', value: match[2] })
+    else tokens.push({ type: 'link', value: match[3], href: match[4] })
+
+    last = match.index + match[0].length
+  }
+
+  if (last < source.length) tokens.push({ type: 'text', value: source.slice(last) })
+
+  return tokens
+}
+
+export const parseChatMarkdown = text => {
+  const blocks = []
+  let current = null
+
+  const flush = () => {
+    if (current) blocks.push(current)
+    current = null
+  }
+
+  for (const raw of String(text ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')) {
+    const line = raw.trimEnd()
+
+    if (!line.trim()) {
+      flush()
+      continue
+    }
+
+    const bullet = line.match(/^\s*[*\-•]\s+(.*)$/)
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/)
+    const heading = line.match(/^\s*#{1,6}\s+(.*)$/)
+
+    if (bullet || numbered) {
+      const type = bullet ? 'ul' : 'ol'
+
+      if (!current || current.type !== type) {
+        flush()
+        current = { type, items: [] }
+      }
+
+      current.items.push(parseChatInline((bullet || numbered)[1]))
+      continue
+    }
+
+    if (heading) {
+      flush()
+      blocks.push({
+        type: 'p',
+        lines: [[{ type: 'bold', value: heading[1].replace(/\*\*/g, '') }]],
+      })
+      continue
+    }
+
+    if (!current || current.type !== 'p') {
+      flush()
+      current = { type: 'p', lines: [] }
+    }
+
+    current.lines.push(parseChatInline(line.trim()))
+  }
+
+  flush()
+
+  return blocks
+}
+
+const renderChatInline = (tokens, keyPrefix) =>
+  tokens.map((token, index) => {
+    const key = `${keyPrefix}-${index}`
+
+    if (token.type === 'bold') return <strong key={key}>{token.value}</strong>
+    if (token.type === 'italic') return <em key={key}>{token.value}</em>
+    if (token.type === 'link') {
+      return (
+        <Link key={key} href={token.href} target="_blank" rel="noopener noreferrer">
+          {token.value}
+        </Link>
+      )
+    }
+
+    return <React.Fragment key={key}>{token.value}</React.Fragment>
+  })
+
+const ChatText = ({ text }) => {
+  const blocks = useMemo(() => parseChatMarkdown(text), [text])
+
+  return (
+    <Box
+      sx={{
+        typography: 'body2',
+        lineHeight: 1.58,
+        wordBreak: 'break-word',
+        '& > * + *': { mt: 1 },
+        '& p': { m: 0 },
+        '& ul, & ol': { m: 0, pl: 2.5 },
+        '& li + li': { mt: 0.5 },
+      }}
+    >
+      {blocks.map((block, index) => {
+        const key = `b${index}`
+
+        if (block.type === 'p') {
+          return (
+            <p key={key}>
+              {block.lines.map((line, lineIndex) => (
+                <React.Fragment key={lineIndex}>
+                  {lineIndex > 0 && <br />}
+                  {renderChatInline(line, `${key}-${lineIndex}`)}
+                </React.Fragment>
+              ))}
+            </p>
+          )
+        }
+
+        const List = block.type
+        return (
+          <List key={key}>
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex}>{renderChatInline(item, `${key}-${itemIndex}`)}</li>
+            ))}
+          </List>
+        )
+      })}
+    </Box>
+  )
+}
+
 const AiChatWidget = () => {
   const bottomRef = useRef(null)
   const sendingRef = useRef(false)
@@ -605,6 +756,7 @@ const AiChatWidget = () => {
         >
           <Box
             sx={{
+              flexShrink: 0,
               px: 2,
               py: 1.5,
               background: 'linear-gradient(135deg, rgba(25,118,210,1) 0%, rgba(13,71,161,1) 100%)',
@@ -707,6 +859,7 @@ const AiChatWidget = () => {
 
           <Box
             sx={{
+              flexShrink: 0,
               px: 2,
               py: 1.2,
               bgcolor: 'background.paper',
@@ -741,32 +894,40 @@ const AiChatWidget = () => {
               )}
             </Stack>
 
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
-              {QUICK_PROMPTS.map(prompt => (
-                <Chip
-                  key={prompt}
-                  label={prompt}
-                  onClick={() => handleQuickPrompt(prompt)}
-                  clickable={!loading}
-                  disabled={loading}
-                  variant="outlined"
-                  size="small"
-                  sx={{
-                    borderRadius: 2,
-                    fontWeight: 600,
-                    bgcolor: 'grey.50',
-                    '&:hover': {
-                      bgcolor: 'primary.50',
-                    },
-                  }}
-                />
-              ))}
-            </Stack>
+            {/* Mientras el formulario de contacto está abierto las consultas rápidas se pliegan:
+                el panel mide 610 px y entre los dos le sacaban el lugar a la conversación. */}
+            <Collapse in={!showContactForm}>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+                {QUICK_PROMPTS.map(prompt => (
+                  <Chip
+                    key={prompt}
+                    label={prompt}
+                    onClick={() => handleQuickPrompt(prompt)}
+                    clickable={!loading}
+                    disabled={loading}
+                    variant="outlined"
+                    size="small"
+                    sx={{
+                      borderRadius: 2,
+                      fontWeight: 600,
+                      bgcolor: 'grey.50',
+                      '&:hover': {
+                        bgcolor: 'primary.50',
+                      },
+                    }}
+                  />
+                ))}
+              </Stack>
+            </Collapse>
           </Box>
 
-          <Collapse in={showContactForm}>
+          <Collapse in={showContactForm} sx={{ flexShrink: 0 }}>
             <Box
               sx={{
+                // Con tope y scroll propio: abierto, el formulario es lo más alto del panel y,
+                // sin tope, empujaba la conversación y el campo de escritura fuera de la vista.
+                maxHeight: 'min(244px, 40vh)',
+                overflowY: 'auto',
                 p: 1.5,
                 borderBottom: '1px solid',
                 borderColor: 'divider',
@@ -871,7 +1032,8 @@ const AiChatWidget = () => {
           <Stack
             spacing={1.5}
             sx={{
-              flex: 1,
+              flex: '1 1 0',
+              minHeight: 120,
               p: 2,
               overflowY: 'auto',
               bgcolor: '#f7f9fc',
@@ -929,16 +1091,20 @@ const AiChatWidget = () => {
                           borderColor: isUser ? 'transparent' : 'divider',
                         }}
                       >
-                        <Typography
-                          variant="body2"
-                          whiteSpace="pre-line"
-                          sx={{
-                            lineHeight: 1.58,
-                            wordBreak: 'break-word',
-                          }}
-                        >
-                          {item.content}
-                        </Typography>
+                        {isUser ? (
+                          <Typography
+                            variant="body2"
+                            whiteSpace="pre-line"
+                            sx={{
+                              lineHeight: 1.58,
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {item.content}
+                          </Typography>
+                        ) : (
+                          <ChatText text={item.content} />
+                        )}
                       </Box>
 
                       <Stack
@@ -1056,7 +1222,7 @@ const AiChatWidget = () => {
 
           <Divider />
 
-          <Box sx={{ p: 1.5, bgcolor: 'background.paper' }}>
+          <Box sx={{ flexShrink: 0, p: 1.5, bgcolor: 'background.paper' }}>
             {actionFeedback && (
               <Stack
                 direction="row"
@@ -1141,13 +1307,17 @@ const AiChatWidget = () => {
               </Button>
             </Stack>
 
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', mt: 1, px: 0.5 }}
-            >
-              Podés consultar productos, stock, promociones y ayuda de compra.
-            </Typography>
+            {/* Con el formulario abierto sobra: el alto del panel es fijo y esta línea es lo
+                primero que se corta. */}
+            {!showContactForm && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: 'block', mt: 1, px: 0.5 }}
+              >
+                Podés consultar productos, stock, promociones y ayuda de compra.
+              </Typography>
+            )}
           </Box>
         </Paper>
       )}
