@@ -11,7 +11,11 @@
 # rojo permanente entrena a ignorar los rojos, que es exactamente cómo la
 # rotura de eslint 10 llegó a producción y se quedó 12 deployments.
 #
-# Para que vuelva a andar hay que regenerar CLAUDE_CODE_OAUTH_TOKEN.
+# Para que vuelva a andar hacía falta regenerar CLAUDE_CODE_OAUTH_TOKEN. En vez
+# de eso, desde el 16/10/2026 el workflow usa ANTHROPIC_API_KEY: la revisión se
+# factura por API en lugar de contra la suscripción, así que cada revisión tiene
+# un costo directo. Los dos frenos de abajo (Dependabot afuera, cancelar la
+# revisión anterior) importan más con esto, no menos.
 #
 # POR QUÉ SE LE PUSIERON DOS FRENOS ANTES DE REVIVIRLO
 #
@@ -58,7 +62,7 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
