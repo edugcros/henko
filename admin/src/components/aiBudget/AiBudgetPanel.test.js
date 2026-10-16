@@ -158,3 +158,99 @@ describe('AiBudgetPanel · formato de números', () => {
     expect(await screen.findByText('1,5 M / 50 M')).toBeInTheDocument()
   })
 })
+
+// Lo que el panel dice sobre la PLATA.
+//
+// EL CASO QUE LO ORIGINÓ, MEDIDO EN PRODUCCIÓN EL 16/10/2026
+//
+// El chip mostraba `USD ${estimatedCostUsd.toFixed(2)}` con la leyenda
+// «estimación sobre los tokens consumidos». Dos cosas estaban mal a la vez:
+//
+//   1. La leyenda. En el período 2026-10 los 1.605 tokens costaron USD
+//      0,000553 y cuatro llamadas a Tavily USD 0,032: los tokens eran el 1,7%
+//      de un total que la leyenda les atribuía entero. Un comercio que quería
+//      gastar menos miraba la palanca que no mueve nada.
+//
+//   2. El número. El chip solo se muestra cuando el costo es mayor que cero,
+//      pero `toFixed(2)` sobre 0,004776 —un valor que existió en esta base y
+//      hubo que corregir a mano— imprime «0.00». Un cartel que existe para
+//      informar el costo, informando cero.
+const CON_PLATA = {
+  ...SNAPSHOT,
+  estimatedCostUsd: 0.032553,
+  estimatedCostArs: 50,
+  usdToArs: 1530,
+  breakdown: {
+    period: '2026-09',
+    totalCostUsd: 0.032553,
+    byUnit: {
+      tokens: { amount: 1605, costUsd: 0.000553, operations: 1 },
+      toolCalls: { amount: 4, costUsd: 0.032, operations: 2 },
+      units: { amount: 0, costUsd: 0, operations: 0 },
+    },
+    byMetric: [],
+  },
+}
+
+describe('AiBudgetPanel · el costo del mes', () => {
+  test('muestra pesos, que es la moneda en la que cobra el comercio', async () => {
+    mockGetAiBudget.mockResolvedValue(CON_PLATA)
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText('≈ $ 50')).toBeInTheDocument()
+  })
+
+  test('no atribuye el gasto a los tokens: los separa de las herramientas', async () => {
+    mockGetAiBudget.mockResolvedValue(CON_PLATA)
+
+    render(<AiBudgetPanel />)
+
+    // Los dos conceptos, con su peso real. 0,032 de 0,032553 es el 98%.
+    expect(await screen.findByText('Llamadas a herramientas')).toBeInTheDocument()
+    expect(screen.getByText('Tokens de los modelos')).toBeInTheDocument()
+    expect(screen.getByText(/98%/)).toBeInTheDocument()
+    expect(screen.getByText(/2%/)).toBeInTheDocument()
+  })
+
+  test('un gasto por debajo del peso NO se muestra como cero', async () => {
+    // El caso exacto del defecto: con toFixed(2) esto imprimía «USD 0.00», y
+    // redondeado a pesos imprimiría «$ 0». Ninguno de los dos es admisible en
+    // un cartel que solo aparece cuando hay gasto.
+    mockGetAiBudget.mockResolvedValue({
+      ...CON_PLATA,
+      estimatedCostUsd: 0.000553,
+      estimatedCostArs: 0,
+      breakdown: null,
+    })
+
+    render(<AiBudgetPanel />)
+
+    const chip = await screen.findByText(/^≈/)
+
+    expect(chip).toBeInTheDocument()
+    expect(chip.textContent).not.toMatch(/\$\s*0$/)
+    expect(chip.textContent).not.toMatch(/0\.00$/)
+    // Cae a dólares con los decimales que hacen falta para no decir cero.
+    expect(chip.textContent).toContain('USD 0.0006')
+  })
+
+  test('sin cotización sigue informando el costo, en dólares', async () => {
+    // Una respuesta vieja en caché no trae los campos nuevos. El panel no
+    // puede quedarse mudo ni inventar un cero.
+    mockGetAiBudget.mockResolvedValue({ ...SNAPSHOT, estimatedCostUsd: 0.13 })
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText('≈ USD 0.13')).toBeInTheDocument()
+  })
+
+  test('sin desglose no se dibuja la sección, y el total sigue estando', async () => {
+    mockGetAiBudget.mockResolvedValue({ ...CON_PLATA, breakdown: null })
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText('≈ $ 50')).toBeInTheDocument()
+    expect(screen.queryByText('De dónde sale el gasto')).not.toBeInTheDocument()
+  })
+})

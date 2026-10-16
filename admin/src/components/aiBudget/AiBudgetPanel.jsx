@@ -79,6 +79,168 @@ const formatNumber = value => {
 }
 
 /**
+ * Pesos, sin centavos. Mismo criterio que la pantalla de plataforma: a estos
+ * montos los centavos no cambian ninguna decisión y ensucian la lectura.
+ */
+const formatArs = value =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0)
+
+/**
+ * El dólar CON los decimales que haga falta.
+ *
+ * Esto decía `toFixed(2)`, y el chip se muestra con la condición
+ * `estimatedCostUsd > 0`. La combinación mostraba «≈ USD 0.00» para un gasto
+ * real de 0,004776 —un valor que existió en este proyecto y hubo que corregir a
+ * mano—: un cartel que existe para informar el costo, informando cero.
+ *
+ * La pantalla de plataforma ya tenía escrito el criterio correcto («0,04 contra
+ * 0,00 es la diferencia entre algo y nada»); lo que faltaba era aplicarlo acá.
+ */
+const formatUsd = value => {
+  const number = Number(value) || 0
+  // Por debajo del centavo, dos decimales son todos cero: ahí los decimales
+  // SON el dato.
+  if (number > 0 && number < 0.01) return `USD ${number.toFixed(4)}`
+  return `USD ${number.toFixed(2)}`
+}
+
+/**
+ * Los pesos del mes, o los dólares si no hay con qué convertir.
+ *
+ * El backend manda `estimatedCostArs` ya convertido y `usdToArs` para poder
+ * explicarlo. Si falta el primero pero está la cotización, se calcula; si no
+ * hay ninguno, se muestran dólares. Lo único inaceptable es mostrar cero.
+ */
+const pesosDelCosto = budget => {
+  // SIN REDONDEAR, a propósito: el umbral de abajo se decide sobre el valor
+  // exacto. Redondeando primero, un costo de 0,85 pesos pasaba el control de
+  // «menos de un peso» convertido en 1 y se mostraba «$ 1» —un 18% de más—
+  // en lugar de caer a dólares.
+  const rate = Number(budget?.usdToArs)
+  const usd = Number(budget?.estimatedCostUsd) || 0
+  if (Number.isFinite(rate) && rate > 0) return usd * rate
+
+  // Sin cotización solo queda lo que ya convirtió el backend.
+  const ars = Number(budget?.estimatedCostArs)
+  return Number.isFinite(ars) && ars > 0 ? ars : null
+}
+
+const etiquetaDelCosto = budget => {
+  const pesos = pesosDelCosto(budget)
+  // Por debajo del peso ningún redondeo sirve: hacia abajo da «$ 0» —el
+  // defecto original— y hacia arriba exagera. El dólar con decimales es el
+  // único número honesto en ese rango.
+  if (pesos === null || pesos < 1) return formatUsd(budget?.estimatedCostUsd)
+  return formatArs(Math.round(pesos))
+}
+
+const leyendaDelCosto = budget => {
+  const base =
+    'Estimación de todo el consumo del mes: tokens, llamadas a herramientas y operaciones. Sirve para dimensionar el uso, no es una factura.'
+
+  const rate = Number(budget?.usdToArs)
+  if (!Number.isFinite(rate) || rate <= 0) return base
+
+  return `${base} Equivale a ${formatUsd(budget?.estimatedCostUsd)} al cambio de ${formatArs(
+    rate,
+  )} por dólar.`
+}
+
+/**
+ * Qué parte del gasto se lleva cada cosa.
+ *
+ * Es el renglón que faltaba. Sin él, el panel afirmaba que el costo era «una
+ * estimación sobre los tokens consumidos» cuando, medido en producción el
+ * 16/10/2026, los tokens eran el 1,7% y las llamadas a herramientas el 98,3%.
+ * Un comercio que quería gastar menos miraba los tokens, que es la palanca que
+ * no mueve nada.
+ *
+ * Los mismos conceptos y los mismos números que la pantalla de plataforma,
+ * porque salen de la misma función sobre el mismo libro.
+ */
+const CONCEPTOS = [
+  {
+    key: 'tokens',
+    titulo: 'Tokens de los modelos',
+    detalle: 'Lo que cobra el proveedor por el texto que entra y sale.',
+  },
+  {
+    key: 'toolCalls',
+    titulo: 'Llamadas a herramientas',
+    detalle: 'Búsquedas y extracciones web. Se cobran por llamada, no por token.',
+  },
+  {
+    key: 'units',
+    titulo: 'Operaciones por unidad',
+    detalle: 'Análisis, imágenes y mensajes que se cobran de a uno.',
+  },
+]
+
+const DesgloseDeGasto = ({ breakdown, usdToArs }) => {
+  if (!breakdown) return null
+
+  const total = Number(breakdown.totalCostUsd) || 0
+  const filas = CONCEPTOS.map(concepto => ({
+    ...concepto,
+    ...(breakdown.byUnit?.[concepto.key] || { amount: 0, costUsd: 0 }),
+  })).filter(fila => fila.amount > 0 || fila.costUsd > 0)
+
+  if (!filas.length) return null
+
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        De dónde sale el gasto
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Para gastar menos conviene mirar el renglón más caro, que no siempre es el de tokens.
+      </Typography>
+
+      <Stack spacing={1.25}>
+        {filas.map(fila => {
+          // Sobre el total del desglose y no sobre el contador: son el mismo
+          // número, pero dividir por el que NO se está desglosando haría que
+          // los porcentajes no cierren en 100 si alguna vez se separan.
+          const porcentaje = total > 0 ? Math.round((fila.costUsd / total) * 100) : 0
+
+          return (
+            <Box key={fila.key}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ alignItems: 'baseline', justifyContent: 'space-between' }}
+              >
+                <Typography variant="body2">{fila.titulo}</Typography>
+                <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatArs(fila.costUsd * usdToArs)}
+                  <Typography component="span" variant="caption" color="text.secondary">
+                    {' '}
+                    ({porcentaje}%)
+                  </Typography>
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                {formatNumber(fila.amount)}{' '}
+                {fila.key === 'tokens'
+                  ? 'tokens'
+                  : fila.key === 'toolCalls'
+                    ? 'llamadas'
+                    : 'operaciones'}{' '}
+                · {fila.detalle}
+              </Typography>
+            </Box>
+          )
+        })}
+      </Stack>
+    </Box>
+  )
+}
+
+/**
  * La severidad la decide el porcentaje, y siempre viaja con texto propio:
  * el color solo nunca alcanza (daltonismo, impresión, modo alto contraste).
  */
@@ -368,12 +530,21 @@ const AiBudgetPanel = () => {
           />
         )}
         {budget.estimatedCostUsd > 0 && (
-          <Tooltip title="Estimación sobre los tokens consumidos. Sirve para dimensionar el uso, no es una factura.">
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`≈ USD ${budget.estimatedCostUsd.toFixed(2)}`}
-            />
+          // PESOS ADELANTE Y DÓLARES ATRÁS, igual que la pantalla de
+          // plataforma: el comercio decide en la moneda en la que cobra.
+          //
+          // La leyenda decía «estimación sobre los tokens consumidos» y era
+          // falsa — los tokens pueden ser una fracción mínima del total. Ahora
+          // dice de dónde sale de verdad, y el detalle está abajo.
+          //
+          // EL CARTEL NUNCA PUEDE DECIR CERO. Solo aparece cuando el costo es
+          // mayor que cero, así que un «$ 0» es siempre un error de formato, no
+          // un dato: es el mismo defecto que este cambio vino a corregir
+          // (toFixed(2) sobre 0,004776). Si la conversión no está disponible
+          // —respuesta vieja, cotización ausente— cae a dólares con decimales
+          // en vez de mostrar pesos en cero.
+          <Tooltip title={leyendaDelCosto(budget)}>
+            <Chip size="small" variant="outlined" label={`≈ ${etiquetaDelCosto(budget)}`} />
           </Tooltip>
         )}
       </Stack>
@@ -397,6 +568,13 @@ const AiBudgetPanel = () => {
           <MetricMeter key={metric} metric={metric} data={data} />
         ))}
       </Stack>
+
+      {budget.breakdown && (
+        <>
+          <Divider />
+          <DesgloseDeGasto breakdown={budget.breakdown} usdToArs={budget.usdToArs} />
+        </>
+      )}
 
       <Divider />
 

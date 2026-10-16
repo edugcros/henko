@@ -23,6 +23,7 @@ import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLed
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import logger from '../../../config/logger.js'
 import {
+  AI_METRIC_LABELS,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
   getPerTenantShare,
@@ -1515,11 +1516,136 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   }
 }
 
+/**
+ * El desglose del mes de UN comercio, por unidad y por función.
+ *
+ * POR QUÉ EXISTE: EL PANEL DEL COMERCIO DECÍA DE DÓNDE SALÍA LA PLATA, Y SE
+ * EQUIVOCABA.
+ *
+ * El panel mostraba un costo con la leyenda «estimación sobre los tokens
+ * consumidos». Medido contra producción el 16/10/2026, en el período 2026-10:
+ *
+ *   1.605 tokens de gemini-3.1-flash-lite      USD 0,000553     1,7%
+ *   3 búsquedas Tavily + 1 extracción          USD 0,032       98,3%
+ *   -------------------------------------------------------------
+ *   total                                      USD 0,032553
+ *
+ * Los tokens explicaban el 1,7% de un costo que la leyenda les atribuía
+ * entero. No es un detalle de redacción: un comercio que quiere gastar menos
+ * mira «tokens» y toca la palanca equivocada. La que mueve la aguja es cuántos
+ * análisis de mercado corre, porque cada uno dispara llamadas a herramientas
+ * que cuestan ~59 veces más que los tokens que generan.
+ *
+ * POR QUÉ DEL LEDGER Y NO DE AiUsage
+ *
+ * Mismo motivo que getPeriodSpendByTenant: AiUsage es la proyección y no tiene
+ * el concepto de llamada a herramienta —sus contadores son de tokens y
+ * unidades—, así que el dato no existe de ese lado. Se comprobó contra la base:
+ * las filas de herramienta traían amount 3 y 1, y el contador marketTokens
+ * quedó en 1.605, no en 1.609. Las herramientas no incrementan ninguna métrica
+ * que el comercio pueda ver, pero sí su costo y el techo de la plataforma.
+ *
+ * Leer del libro es además lo que hace que el panel del comercio y el reporte
+ * de plataforma muestren el MISMO detalle: una sola fuente, un solo número.
+ *
+ * Es una agregación chica y acotada por { tenantId, period }, que es el prefijo
+ * del índice: no recorre la colección.
+ */
+export const getTenantConsumptionBreakdown = async (tenantId, period) => {
+  const vacio = {
+    period,
+    totalCostUsd: 0,
+    byUnit: {
+      tokens: { amount: 0, costUsd: 0, operations: 0 },
+      toolCalls: { amount: 0, costUsd: 0, operations: 0 },
+      units: { amount: 0, costUsd: 0, operations: 0 },
+    },
+    byMetric: [],
+  }
+
+  if (!ES_OBJECT_ID.test(String(tenantId || '')) || !period) return vacio
+
+  const id = new mongoose.Types.ObjectId(String(tenantId))
+
+  // Una devolución resta, igual que en el resto del reporte: sin el signo, un
+  // fallo del proveedor que devolvió la reserva inflaría el consumo del mes.
+  const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
+  const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
+
+  const filas = await AiConsumptionLedger.aggregate([
+    {
+      $match: {
+        tenantId: id,
+        period,
+        event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.REFUNDED] },
+      },
+    },
+    {
+      $group: {
+        _id: { metric: '$metric', unit: { $ifNull: ['$unit', 'units'] } },
+        costUsd: { $sum: conSigno({ $ifNull: ['$costUsd', 0] }) },
+        amount: { $sum: conSigno('$amount') },
+        operations: { $sum: conSigno(1) },
+      },
+    },
+  ]).option({ ignoreTenant: true, platformScope: 'tenant:desglose-propio' })
+
+  if (!filas.length) return vacio
+
+  const byUnit = { ...vacio.byUnit }
+  const porMetrica = new Map()
+
+  for (const fila of filas) {
+    const unidad = fila._id.unit in byUnit ? fila._id.unit : 'units'
+
+    byUnit[unidad] = {
+      amount: byUnit[unidad].amount + (fila.amount || 0),
+      costUsd: byUnit[unidad].costUsd + (fila.costUsd || 0),
+      operations: byUnit[unidad].operations + (fila.operations || 0),
+    }
+
+    const metric = fila._id.metric || 'otros'
+    const previo = porMetrica.get(metric) || {
+      metric,
+      label: AI_METRIC_LABELS[metric] || metric,
+      costUsd: 0,
+      tokens: 0,
+      toolCalls: 0,
+      units: 0,
+      operations: 0,
+    }
+
+    previo.costUsd += fila.costUsd || 0
+    previo[unidad] += fila.amount || 0
+    previo.operations += fila.operations || 0
+    porMetrica.set(metric, previo)
+  }
+
+  const redondearUnidad = u => ({ ...u, costUsd: round(u.costUsd, 6) })
+
+  return {
+    period,
+    totalCostUsd: round(
+      Object.values(byUnit).reduce((total, u) => total + u.costUsd, 0),
+      6,
+    ),
+    byUnit: {
+      tokens: redondearUnidad(byUnit.tokens),
+      toolCalls: redondearUnidad(byUnit.toolCalls),
+      units: redondearUnidad(byUnit.units),
+    },
+    byMetric: [...porMetrica.values()]
+      .map(m => ({ ...m, costUsd: round(m.costUsd, 6) }))
+      .sort((a, b) => b.costUsd - a.costUsd),
+  }
+}
+
 export default {
   getPeriodSpendByMetric,
   getPeriodSpendByModel,
   getPeriodQuality,
   getPeriodSpendByTenant,
   getTenantSpendDetail,
+  getTenantConsumptionBreakdown,
   getPlatformSpendSnapshot,
 }

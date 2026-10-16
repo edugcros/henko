@@ -334,9 +334,14 @@ jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
 // sepa agrupar.
 const mockSpendByMetric = jest.fn()
 
+// El desglose del snapshot sale del MISMO módulo y por el mismo motivo se
+// simula: es otro aggregate real sobre el ledger. Devuelve null, que es el
+// caso que el snapshot ya contempla —el panel muestra el total igual—, así que
+// las pruebas de cupo de este archivo no dependen de él.
 jest.unstable_mockModule('../services/ai/aiSpendReportService.js', () => ({
   getPeriodSpendByMetric: mockSpendByMetric,
   getPeriodSpendByModel: jest.fn(),
+  getTenantConsumptionBreakdown: jest.fn().mockResolvedValue(null),
 }))
 
 const mockNotify = jest.fn()
