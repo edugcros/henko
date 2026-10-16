@@ -34,7 +34,10 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Se factura por API (ANTHROPIC_API_KEY), no contra la suscripción: cada
+          # mención a @claude tiene un costo directo. Antes usaba
+          # CLAUDE_CODE_OAUTH_TOKEN, que está vencido; ver claude-code-review.yml.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
