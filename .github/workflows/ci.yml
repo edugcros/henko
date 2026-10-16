@@ -147,6 +147,14 @@ jobs:
 
           mongo_ready=0
           for _ in $(seq 1 30); do
+            # La política automática de Docker no cubre necesariamente una
+            # salida ocurrida inmediatamente al iniciar; recuperar también en
+            # forma explícita el contenedor detenido mientras esperamos ping.
+            if [ "$(docker inspect -f '{{.State.Running}}' henko-mongo 2>/dev/null || true)" != "true" ]; then
+              echo "MongoDB no está activo; intentando iniciar el contenedor"
+              docker start henko-mongo >/dev/null 2>&1 || true
+            fi
+
             if docker exec henko-mongo \
                  mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; then
               mongo_ready=1
