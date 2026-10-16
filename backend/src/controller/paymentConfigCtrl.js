@@ -12,8 +12,16 @@ const ALLOWED_MODES = new Set(['test', 'production'])
 
 // Los dos campos secretos tienen select:false en el schema. Se piden con `+`
 // para poder informar SI están cargados; el valor nunca sale en la respuesta.
-const MP_FIELDS =
-  'integrations.mercadopago +integrations.mercadopago.accessToken +integrations.mercadopago.webhookSecret'
+
+const MP_FIELDS = [
+    'integrations.mercadopago.mode',
+    'integrations.mercadopago.publicKey',
+    'integrations.mercadopago.isEnabled',
+    'integrations.mercadopago.connectedAt',
+    'integrations.mercadopago.updatedAt',
+    '+integrations.mercadopago.accessToken',
+    '+integrations.mercadopago.webhookSecret',
+  ].join(' ')
 
 // La clave secreta que muestra Mercado Pago en Webhooks → Clave secreta es una
 // cadena larga sin espacios. Un valor corto o con espacios es un error de copia.
