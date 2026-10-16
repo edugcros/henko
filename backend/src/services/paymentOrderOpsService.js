@@ -20,15 +20,46 @@ const getSafeErrorMessage = error => {
 // termina rechazado/cancelado. Se ejecuta dentro de una transacción (cuando
 // Mongo la soporta) para que, si una línea falla por falta de stock, las
 // líneas ya descontadas de ese mismo intento se reviertan automáticamente.
-export const reserveStockAtomic = async (products, tenantId) => {
+//
+// LA MARCA DE LA ORDEN VIAJA EN LA MISMA TRANSACCIÓN
+//
+// `stockReservedAt` se escribía recién cuando el controlador guardaba la orden,
+// después de hablar con Mercado Pago. Si el proceso moría en el medio (un
+// deploy, un OOM, el servicio durmiéndose) el stock quedaba descontado y la
+// orden no lo sabía: nadie lo iba a devolver, y el reintento del comprador lo
+// descontaba una segunda vez.
+//
+// Con `orderId`, el descuento y la marca se confirman juntos o ninguno. El
+// filtro `stockReservedAt: null` además impide reservar dos veces la misma
+// orden: si la marca ya estaba puesta, se aborta y se revierte todo.
+//
+// Devuelve la fecha de la reserva cuando se pasó `orderId`, o `true` si no.
+export const reserveStockAtomic = async (products, tenantId, { orderId = null } = {}) => {
   try {
+    const reservedAt = new Date()
+
     await withOptionalTransaction(async session => {
       for (const item of products || []) {
         await decrementLineStock({ line: item, tenantId, session })
       }
+
+      if (!orderId) return
+
+      const marca = await Order.updateOne(
+        { _id: toObjectId(orderId), tenantId: toObjectId(tenantId), stockReservedAt: null },
+        { $set: { stockReservedAt: reservedAt } },
+        { session },
+      ).setOptions({ tenantId })
+
+      if (!marca?.matchedCount && !marca?.n) {
+        const error = new Error('La orden ya tiene stock reservado')
+        error.code = 'STOCK_ALREADY_RESERVED'
+        error.statusCode = 409
+        throw error
+      }
     })
 
-    return true
+    return orderId ? reservedAt : true
   } catch (error) {
     logger.error('❌ Error reservando stock', {
       tenantId: String(tenantId),
@@ -39,28 +70,93 @@ export const reserveStockAtomic = async (products, tenantId) => {
   }
 }
 
-export const releaseReservedStock = async (products, tenantId) => {
+/**
+ * Devuelve al catálogo el stock de una reserva.
+ *
+ * DEVUELVE `true` SOLO SI DE VERDAD LIBERÓ
+ *
+ * Antes tragaba el error y no devolvía nada, y todos los llamadores ponían
+ * `order.stockReservedAt = null` a continuación. Una liberación fallida dejaba
+ * las unidades fuera del catálogo y la orden convencida de que ya las había
+ * devuelto: la pérdida era permanente y silenciosa.
+ *
+ * Ahora corre en una transacción (todas las líneas o ninguna, así un reintento
+ * no devuelve dos veces las que ya habían vuelto) y el llamador limpia la marca
+ * únicamente cuando recibe `true`. Con `orderId` la marca se limpia en la misma
+ * transacción.
+ *
+ * Que un producto ya no exista no es un fallo: no hay nada que devolverle.
+ */
+export const releaseReservedStock = async (products, tenantId, { orderId = null } = {}) => {
   try {
-    for (const item of products || []) {
-      const result = await incrementLineStock({ line: item, tenantId })
+    await withOptionalTransaction(async session => {
+      for (const item of products || []) {
+        const result = await incrementLineStock({ line: item, tenantId, session })
 
-      if (!result) {
-        logger.warn('⚠️ No se pudo liberar stock reservado', {
-          tenantId: String(tenantId),
-          productId: item.product?.toString?.() || String(item.product),
-          count: item.count,
-        })
+        if (!result) {
+          logger.warn('⚠️ No se pudo liberar stock reservado (producto inexistente)', {
+            tenantId: String(tenantId),
+            productId: item.product?.toString?.() || String(item.product),
+            count: item.count,
+          })
+        }
       }
-    }
+
+      if (orderId) {
+        await Order.updateOne(
+          { _id: toObjectId(orderId), tenantId: toObjectId(tenantId) },
+          { $set: { stockReservedAt: null } },
+          { session },
+        ).setOptions({ tenantId })
+      }
+    })
 
     logger.info('✅ Stock liberado', {
       tenantId: String(tenantId),
     })
+
+    return true
   } catch (error) {
-    logger.error('❌ Error liberando stock', {
+    logger.error('❌ Error liberando stock: la marca de reserva se conserva', {
       tenantId: String(tenantId),
       message: getSafeErrorMessage(error),
     })
+
+    return false
+  }
+}
+
+/**
+ * Escribe el id del pago de Mercado Pago en la orden, sin esperar al save del
+ * documento completo.
+ *
+ * Condicionado a que todavía no tenga uno: nunca pisa un vínculo existente. No
+ * lanza —el pago ya se cobró y el comprador no puede enterarse de un fallo de
+ * bookkeeping—, devuelve si escribió.
+ */
+export const persistProviderPaymentId = async ({ orderId, tenantId, providerPaymentId }) => {
+  if (!orderId || !tenantId || !providerPaymentId) return false
+
+  try {
+    const result = await Order.updateOne(
+      {
+        _id: toObjectId(orderId),
+        tenantId: toObjectId(tenantId),
+        'paymentIntent.providerPaymentId': null,
+      },
+      { $set: { 'paymentIntent.providerPaymentId': String(providerPaymentId) } },
+    ).setOptions({ tenantId })
+
+    return Boolean(result?.modifiedCount || result?.nModified)
+  } catch (error) {
+    logger.error('❌ No se pudo guardar el id del pago en la orden (el webhook la vinculará)', {
+      orderId: String(orderId),
+      tenantId: String(tenantId),
+      providerPaymentId: String(providerPaymentId),
+      message: getSafeErrorMessage(error),
+    })
+
+    return false
   }
 }
 

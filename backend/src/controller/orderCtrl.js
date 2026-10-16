@@ -1080,7 +1080,16 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
       order.paymentStatus === PAYMENT_STATUS.PENDING &&
       order.stockReservedAt
     ) {
-      await releaseReservedStock(order.products, tenantId)
+      const released = await releaseReservedStock(order.products, tenantId, {
+        orderId: order._id,
+      })
+
+      if (!released) {
+        const error = new Error('No se pudo liberar el stock reservado. Reintentá en unos minutos.')
+        error.statusCode = 503
+        throw error
+      }
+
       order.stockReservedAt = null
     }
 

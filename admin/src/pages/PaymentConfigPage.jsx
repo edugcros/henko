@@ -39,8 +39,10 @@ const toForm = data => {
     mode: mp.mode || 'test',
     publicKey: mp.publicKey || '',
     accessToken: '',
+    webhookSecret: '',
     isEnabled: Boolean(mp.isEnabled),
     hasAccessToken: Boolean(mp.hasAccessToken),
+    hasWebhookSecret: Boolean(mp.hasWebhookSecret),
     connectedAt: mp.connectedAt || null,
     updatedAt: mp.updatedAt || null,
   }
@@ -54,6 +56,9 @@ const toPayload = form => {
   }
   if (clean(form.accessToken)) {
     mercadopago.accessToken = clean(form.accessToken)
+  }
+  if (clean(form.webhookSecret)) {
+    mercadopago.webhookSecret = clean(form.webhookSecret)
   }
   return { mercadopago }
 }
@@ -158,6 +163,10 @@ const PaymentConfigPage = () => {
   const secretHelp = form.hasAccessToken
     ? 'Ya hay un token guardado. Dejá en blanco para no cambiarlo.'
     : 'Pegá el Access Token de tu aplicación de Mercado Pago.'
+
+  const webhookSecretHelp = form.hasWebhookSecret
+    ? 'Ya hay una clave guardada. Dejá en blanco para no cambiarla.'
+    : 'En Tus integraciones → Webhooks → Clave secreta. Sin ella, Mercado Pago puede avisar un pago y la tienda ignorarlo.'
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
@@ -275,6 +284,18 @@ const PaymentConfigPage = () => {
                   onChange={e => setField('accessToken', e.target.value)}
                   placeholder="••••••••"
                   helperText={secretHelp}
+                  autoComplete="new-password"
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  type="password"
+                  label="Clave secreta del webhook"
+                  value={form.webhookSecret}
+                  onChange={e => setField('webhookSecret', e.target.value)}
+                  placeholder="••••••••"
+                  helperText={webhookSecretHelp}
                   autoComplete="new-password"
                 />
               </Grid>

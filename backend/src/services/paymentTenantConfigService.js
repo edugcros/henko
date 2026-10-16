@@ -230,6 +230,30 @@ export const getTenantConfig = async tenantId => {
   }
 }
 
+/**
+ * Clave secreta de webhooks que el comercio copió de SU aplicación de Mercado
+ * Pago. null si no la cargó: en ese caso se valida solo contra la de plataforma.
+ *
+ * No lanza: un fallo de lectura no debe tumbar el webhook, simplemente deja la
+ * verificación con el secreto global.
+ */
+export const getTenantWebhookSecret = async tenantId => {
+  if (!tenantId) return null
+
+  try {
+    const tenant = await Tenant.findById(tenantId).select('+integrations.mercadopago.webhookSecret')
+
+    return sanitizeString(tenant?.integrations?.mercadopago?.webhookSecret) || null
+  } catch (error) {
+    logger.warn('⚠️ No se pudo leer el secreto de webhook del comercio', {
+      tenantId: String(tenantId),
+      message: getSafeErrorMessage(error),
+    })
+
+    return null
+  }
+}
+
 export const getTenantToken = async tenantId => {
   const context = await getTenantMercadoPagoContext(tenantId)
   return context.accessToken

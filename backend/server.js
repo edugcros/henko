@@ -21,6 +21,7 @@ import {
   stopCertificateWatcher,
 } from './src/services/tenant/tenantDomainService.js'
 import { describeMpAccount } from './src/services/paymentTenantConfigService.js'
+import { reportIndexHealth } from './src/services/indexHealthService.js'
 import {
   startSubscriptionAudit,
   stopSubscriptionAudit,
@@ -158,6 +159,12 @@ const startServer = async () => {
       // proveedor: esa no cambia el status del pago, así que el webhook no la
       // detecta y la orden sigue figurando cobrada entera.
       startOrderReconciliation({ logger })
+
+      // autoIndex está apagado en producción: si un índice declarado no existe,
+      // nadie lo crea. Solo avisa; no bloquea ni crea nada.
+      if (env.isProduction && process.env.INDEX_CHECK_ON_START !== 'false') {
+        reportIndexHealth().catch(() => {})
+      }
     })
 
     serverInstance.on('error', err => {

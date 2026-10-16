@@ -20,6 +20,7 @@ import {
 import {
   clearUserCartAfterApprovedPayment,
   confirmSoldStock,
+  persistProviderPaymentId,
   releaseReservedStock,
   reserveStockAtomic,
   restoreCommittedStockOnRefundIfNeeded,
@@ -44,12 +45,14 @@ import {
   getTenantConfig,
   getTenantToken,
   getTenantMercadoPagoContext,
+  getTenantWebhookSecret,
 } from '../services/paymentTenantConfigService.js'
 import {
   applyMercadoPagoStatusToOrder,
   extractMercadoPagoFees,
 } from '../services/paymentOrderService.js'
 import {
+  getWebhookHints,
   isWebhookProcessed,
   markWebhookProcessed,
   resolveWebhookOrderIdentity,
@@ -147,12 +150,33 @@ const buildDebugResponse = error => {
   }
 }
 
+// Libera la reserva de una orden y limpia la marca SOLO si se liberó de verdad.
+// releaseReservedStock ya no lanza: devuelve false, y en ese caso la marca
+// `stockReservedAt` se conserva —en la base y en memoria— para que la reserva
+// siga siendo visible y recuperable en vez de darse por devuelta.
+const releaseOrderReservation = async ({ order, tenantId }) => {
+  const released = await releaseReservedStock(order.products, tenantId, {
+    orderId: order._id,
+  })
+
+  if (released) order.stockReservedAt = null
+
+  return released
+}
+
 const safelyReleaseReservedStock = async ({ order, tenantId, reason }) => {
   if (!order || !tenantId) return
 
   try {
-    await releaseReservedStock(order.products, tenantId)
-    order.stockReservedAt = null
+    const released = await releaseOrderReservation({ order, tenantId })
+
+    if (!released) {
+      logger.error('❌ Reserva de stock sin liberar (se conserva la marca)', {
+        reason,
+        orderId: order?._id?.toString?.(),
+        tenantId: String(tenantId),
+      })
+    }
   } catch (releaseError) {
     logger.error('❌ Error liberando stock reservado', {
       reason,
@@ -247,8 +271,7 @@ const releaseRejectedPaymentReservationIfNeeded = async ({ order, tenantId, prev
     order.stockReservedAt &&
     !order.stockCommittedAt
   ) {
-    await releaseReservedStock(order.products, tenantId)
-    order.stockReservedAt = null
+    await releaseOrderReservation({ order, tenantId })
   }
 }
 
@@ -443,9 +466,10 @@ export const processPayment = async (req, res) => {
     }
 
     if (!order.stockReservedAt && !order.stockCommittedAt) {
-      await reserveStockAtomic(order.products, tenantId)
+      order.stockReservedAt = await reserveStockAtomic(order.products, tenantId, {
+        orderId: order._id,
+      })
       stockReserved = true
-      order.stockReservedAt = new Date()
     }
 
     const { paymentData, transactionAmount, validatedInstallments } = buildMercadoPagoPaymentData({
@@ -485,6 +509,16 @@ export const processPayment = async (req, res) => {
       },
     })
 
+    // Lo primero después de cobrar: dejar escrito qué pago es de esta orden.
+    // Todo lo que sigue (estado, stock, cupón, correos) puede fallar o el proceso
+    // puede caerse; con el id guardado el webhook y la auditoría encuentran la
+    // orden y lo terminan. Sin él, un cobro real quedaba huérfano.
+    await persistProviderPaymentId({
+      orderId: order._id,
+      tenantId,
+      providerPaymentId: mpPayment.id,
+    })
+
     logger.info('✅ Mercado Pago respondió', {
       orderId: order._id?.toString?.(),
       tenantId: String(tenantId),
@@ -510,8 +544,7 @@ export const processPayment = async (req, res) => {
     if (normalizedPaymentStatus === PAYMENT_STATUS.APPROVED) {
       stockReserved = false
     } else if (NEGATIVE_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
-      await releaseReservedStock(order.products, tenantId)
-      order.stockReservedAt = null
+      await releaseOrderReservation({ order, tenantId })
       stockReserved = false
     } else {
       // pending / in_process: mantenemos reserva para resolver vía webhook/job.
@@ -648,20 +681,44 @@ export const mpWebhook = async (req, res) => {
   let webhookTenantId = null
 
   try {
-    if (!verifyMercadoPagoWebhookSignature(req)) {
-      // error, no warn: si MP_WEBHOOK_SECRET no coincide con el configurado
-      // en el dashboard de Mercado Pago, ESTO se dispara para cada
+    const paymentId = req.body?.data?.id || req.query['data.id'] || req.query.id
+    const hints = getWebhookHints(req)
+
+    // Primero el secreto global: es lo más barato y no toca la base. Solo si no
+    // coincide se busca el secreto del comercio al que pertenece el pago, que
+    // es el que firma cuando el comercio cobra con su propia aplicación de
+    // Mercado Pago. Ese comercio sale de la pista de la URL o, para pagos
+    // anteriores a que existieran las pistas, del id de pago ya guardado.
+    let signatureValid = verifyMercadoPagoWebhookSignature(req, { quiet: true })
+    let identityByPayment = null
+
+    if (!signatureValid && paymentId) {
+      identityByPayment = await resolveWebhookOrderIdentity(paymentId, hints)
+
+      const tenantForSecret = hints.tenantId || identityByPayment?.tenantId
+
+      if (tenantForSecret) {
+        const tenantSecret = await getTenantWebhookSecret(String(tenantForSecret))
+
+        signatureValid = tenantSecret
+          ? verifyMercadoPagoWebhookSignature(req, { tenantSecret })
+          : false
+      }
+    }
+
+    if (!signatureValid) {
+      // error, no warn: si el secreto no coincide con el de la aplicación de
+      // Mercado Pago del comercio (ni con el global), ESTO se dispara para cada
       // notificación real y el pedido asociado queda colgado en "pending"
       // sin ninguna otra señal — necesita ser imposible de no ver.
-      logger.error('🔴 Webhook Mercado Pago con firma inválida — revisar MP_WEBHOOK_SECRET', {
+      logger.error('🔴 Webhook Mercado Pago con firma inválida — revisar el secreto de webhook', {
         code: 'MP_WEBHOOK_SIGNATURE_INVALID',
         ip: req.ip,
-        paymentId: req.body?.data?.id || req.query?.['data.id'] || req.query?.id || null,
+        paymentId: paymentId || null,
+        tenantId: hints.tenantId || null,
       })
       return
     }
-
-    const paymentId = req.body?.data?.id || req.query['data.id'] || req.query.id
 
     if (!paymentId) {
       logger.warn('⚠️ Webhook sin paymentId')
@@ -687,7 +744,7 @@ export const mpWebhook = async (req, res) => {
       return
     }
 
-    const rawIdentity = await resolveWebhookOrderIdentity(paymentId)
+    const rawIdentity = identityByPayment || (await resolveWebhookOrderIdentity(paymentId, hints))
 
     if (!rawIdentity?._id || !rawIdentity?.tenantId) {
       logger.warn('⚠️ Webhook: orden no encontrada para pago', {
@@ -730,7 +787,9 @@ export const mpWebhook = async (req, res) => {
       return
     }
 
-    if (String(order.paymentIntent?.providerPaymentId || '') !== String(paymentId)) {
+    const knownPaymentId = String(order.paymentIntent?.providerPaymentId || '')
+
+    if (knownPaymentId && knownPaymentId !== String(paymentId)) {
       logger.warn('🚨 Webhook providerPaymentId mismatch', {
         paymentId: String(paymentId),
         orderId: order._id?.toString?.(),
@@ -752,6 +811,36 @@ export const mpWebhook = async (req, res) => {
 
     const payment = createMercadoPagoPaymentClient(mpToken)
     const mpInfo = await payment.get({ id: paymentId })
+
+    // UN PAGO SIN VÍNCULO SOLO SE ADOPTA SI MERCADO PAGO LO RECONOCE
+    //
+    // La orden se encontró por la pista de la URL, que no está firmada. El
+    // vínculo se acepta únicamente si el pago, leído con el token del comercio,
+    // nombra a esta orden en external_reference y cobró exactamente su monto.
+    if (!knownPaymentId) {
+      const mpAmount = Number(mpInfo?.transaction_amount)
+      const montoCoincide =
+        Number.isFinite(mpAmount) &&
+        Money.fromDecimal(mpAmount) === Number(order.paymentIntent?.amountCents)
+      const referenciaCoincide = String(mpInfo?.external_reference || '') === String(order._id)
+
+      if (!montoCoincide || !referenciaCoincide) {
+        logger.warn('🚨 Webhook: el pago no corresponde a la orden indicada, se descarta', {
+          paymentId: String(paymentId),
+          orderId: order._id?.toString?.(),
+          referenciaCoincide,
+          montoCoincide,
+        })
+
+        return
+      }
+
+      logger.warn('🔗 Webhook: pago vinculado a la orden por external_reference', {
+        paymentId: String(paymentId),
+        orderId: order._id?.toString?.(),
+        tenantId,
+      })
+    }
 
     if (!mpInfo?.status) {
       logger.warn('⚠️ Webhook: pago sin estado', {

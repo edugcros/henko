@@ -483,6 +483,15 @@ const tenantSchema = new Schema(
           get: value => (value ? decryptSecret(value) : value),
         },
 
+        // Clave secreta de webhooks de la aplicación de Mercado Pago DEL COMERCIO
+        // (cada aplicación tiene la suya). Cifrada en reposo igual que el token.
+        webhookSecret: {
+          type: String,
+          select: false,
+          set: value => (value ? encryptSecret(value) : value),
+          get: value => (value ? decryptSecret(value) : value),
+        },
+
         isEnabled: {
           type: Boolean,
           default: false,

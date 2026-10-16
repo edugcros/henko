@@ -2,6 +2,20 @@ import { FULFILLMENT_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../models/orde
 import { restoreStockForLines } from './orderInventoryService.js'
 import { releaseReservedStock } from './paymentOrderOpsService.js'
 
+// Si la liberación falla NO se marca el stock como devuelto: la orden seguiría
+// diciendo "restaurado" con las unidades todavía fuera del catálogo.
+const releaseOrDie = async ({ order, tenantId }) => {
+  const released = await releaseReservedStock(order.products, tenantId, { orderId: order._id })
+
+  if (!released) {
+    const error = new Error('No se pudo liberar el stock reservado. Reintentá en unos minutos.')
+    error.statusCode = 503
+    throw error
+  }
+
+  order.stockReservedAt = null
+}
+
 export const findOrderForAdminMutation = async ({
   orderModel,
   orderId,
@@ -125,9 +139,8 @@ export const cancelOrderWithInventoryRestore = async ({
   }
 
   if (!order.stockRestoredAt && order.stockReservedAt) {
-    await releaseReservedStock(order.products, tenantId)
+    await releaseOrDie({ order, tenantId })
 
-    order.stockReservedAt = null
     order.stockRestoredAt = new Date()
   } else if (!order.stockRestoredAt && order.stockCommittedAt) {
     await restoreStockForLines({
@@ -180,9 +193,8 @@ export const refundOrderWithInventoryRestore = async ({
   }
 
   if (!order.stockRestoredAt && order.stockReservedAt) {
-    await releaseReservedStock(order.products, tenantId)
+    await releaseOrDie({ order, tenantId })
 
-    order.stockReservedAt = null
     order.stockRestoredAt = new Date()
   } else if (!order.stockRestoredAt && order.stockCommittedAt) {
     await restoreStockForLines({
