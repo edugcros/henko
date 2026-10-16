@@ -13,9 +13,7 @@ describe('PlatformLanding', () => {
   it('renders the hero and links to subscription plans', () => {
     render(<PlatformLanding />)
 
-    expect(
-      screen.getByRole('heading', { name: /tu tienda online/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /tu tienda online/i })).toBeInTheDocument()
     expect(
       screen.getAllByRole('link', { name: /ver planes|crear mi tienda|elegir un plan/i }).length,
     ).toBeGreaterThan(0)
@@ -24,8 +22,14 @@ describe('PlatformLanding', () => {
   it('renders feature cards without undefined element types', () => {
     render(<PlatformLanding />)
 
-    expect(screen.getByRole('heading', { name: /lo necesario para vender/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /productos y stock bajo control/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /diseñá una tienda a tu estilo/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /lo necesario para vender/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /productos y stock bajo control/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /diseñá una tienda a tu estilo/i }),
+    ).toBeInTheDocument()
   })
 })
