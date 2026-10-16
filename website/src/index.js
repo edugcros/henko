@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import PlatformLanding from './Pages/PlatformLanding'
 import ErrorBoundary, { registrarReporteGlobal } from '@components/ErrorBoundary/ErrorBoundary.js'
 import './App.css'
 import { store } from '@app/store'
@@ -12,6 +13,7 @@ import { initCsrf, setApiStore } from '@utils/axiosConfig'
 import SpinnerCentered from '@components/SpinnerCentered/SpinnerCentered.jsx'
 import { TenantProvider } from './contexts/TenantContext'
 import { StoreThemeProvider } from './contexts/StoreThemeContext'
+import { env } from './config/env'
 
 const AppInitializer = () => {
   const [ready, setReady] = useState(false)
@@ -69,8 +71,30 @@ registrarReporteGlobal()
 
 const container = document.getElementById('root')
 const root = createRoot(container)
+// En el dominio raíz de la plataforma se sirve la landing comercial sin montar
+// el contexto de un tenant. Los dominios de cada tienda siguen usando el flujo
+// storefront existente. El dominio proviene de configuración pública de build;
+// no se fija ningún hostname en el código.
+const normalizeHost = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .replace(/:\d+$/, '')
+    .replace(/^www\./i, '')
+
+const isPlatformDomain = () => {
+  if (typeof window === 'undefined') return false
+
+  const publicDomain = normalizeHost(env.publicBaseDomain)
+  return Boolean(publicDomain && normalizeHost(window.location.hostname) === publicDomain)
+}
+
+const AppRoot = () => (isPlatformDomain() ? <PlatformLanding /> : <AppInitializer />)
+
 root.render(
   <StrictMode>
-    <AppInitializer />
+    <AppRoot />
   </StrictMode>,
 )
