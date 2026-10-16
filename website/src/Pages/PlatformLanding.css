@@ -162,7 +162,7 @@
 .hk-nav {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 28px;
   height: 68px;
 }
 .hk-logo {
@@ -176,10 +176,13 @@
 .hk-desktop-nav {
   display: flex;
   align-items: center;
-  gap: 26px;
+  gap: 22px;
   margin-right: auto;
 }
 .hk-desktop-nav a {
+  /* Sin esto «Productos con IA» y «Cómo funciona» se parten en dos líneas cuando
+     el ancho se aprieta, y el menú queda desparejo. */
+  white-space: nowrap;
   color: #c6d2f5;
   font-size: 14.5px;
   font-weight: 500;
@@ -734,6 +737,304 @@
   color: var(--hk-muted);
   font-size: 13px;
   line-height: 1.4;
+}
+
+/* ───────────────────────── Carga de productos con IA ───────────────────────── */
+
+.hk-aiproduct {
+  padding: 88px 0 20px;
+  background: var(--hk-paper);
+}
+/* Las dos secciones son claras: sin esto se suman los dos rellenos y queda un hueco. */
+.hk-aiproduct + .hk-features {
+  padding-top: 64px;
+}
+.hk-aiproduct-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr);
+  gap: 56px;
+  align-items: center;
+  padding: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 32px;
+  color: var(--hk-white);
+  background:
+    radial-gradient(640px 380px at 100% 0%, rgba(122, 44, 255, 0.42), transparent 64%),
+    radial-gradient(560px 420px at 0% 100%, rgba(11, 107, 255, 0.36), transparent 64%),
+    var(--hk-navy-900);
+  box-shadow: 0 50px 100px -50px rgba(8, 20, 80, 0.9);
+}
+.hk-aiproduct-copy,
+.hk-aiproduct-visual {
+  min-width: 0;
+}
+.hk-aiproduct h2 {
+  font-family: var(--hk-font-display);
+  font-size: clamp(1.9rem, 1rem + 2.4vw, 2.85rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.hk-aiproduct-lead {
+  max-width: 34rem;
+  margin-top: 18px;
+  color: var(--hk-text-on-dark);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+.hk-aiproduct-steps {
+  display: grid;
+  gap: 15px;
+  margin-top: 28px;
+}
+.hk-aiproduct-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.hk-aiproduct-num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--hk-gradient);
+  font-family: var(--hk-font-display);
+  font-size: 14px;
+  font-weight: 800;
+}
+.hk-aiproduct-steps b {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.hk-aiproduct-steps small {
+  display: block;
+  margin-top: 2px;
+  color: var(--hk-text-on-dark-soft);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.hk-aifields {
+  margin-top: 28px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.hk-aifields-title {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--hk-cyan);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.hk-aifields ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hk-aifields li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid rgba(20, 216, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(20, 216, 255, 0.08);
+  color: #d7e1ff;
+  font-size: 12.5px;
+}
+.hk-aifields svg {
+  color: var(--hk-cyan);
+}
+.hk-aiproduct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  margin-top: 30px;
+}
+.hk-aiproduct-note {
+  max-width: 22rem;
+  color: var(--hk-text-on-dark-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* La maqueta del formulario de producto, con cada campo marcado como completado por la IA */
+
+.hk-mock.hk-ai-mock {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--hk-navy-800);
+}
+.hk-ai-mock .hk-mock-body {
+  min-height: 0;
+  align-content: start;
+  gap: 14px;
+}
+.hk-ai-layout {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 16px;
+}
+.hk-ai-photo-col {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.hk-ai-photo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #14d8ff, #0b6bff 55%, #7a2cff);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 28px;
+}
+.hk-ai-photo span {
+  font-size: 10px;
+  opacity: 0.88;
+}
+/* La barra que recorre la foto: la IA «mirándola». Quieta si se pidió menos movimiento. */
+.hk-ai-photo::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  right: 0;
+  left: 0;
+  height: 34%;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.5), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hk-ai-photo::after {
+    animation: hk-scan 3.2s ease-in-out infinite alternate;
+  }
+}
+@keyframes hk-scan {
+  from {
+    top: -30%;
+  }
+  to {
+    top: 96%;
+  }
+}
+.hk-ai-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid rgba(83, 230, 184, 0.3);
+  border-radius: 999px;
+  background: rgba(83, 230, 184, 0.12);
+  color: #7ff0cb;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hk-ai-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.hk-ai-field {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.hk-ai-field.is-wide {
+  grid-column: 1 / -1;
+}
+.hk-ai-field small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hk-cyan);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.hk-ai-field small svg {
+  font-size: 10px;
+}
+.hk-ai-field b {
+  display: block;
+  margin-top: 3px;
+  color: #eef3ff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.hk-ai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hk-ai-tags i {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(122, 44, 255, 0.26);
+  color: #dccaff;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+.hk-ai-lines {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+.hk-ai-lines i {
+  display: block;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.hk-ai-lines i.is-short {
+  width: 62%;
+}
+.hk-ai-price {
+  display: inline-flex;
+  align-items: center;
+}
+.hk-ai-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hk-ai-draft {
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 170, 60, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 170, 60, 0.14);
+  color: #ffd9a8;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.hk-ai-publish {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: var(--hk-gradient);
+  color: var(--hk-white);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 /* ───────────────────────── Secciones ───────────────────────── */
@@ -1697,7 +1998,7 @@
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .hk-desktop-nav,
   .hk-nav-actions {
     display: none;
@@ -1779,5 +2080,39 @@
   }
   .hk-order-steps span {
     font-size: 10px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .hk-aiproduct-panel {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding: 44px 36px;
+  }
+  .hk-aiproduct-visual {
+    max-width: 600px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hk-aiproduct {
+    padding: 56px 0 8px;
+  }
+  .hk-aiproduct-panel {
+    padding: 30px 20px;
+    border-radius: 24px;
+  }
+  .hk-ai-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hk-ai-photo-col {
+    grid-template-columns: 120px auto;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hk-aiproduct-actions .hk-button {
+    width: 100%;
   }
 }
