@@ -386,6 +386,59 @@ export const checkOrderAgainstProvider = (order, pago) => {
   return hallazgos
 }
 
+/**
+ * Pagos de Mercado Pago que nombran a esta orden y que la orden no conoce.
+ *
+ * EL CASO: processPayment creó el pago y el proceso murió antes de guardar su
+ * id. La orden figura pendiente sin `providerPaymentId`, así que ni el webhook
+ * por id ni la auditoría de arriba (que solo consulta órdenes con id) la ven, y
+ * el comprador está cobrado. El proveedor sí sabe: el pago lleva la orden en
+ * `external_reference`.
+ *
+ * Los rechazados no cuentan: un intento rechazado no es plata cobrada.
+ *
+ * @param {object} order
+ * @param {Array<object>} pagos resultados de buscar por external_reference
+ */
+export const checkUnlinkedProviderPayments = (order, pagos) => {
+  const hallazgos = []
+
+  if (order?.paymentIntent?.providerPaymentId) return hallazgos
+
+  const referencia = String(order?._id || '')
+
+  for (const pago of Array.isArray(pagos) ? pagos : []) {
+    if (String(pago?.external_reference || '') !== referencia) continue
+
+    const estado = normalizeMpStatus(pago?.status)
+
+    if (!estado || estado === PAYMENT_STATUS.REJECTED || estado === PAYMENT_STATUS.CANCELLED) {
+      continue
+    }
+
+    hallazgos.push({
+      kind: 'provider-payment-unlinked',
+      proveedorPaymentId: String(pago.id),
+      proveedor: pago.status,
+      montoProveedor: centavosDeProveedor(pago.transaction_amount),
+      cobrado: Number(order?.paymentIntent?.amountCents),
+    })
+  }
+
+  return hallazgos
+}
+
+// Una orden con intento de pago que lleva menos que esto sin id puede estar
+// simplemente en medio de processPayment.
+const HUERFANA_MIN_MS = 15 * 60 * 1000
+
+const esCandidataHuerfana = (orden, ahora = Date.now()) =>
+  orden.paymentIntent?.provider === 'mercadopago' &&
+  !orden.paymentIntent?.providerPaymentId &&
+  orden.paymentStatus === PAYMENT_STATUS.PENDING &&
+  Boolean(orden.stockReservedAt || orden.lastPaymentAttemptAt) &&
+  ahora - new Date(orden.createdAt).getTime() > HUERFANA_MIN_MS
+
 const ALCANCE = 'platform:reconciliacion-financiera-de-ordenes'
 
 const envEnteroPositivo = (nombre, porDefecto) => {
@@ -412,6 +465,7 @@ export const auditOrderFinancials = async ({
   withProvider = true,
   resolveTenantContext = null,
   fetchProviderPayment = null,
+  searchProviderPayments = null,
 } = {}) => {
   const filtro = { isDeleted: false }
   if (tenantId) filtro.tenantId = tenantId
@@ -455,7 +509,10 @@ export const auditOrderFinancials = async ({
     o => o.paymentIntent?.provider === 'mercadopago' && o.paymentIntent?.providerPaymentId,
   )
 
-  if (!consultables.length) {
+  // Las que cobraron o pudieron cobrar sin que el id llegara a guardarse.
+  const huerfanas = ordenes.filter(o => esCandidataHuerfana(o))
+
+  if (!consultables.length && !huerfanas.length) {
     return {
       checked: ordenes.length,
       checkedAgainstProvider: 0,
@@ -471,7 +528,7 @@ export const auditOrderFinancials = async ({
   let traerContexto = resolveTenantContext
   let crearCliente = null
 
-  if (!fetchProviderPayment) {
+  if (!fetchProviderPayment || (huerfanas.length && !searchProviderPayments)) {
     const config = await import('./paymentTenantConfigService.js')
     traerContexto = traerContexto || config.getTenantMercadoPagoContext
     crearCliente = config.createMercadoPagoPaymentClient
@@ -481,23 +538,31 @@ export const auditOrderFinancials = async ({
   // credenciales del mismo comercio una vez por orden.
   const porComercio = new Map()
 
-  for (const orden of consultables) {
+  const agrupar = (orden, tipo) => {
     const clave = String(orden.tenantId)
-    if (!porComercio.has(clave)) porComercio.set(clave, [])
-    porComercio.get(clave).push(orden)
+    if (!porComercio.has(clave)) porComercio.set(clave, { conId: [], sinId: [] })
+    porComercio.get(clave)[tipo].push(orden)
   }
+
+  consultables.forEach(orden => agrupar(orden, 'conId'))
+  huerfanas.forEach(orden => agrupar(orden, 'sinId'))
 
   let consultadas = 0
 
-  for (const [comercio, susOrdenes] of porComercio) {
+  for (const [comercio, { conId, sinId }] of porComercio) {
     let leerPago = fetchProviderPayment
+    let buscarPagos = searchProviderPayments
 
-    if (!leerPago) {
+    const todas = [...conId, ...sinId]
+
+    const necesitaCliente = (conId.length && !leerPago) || (sinId.length && !buscarPagos)
+
+    if (necesitaCliente) {
       try {
         const contexto = await traerContexto(comercio)
 
         if (!contexto?.accessToken) {
-          for (const orden of susOrdenes) {
+          for (const orden of todas) {
             unverifiable.push({
               ...describir(orden),
               reason: 'sin credenciales de Mercado Pago',
@@ -507,16 +572,24 @@ export const auditOrderFinancials = async ({
         }
 
         const cliente = crearCliente(contexto.accessToken)
-        leerPago = ({ paymentId }) => cliente.get({ id: paymentId })
+        leerPago = leerPago || (({ paymentId }) => cliente.get({ id: paymentId }))
+        buscarPagos =
+          buscarPagos ||
+          (async ({ externalReference }) => {
+            const respuesta = await cliente.search({
+              options: { external_reference: externalReference },
+            })
+            return respuesta?.results || []
+          })
       } catch (error) {
-        for (const orden of susOrdenes) {
+        for (const orden of todas) {
           unverifiable.push({ ...describir(orden), reason: error.message })
         }
         continue
       }
     }
 
-    for (const orden of susOrdenes) {
+    for (const orden of conId) {
       try {
         const pago = await leerPago({
           paymentId: orden.paymentIntent.providerPaymentId,
@@ -531,6 +604,23 @@ export const auditOrderFinancials = async ({
       } catch (error) {
         // Que el proveedor no conteste NO es una diferencia. Meterlo en
         // findings convertiría un problema de red en una alarma de plata.
+        unverifiable.push({ ...describir(orden), reason: error.message })
+      }
+    }
+
+    for (const orden of sinId) {
+      try {
+        const pagos = await buscarPagos({
+          externalReference: String(orden._id),
+          tenantId: comercio,
+        })
+
+        consultadas += 1
+
+        for (const hallazgo of checkUnlinkedProviderPayments(orden, pagos)) {
+          findings.push({ ...describir(orden), ...hallazgo, source: 'provider' })
+        }
+      } catch (error) {
         unverifiable.push({ ...describir(orden), reason: error.message })
       }
     }

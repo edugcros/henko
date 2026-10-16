@@ -10,10 +10,20 @@ const requireTenantId = req =>
 
 const ALLOWED_MODES = new Set(['test', 'production'])
 
+// Los dos campos secretos tienen select:false en el schema. Se piden con `+`
+// para poder informar SI están cargados; el valor nunca sale en la respuesta.
+const MP_FIELDS =
+  'integrations.mercadopago +integrations.mercadopago.accessToken +integrations.mercadopago.webhookSecret'
+
+// La clave secreta que muestra Mercado Pago en Webhooks → Clave secreta es una
+// cadena larga sin espacios. Un valor corto o con espacios es un error de copia.
+const WEBHOOK_SECRET_PATTERN = /^\S{16,256}$/
+
 const formatMpResponse = mp => ({
   mode: mp.mode || 'test',
   publicKey: mp.publicKey || '',
   hasAccessToken: Boolean(mp.accessToken),
+  hasWebhookSecret: Boolean(mp.webhookSecret),
   isEnabled: Boolean(mp.isEnabled),
   connectedAt: mp.connectedAt || null,
   updatedAt: mp.updatedAt || null,
@@ -22,7 +32,7 @@ const formatMpResponse = mp => ({
 export const getPaymentConfig = asyncHandler(async (req, res) => {
   const tenantId = requireTenantId(req)
 
-  const tenant = await Tenant.findById(tenantId).select('integrations.mercadopago').lean()
+  const tenant = await Tenant.findById(tenantId).select(MP_FIELDS).lean()
 
   if (!tenant) {
     return res.status(404).json({ success: false, message: 'Tenant no encontrado' })
@@ -41,6 +51,7 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
   const mode = clean(body.mode)
   const publicKey = clean(body.publicKey)
   const accessToken = clean(body.accessToken)
+  const webhookSecret = clean(body.webhookSecret)
   const isEnabled = Boolean(body.isEnabled)
 
   if (mode && !ALLOWED_MODES.has(mode)) {
@@ -58,6 +69,14 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
 
   const currentMp = current.integrations?.mercadopago || {}
   const hasExistingToken = Boolean(currentMp.accessToken)
+
+  if (webhookSecret && !WEBHOOK_SECRET_PATTERN.test(webhookSecret)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'La clave secreta del webhook no es válida. Copiala completa desde Tus integraciones → Webhooks → Clave secreta.',
+    })
+  }
 
   if (isEnabled && !publicKey) {
     return res.status(400).json({
@@ -151,14 +170,13 @@ export const updatePaymentConfig = asyncHandler(async (req, res) => {
   if (mode) $set['integrations.mercadopago.mode'] = mode
   if (publicKey) $set['integrations.mercadopago.publicKey'] = publicKey
   if (accessToken) $set['integrations.mercadopago.accessToken'] = accessToken
+  if (webhookSecret) $set['integrations.mercadopago.webhookSecret'] = webhookSecret
 
   if (isEnabled && !currentMp.connectedAt) {
     $set['integrations.mercadopago.connectedAt'] = new Date()
   }
 
-  const tenant = await Tenant.findByIdAndUpdate(tenantId, { $set }, { new: true }).select(
-    'integrations.mercadopago',
-  )
+  const tenant = await Tenant.findByIdAndUpdate(tenantId, { $set }, { new: true }).select(MP_FIELDS)
 
   return res.status(200).json({
     success: true,

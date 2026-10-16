@@ -988,6 +988,16 @@ const orderSchema = new Schema(
 // ÍNDICES MULTI-TENANT
 // =====================================================
 
+// LOS DOS ÍNDICES ÚNICOS DE ABAJO LLEVABAN `$ne: null` Y NO SE CREABAN
+//
+// MongoDB no admite `$ne` en un partialFilterExpression («Expression not
+// supported in partial index: $not»; ver el mismo caso en tenantModel.js, que ya
+// se corrigió). Como producción corre con autoIndex en false, el rechazo no
+// aparecía en ningún lado: ni la unicidad del id de pago por comercio ni la
+// idempotencia de la creación de órdenes estaban garantizadas por la base.
+//
+// `$type: 'string'` es lo que se quería decir —"tiene valor"— con un operador
+// soportado. Ambos campos se guardan como String.
 orderSchema.index(
   {
     tenantId: 1,
@@ -995,15 +1005,20 @@ orderSchema.index(
   },
   {
     unique: true,
-    sparse: true,
     partialFilterExpression: {
       isDeleted: false,
-      'paymentIntent.providerPaymentId': {
-        $exists: true,
-        $ne: null,
-      },
+      'paymentIntent.providerPaymentId': { $type: 'string' },
     },
   },
+)
+
+// El webhook de Mercado Pago llega con el id del pago y SIN comercio, así que
+// resolveWebhookOrderIdentity busca solo por ese campo. Con el índice de arriba
+// (que empieza por tenantId) eso es un recorrido de toda la colección en cada
+// notificación.
+orderSchema.index(
+  { 'paymentIntent.providerPaymentId': 1 },
+  { partialFilterExpression: { 'paymentIntent.providerPaymentId': { $type: 'string' } } },
 )
 
 orderSchema.index(
@@ -1015,10 +1030,7 @@ orderSchema.index(
     unique: true,
     partialFilterExpression: {
       isDeleted: false,
-      idempotencyKey: {
-        $exists: true,
-        $ne: null,
-      },
+      idempotencyKey: { $type: 'string' },
     },
   },
 )

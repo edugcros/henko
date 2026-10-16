@@ -68,12 +68,28 @@ const parseSignatureHeader = value => {
   return result
 }
 
-export const verifyMercadoPagoWebhookSignature = req => {
-  const secret = sanitizeString(process.env.MP_WEBHOOK_SECRET)
+// QUIÉN FIRMA, Y CON QUÉ SECRETO
+//
+// Cada comercio cobra con SU cuenta de Mercado Pago, y la clave secreta de los
+// webhooks es por aplicación: la que genera Mercado Pago en "Tus integraciones
+// → Webhooks" de ESA cuenta. Validar todo contra un único MP_WEBHOOK_SECRET solo
+// funciona para el comercio cuya aplicación comparte esa clave; para el resto la
+// firma legítima no coincide y la notificación se descartaba.
+//
+// Se aceptan dos secretos, el del comercio (si lo cargó) y el global de la
+// plataforma. Basta con que coincida uno. Sin ninguno configurado: en producción
+// se rechaza; en desarrollo se omite la verificación.
+export const verifyMercadoPagoWebhookSignature = (
+  req,
+  { tenantSecret = null, quiet = false } = {},
+) => {
+  const secrets = [sanitizeString(tenantSecret), sanitizeString(process.env.MP_WEBHOOK_SECRET)]
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
 
-  if (!secret) {
+  if (!secrets.length) {
     if (isProd) {
-      logger.error('❌ MP_WEBHOOK_SECRET no configurado en producción')
+      if (!quiet) logger.error('❌ Ningún secreto de webhook configurado en producción')
       return false
     }
 
@@ -94,15 +110,35 @@ export const verifyMercadoPagoWebhookSignature = req => {
 
   const normalizedDataId = String(dataId).toLowerCase()
   const manifest = `id:${normalizedDataId};request-id:${xRequestId};ts:${ts};`
-
-  const digest = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
-
-  const digestBuffer = Buffer.from(digest, 'utf8')
   const signatureBuffer = Buffer.from(String(v1), 'utf8')
 
-  if (digestBuffer.length !== signatureBuffer.length) return false
+  return secrets.some(secret => {
+    const digest = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
+    const digestBuffer = Buffer.from(digest, 'utf8')
 
-  return crypto.timingSafeEqual(digestBuffer, signatureBuffer)
+    if (digestBuffer.length !== signatureBuffer.length) return false
+
+    return crypto.timingSafeEqual(digestBuffer, signatureBuffer)
+  })
+}
+
+/**
+ * Orden y comercio que el propio backend dejó en la notification_url al crear
+ * el pago (ver buildNotificationUrl).
+ *
+ * NO SON CONFIABLES POR SÍ SOLOS. Viajan en la query, fuera de la firma. Sirven
+ * únicamente para saber DÓNDE mirar; el vínculo solo se acepta si Mercado Pago,
+ * consultado con el token del comercio, confirma que ese pago lleva el
+ * external_reference de esa orden y el mismo monto.
+ */
+export const getWebhookHints = req => {
+  const orderId = sanitizeString(String(req.query?.order_id || ''))
+  const tenantId = sanitizeString(String(req.query?.tenant_id || ''))
+
+  return {
+    orderId: mongoose.Types.ObjectId.isValid(orderId) ? orderId : null,
+    tenantId: mongoose.Types.ObjectId.isValid(tenantId) ? tenantId : null,
+  }
 }
 
 export const isWebhookProcessed = async webhookId => {
@@ -133,10 +169,36 @@ export const markWebhookProcessed = async (webhookId, paymentId, tenantId, order
   }
 }
 
-export const resolveWebhookOrderIdentity = async paymentId => {
-  return Order.collection.findOne(
+export const resolveWebhookOrderIdentity = async (
+  paymentId,
+  { orderId = null, tenantId = null } = {},
+) => {
+  const porPago = await Order.collection.findOne(
     {
       'paymentIntent.providerPaymentId': String(paymentId),
+      isDeleted: false,
+    },
+    {
+      projection: {
+        _id: 1,
+        tenantId: 1,
+      },
+    },
+  )
+
+  if (porPago || !orderId || !tenantId) return porPago
+
+  // SEGUNDA VÍA: LA ORDEN QUE NOMBRÓ EL PROPIO PAGO
+  //
+  // Si el proceso murió entre crear el pago en Mercado Pago y guardar su id, la
+  // orden no tiene providerPaymentId y la búsqueda de arriba no la encuentra
+  // nunca: un cobro real quedaba pendiente para siempre. La notification_url
+  // lleva la orden y el comercio para poder encontrarla igual.
+  return Order.collection.findOne(
+    {
+      _id: toObjectId(orderId),
+      tenantId: toObjectId(tenantId),
+      'paymentIntent.provider': 'mercadopago',
       isDeleted: false,
     },
     {

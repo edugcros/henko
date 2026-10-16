@@ -112,7 +112,7 @@ const isPublicNotificationUrl = value => {
   }
 }
 
-const buildNotificationUrl = () => {
+const buildNotificationUrl = ({ orderId = null, tenantId = null } = {}) => {
   const publicBackendUrl = sanitizeString(
     process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL,
   ).replace(/\/+$/, '')
@@ -127,7 +127,18 @@ const buildNotificationUrl = () => {
 
   const apiPrefix = `/${sanitizeString(process.env.API_PREFIX, '/api').replace(/^\/+|\/+$/g, '')}`
 
-  return `${publicBackendUrl}${apiPrefix}/payments/webhook/mercadopago?source_news=webhooks`
+  // La orden y el comercio viajan en la URL para poder encontrar la orden aunque
+  // no se haya llegado a guardar el id del pago (ver getWebhookHints).
+  const hints = [
+    orderId ? `order_id=${encodeURIComponent(String(orderId))}` : null,
+    tenantId ? `tenant_id=${encodeURIComponent(String(tenantId))}` : null,
+  ]
+    .filter(Boolean)
+    .join('&')
+
+  return `${publicBackendUrl}${apiPrefix}/payments/webhook/mercadopago?source_news=webhooks${
+    hints ? `&${hints}` : ''
+  }`
 }
 
 export const buildMercadoPagoPaymentData = ({
@@ -194,7 +205,7 @@ export const buildMercadoPagoPaymentData = ({
     paymentData.issuer_id = issuerNum
   }
 
-  const notificationUrl = buildNotificationUrl()
+  const notificationUrl = buildNotificationUrl({ orderId: order._id, tenantId })
 
   if (notificationUrl) {
     paymentData.notification_url = notificationUrl
