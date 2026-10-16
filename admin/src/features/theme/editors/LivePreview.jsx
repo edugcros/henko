@@ -11,6 +11,10 @@ const VIEWPORT_WIDTH = {
 
 const PREVIEW_READY_TIMEOUT_MS = 12000
 
+// Nombre de la ventana de «Abrir». Con nombre fijo, un segundo clic reutiliza la misma
+// pestaña en lugar de abrir una por clic.
+const PREVIEW_WINDOW_NAME = 'henko-theme-preview'
+
 const withProtocol = value => {
   if (!value) return ''
   if (/^https?:\/\//i.test(value)) return value
@@ -77,6 +81,11 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
   const [iframeReady, setIframeReady] = useState(false)
   const [loadWarning, setLoadWarning] = useState('')
 
+  // La ventana que abre el botón «Abrir», y si ya saludó.
+  const popupRef = useRef(null)
+  const popupReadyRef = useRef(false)
+  const [popupWarning, setPopupWarning] = useState('')
+
   const previewUrl = useMemo(() => {
     const params = new URLSearchParams({
       source: 'admin',
@@ -114,26 +123,48 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
   // re-render.
   const readyRef = useRef(false)
 
+  const postTo = useCallback(
+    targetWindow => {
+      if (!targetWindow || !previewTargetOrigin) return
+
+      targetWindow.postMessage(
+        {
+          type: 'HENKO_THEME_PREVIEW_UPDATE',
+          payload: themeData,
+        },
+        previewTargetOrigin,
+      )
+    },
+    [previewTargetOrigin, themeData],
+  )
+
+  // El diseño va a DOS destinos: el iframe del panel y, si está abierta, la pestaña de
+  // «Abrir». Cada uno recibe solo después de haber saludado: es la prueba de que el
+  // destino es el que creemos (ver el comentario de arriba).
+  //
+  // La pestaña de «Abrir» antes era un enlace con rel=noopener: sin ninguna referencia
+  // a ella, el panel no podía mandarle nada, y mostraba la plantilla por defecto en
+  // lugar de lo que se estaba diseñando.
   const postPreview = useCallback(() => {
-    const targetWindow = iframeRef.current?.contentWindow
+    if (readyRef.current) postTo(iframeRef.current?.contentWindow)
 
-    if (!targetWindow || !previewTargetOrigin || !readyRef.current) return
+    const popup = popupRef.current
 
-    targetWindow.postMessage(
-      {
-        type: 'HENKO_THEME_PREVIEW_UPDATE',
-        payload: themeData,
-      },
-      previewTargetOrigin,
-    )
-  }, [previewTargetOrigin, themeData])
+    if (popup && !popup.closed && popupReadyRef.current) postTo(popup)
+  }, [postTo])
 
   useEffect(() => {
     const handleMessage = event => {
-      if (event.source !== iframeRef.current?.contentWindow) return
+      const popup = popupRef.current
+      const fromIframe = event.source === iframeRef.current?.contentWindow
+      const fromPopup = Boolean(popup) && !popup.closed && event.source === popup
+
+      if (!fromIframe && !fromPopup) return
       if (event.origin !== previewTargetOrigin) return
 
-      if (event.data?.type === 'HENKO_THEME_PREVIEW_READY') {
+      if (event.data?.type !== 'HENKO_THEME_PREVIEW_READY') return
+
+      if (fromIframe) {
         if (readyTimeoutRef.current) {
           clearTimeout(readyTimeoutRef.current)
           readyTimeoutRef.current = null
@@ -144,8 +175,12 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
         readyRef.current = true
         setIframeReady(true)
         setLoadWarning('')
-        postPreview()
+      } else {
+        popupReadyRef.current = true
+        setPopupWarning('')
       }
+
+      postPreview()
     }
 
     window.addEventListener('message', handleMessage)
@@ -195,6 +230,27 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
     postPreview()
   }, [postPreview])
 
+  const openPreviewWindow = () => {
+    // Cada apertura recarga la ventana y esta vuelve a saludar: hasta entonces no se
+    // le manda nada.
+    popupReadyRef.current = false
+
+    // Sin 'noopener' a propósito: hace falta la referencia a la ventana para poder
+    // mandarle el diseño. El destino es el storefront de Henkart, no una página ajena.
+    const popup = window.open(previewUrl, PREVIEW_WINDOW_NAME)
+
+    if (!popup) {
+      popupRef.current = null
+      setPopupWarning(
+        'El navegador bloqueó la ventana de vista previa. Permití las ventanas emergentes para este sitio y volvé a tocar «Abrir».',
+      )
+      return
+    }
+
+    popupRef.current = popup
+    setPopupWarning('')
+  }
+
   return (
     <Paper
       elevation={0}
@@ -239,9 +295,7 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
         <Button
           size="small"
           startIcon={<OpenInNew />}
-          href={previewUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          onClick={openPreviewWindow}
           sx={{ flexShrink: 0 }}
         >
           Abrir
@@ -257,6 +311,12 @@ const LivePreview = ({ themeData = {}, viewport = 'desktop' }) => {
           p: viewport === 'desktop' ? 0 : 1,
         }}
       >
+        {popupWarning && (
+          <Alert severity="warning" sx={{ m: 1 }} onClose={() => setPopupWarning('')}>
+            {popupWarning}
+          </Alert>
+        )}
+
         {loadWarning && (
           <Alert severity="warning" sx={{ m: 1 }}>
             {loadWarning}
