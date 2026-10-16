@@ -139,16 +139,29 @@ jobs:
       # `Single` y volveriamos al mismo problema por otro camino.
       - name: Levantar MongoDB como replica set
         run: |
-          docker run -d --name henko-mongo -p 27017:27017 mongo:7 \
-            mongod --bind_ip_all --quiet --replSet rs0
+          # Reintentar el proceso si mongod termina inesperadamente durante el
+          # arranque del runner. Sin esto, docker exec solo reportaba que el
+          # contenedor no estaba activo y ocultaba la causa original.
+          docker run -d --name henko-mongo --restart on-failure:5 \
+            -p 27017:27017 mongo:7 mongod --bind_ip_all --quiet --replSet rs0
 
+          mongo_ready=0
           for _ in $(seq 1 30); do
             if docker exec henko-mongo \
                  mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' >/dev/null 2>&1; then
+              mongo_ready=1
               break
             fi
             sleep 2
           done
+
+          if [ "$mongo_ready" -ne 1 ]; then
+            echo "MongoDB no quedó disponible en 60s; estado del contenedor:"
+            docker inspect -f '{{json .State}}' henko-mongo || true
+            echo "Últimos logs de MongoDB:"
+            docker logs --tail 150 henko-mongo || true
+            exit 1
+          fi
 
           docker exec henko-mongo mongosh --quiet --eval '
             rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] })
@@ -156,18 +169,23 @@ jobs:
 
           # Esperar a que el nodo sea PRIMARY: recien ahi el driver informa
           # ReplicaSetWithPrimary y las transacciones quedan disponibles.
+          primary_ready=0
           for _ in $(seq 1 30); do
             if docker exec henko-mongo \
                  mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
               echo "replica set rs0 con PRIMARY"
-              exit 0
+              primary_ready=1
+              break
             fi
             sleep 2
           done
 
-          echo "el replica set no llego a PRIMARY en 60s"
-          docker logs henko-mongo
-          exit 1
+          if [ "$primary_ready" -ne 1 ]; then
+            echo "el replica set no llego a PRIMARY en 60s"
+            docker inspect -f '{{json .State}}' henko-mongo || true
+            docker logs --tail 150 henko-mongo || true
+            exit 1
+          fi
 
       - run: npm ci
 
