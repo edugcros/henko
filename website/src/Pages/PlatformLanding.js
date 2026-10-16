@@ -9,7 +9,7 @@ import {
   FiLayers,
   FiMenu,
   FiPackage,
-  FiPalette,
+  FiSliders,
   FiShoppingBag,
   FiSmartphone,
   FiTrendingUp,
@@ -52,7 +52,7 @@ const features = [
       'Conectá Mercado Pago con la configuración de tu comercio y administrá la integración desde el panel.',
   },
   {
-    icon: FiPalette,
+    icon: FiSliders,
     eyebrow: 'PERSONALIZACIÓN',
     title: 'Diseñá una tienda a tu estilo',
     description:
