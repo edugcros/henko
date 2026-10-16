@@ -5,7 +5,7 @@ import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import ErrorBoundary, { registrarReporteGlobal } from '@components/ErrorBoundary/ErrorBoundary.js'
-import PlatformLanding from '@pages/PlatformLanding'
+import PlatformLanding, { shouldRenderPlatformLanding } from '@pages/PlatformLanding'
 import { env } from './config/env'
 import './App.css'
 import { store } from '@app/store'
@@ -14,26 +14,17 @@ import SpinnerCentered from '@components/SpinnerCentered/SpinnerCentered.jsx'
 import { TenantProvider } from './contexts/TenantContext'
 import { StoreThemeProvider } from './contexts/StoreThemeContext'
 
-const normalizeHostname = value =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .split('/')[0]
-    .replace(/:\d+$/, '')
-    .replace(/^www\./, '')
-
-// La landing comercial sólo se monta en el dominio raíz de Henkart.
-// Los subdominios de tiendas deben continuar entrando por TenantProvider y la
-// app de storefront; el panel admin vive en su propio dominio.
-const isPlatformMarketingHost = () => {
-  if (typeof window === 'undefined') return false
-
-  const hostname = normalizeHostname(window.location.hostname)
-  const platformHostname = normalizeHostname(env.publicBaseDomain)
-
-  return Boolean(hostname && platformHostname && hostname === platformHostname)
-}
+// La landing comercial sólo se monta en el dominio raíz de Henkart, y no en todas sus
+// rutas: /theme-preview es la vista previa del diseñador de tienda y la atiende la
+// app del storefront. Los subdominios de tiendas entran por TenantProvider y el panel
+// admin vive en su propio dominio. La regla está en PlatformLanding, donde se prueba.
+const isPlatformMarketingHost = () =>
+  typeof window !== 'undefined' &&
+  shouldRenderPlatformLanding({
+    hostname: window.location.hostname,
+    pathname: window.location.pathname,
+    platformDomain: env.publicBaseDomain,
+  })
 
 const AppInitializer = () => {
   const [ready, setReady] = useState(false)

@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import PlatformLanding from '../PlatformLanding'
+import PlatformLanding, { normalizeHostname, shouldRenderPlatformLanding } from '../PlatformLanding'
 
 jest.mock('@components/Meta', () => () => null)
 jest.mock('@utils/adminUrl', () => ({
@@ -72,6 +72,68 @@ describe('PlatformLanding · íconos', () => {
 
     expect(importados.length).toBeGreaterThan(20)
     expect(faltantes).toEqual([])
+  })
+})
+
+describe('Cuándo se muestra la landing', () => {
+  const RAIZ = 'henkart.com.ar'
+  const ver = (hostname, pathname = '/', platformDomain = RAIZ) =>
+    shouldRenderPlatformLanding({ hostname, pathname, platformDomain })
+
+  it('se muestra en el dominio raíz', () => {
+    expect(ver(RAIZ, '/')).toBe(true)
+    expect(ver('www.henkart.com.ar', '/')).toBe(true)
+    expect(ver('HENKART.com.ar', '/')).toBe(true)
+  })
+
+  it('NO tapa la vista previa del diseñador de tienda', () => {
+    // El incidente del 16/10/2026. El iframe del diseñador del admin carga
+    // <dominio raíz>/theme-preview; la landing se montaba igual y el comerciante veía
+    // la página de marketing en lugar de la tienda que estaba diseñando.
+    expect(ver(RAIZ, '/theme-preview')).toBe(false)
+    expect(ver('www.henkart.com.ar', '/theme-preview')).toBe(false)
+  })
+
+  it('el resto de las rutas del dominio raíz siguen siendo la landing', () => {
+    // Una URL con campaña, un enlace roto o una ruta desconocida muestran la landing:
+    // en el dominio raíz no hay otra cosa que mostrar.
+    expect(ver(RAIZ, '/')).toBe(true)
+    expect(ver(RAIZ, '/inexistente')).toBe(true)
+    expect(ver(RAIZ, '/theme-preview-otra-cosa')).toBe(true)
+  })
+
+  it('nunca se muestra en una tienda ni en el panel', () => {
+    expect(ver('mitienda.henkart.com.ar')).toBe(false)
+    expect(ver('admin.henkart.com.ar')).toBe(false)
+    expect(ver('tienda-propia.com')).toBe(false)
+    expect(ver('localhost')).toBe(false)
+  })
+
+  it('sin dominio configurado no se muestra: es lo seguro', () => {
+    // Si falta REACT_APP_PUBLIC_BASE_DOMAIN, mostrar la landing en todos lados
+    // taparía cualquier tienda.
+    expect(ver(RAIZ, '/', '')).toBe(false)
+    // Directo y no por `ver`: con undefined el valor por defecto del helper lo pisaría.
+    expect(shouldRenderPlatformLanding({ hostname: RAIZ, pathname: '/' })).toBe(false)
+    expect(ver('', '/', RAIZ)).toBe(false)
+    expect(shouldRenderPlatformLanding()).toBe(false)
+  })
+
+  it('tolera cómo se escribe el dominio en la configuración', () => {
+    expect(ver(RAIZ, '/', 'https://henkart.com.ar/')).toBe(true)
+    expect(ver(RAIZ, '/', 'www.henkart.com.ar')).toBe(true)
+    expect(ver('henkart.com.ar:3002', '/', 'henkart.com.ar:3002')).toBe(true)
+    expect(normalizeHostname(' HTTPS://WWW.Henkart.com.ar:443/x ')).toBe('henkart.com.ar')
+  })
+
+  it('index.js decide con esta función y no solo por hostname', () => {
+    // El bug estaba en el cableado, no en la lógica: index.js comparaba el hostname por
+    // su cuenta. Si alguien vuelve a escribir esa comparación ahí, este test avisa.
+    const fuente = fs.readFileSync(path.resolve(__dirname, '../../index.js'), 'utf8')
+
+    expect(fuente).toContain('shouldRenderPlatformLanding')
+    expect(fuente).toContain('pathname: window.location.pathname')
+    expect(fuente).not.toMatch(/const normalizeHostname/)
   })
 })
 
