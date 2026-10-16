@@ -33,6 +33,27 @@ jest.unstable_mockModule('node:dns', () => ({
   default: { promises: { resolveTxt: resolveTxtMock } },
 }))
 
+/**
+ * EL BORDE VA MOCKEADO, POR EL MISMO CRITERIO QUE EL DNS.
+ *
+ * No se está midiendo que Vercel conteste: se está midiendo QUÉ se le pide y
+ * CUÁNDO. Sin mock las llamadas se cortan solas por falta de credenciales, así
+ * que el caso que importa —que al verificar un dominio propio el subdominio
+ * pase a redirigir— no se podría observar.
+ */
+const registrarMock = jest.fn(async () => ({ ok: true, verificacionPendiente: [] }))
+const redirigirMock = jest.fn(async () => ({ ok: true }))
+
+jest.unstable_mockModule('../services/tenant/edgeDomainService.js', () => ({
+  SUPERFICIE: { TIENDA: 'storefront', PANEL: 'admin' },
+  isEdgeProvisioningEnabled: () => true,
+  obtenerDestinoDelBorde: () => 'cname.vercel-dns.com',
+  registrarDominioEnBorde: registrarMock,
+  redirigirDominioEnBorde: redirigirMock,
+  quitarRedireccionDelBorde: jest.fn(async () => ({ ok: true })),
+  quitarDominioDelBorde: jest.fn(async () => ({ ok: true })),
+}))
+
 const { default: Tenant } = await import('../models/tenantModel.js')
 const {
   registerTenantDomain,
@@ -58,6 +79,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await Tenant.collection.deleteMany({})
   resolveTxtMock.mockReset()
+  registrarMock.mockClear()
+  redirigirMock.mockClear()
   // Lo normal al cargar un dominio recién creado: todavía no hay nada.
   resolveTxtMock.mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }))
 })
@@ -430,5 +453,91 @@ describe('panel propio · la superficie se declara al dar de alta', () => {
         surface: 'cualquier-cosa',
       }),
     ).rejects.toMatchObject({ statusCode: 400 })
+  })
+})
+
+// ─── EL SUBDOMINIO DEJA DE COMPETIR CON EL DOMINIO PROPIO ───────────────────
+//
+// Un comercio nace en `sutienda.henkart.com.ar` y al crecer conecta
+// `sutienda.com`. Sin redirección los DOS sirven el mismo catálogo: Google ve
+// contenido duplicado y reparte la autoridad entre las dos direcciones, así
+// que el comercio posiciona a medias — y la mitad se la lleva un dominio que
+// ni siquiera es suyo.
+//
+// Hoy no muerde porque ningún comercio tiene las dos cosas. Muerde con el
+// primero que crezca, que es justo el camino deseable.
+
+describe('dominio propio · el subdominio pasa a redirigir', () => {
+  const verificar = async (tenantId, hostname, instructions) => {
+    resolveTxtMock.mockResolvedValue([[instructions.verification.value]])
+    return verifyTenantDomain({ tenantId, hostname })
+  }
+
+  test('al verificar el dominio propio, el subdominio redirige a él', async () => {
+    const tenant = await crearComercio('creciendo')
+    const { instructions } = await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'sutienda.com',
+    })
+
+    await verificar(tenant._id, 'sutienda.com', instructions)
+
+    expect(redirigirMock).toHaveBeenCalledWith('creciendo.henkart.com.ar', 'sutienda.com')
+  })
+
+  test('activar un subdominio de plataforma no redirige nada', async () => {
+    // No hay dominio propio al que mandar, y redirigir el subdominio a sí
+    // mismo sería un bucle servido desde el borde.
+    const tenant = await crearComercio('sinpropio')
+
+    await verifyTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'sinpropio.henkart.com.ar',
+    }).catch(() => null)
+
+    expect(redirigirMock).not.toHaveBeenCalled()
+  })
+
+  test('un dominio de PANEL no redirige la tienda', async () => {
+    // El panel no sirve catálogo: no hay contenido duplicado que resolver, y
+    // mandar el subdominio de la tienda al panel la dejaría sin tienda.
+    const tenant = await crearComercio('conpanel')
+    const { instructions } = await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'panel.sutienda.com',
+    })
+
+    await Tenant.updateOne(
+      { _id: tenant._id, 'domains.hostname': 'panel.sutienda.com' },
+      { $set: { 'domains.$.context': 'admin' } },
+    )
+
+    await verificar(tenant._id, 'panel.sutienda.com', instructions)
+
+    expect(redirigirMock).not.toHaveBeenCalled()
+  })
+
+  test('si el borde falla, el dominio queda verificado igual', async () => {
+    // Fail-soft, igual que el alta en el borde: la verificación ya probó la
+    // propiedad y un fallo del proveedor no puede deshacerla. El comercio
+    // queda con su dominio andando y conserva el subdominio — el estado de
+    // antes, no uno peor.
+    redirigirMock.mockResolvedValueOnce({ ok: false, motivo: 'http_500' })
+
+    const tenant = await crearComercio('bordecaido')
+    const { instructions } = await registerTenantDomain({
+      tenantId: tenant._id,
+      hostname: 'otratienda.com',
+    })
+
+    const res = await verificar(tenant._id, 'otratienda.com', instructions)
+
+    expect(res.domain.status).toBe('active')
+
+    const guardado = await Tenant.findById(tenant._id).lean()
+    const propio = guardado.domains.find(d => d.hostname === 'otratienda.com')
+
+    expect(propio.status).toBe('active')
+    expect(propio.verifiedAt).toBeTruthy()
   })
 })

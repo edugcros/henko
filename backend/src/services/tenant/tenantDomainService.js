@@ -37,6 +37,7 @@ import { env } from '../../../config/env.js'
 import {
   obtenerDestinoDelBorde,
   registrarDominioEnBorde,
+  redirigirDominioEnBorde,
   quitarDominioDelBorde,
 } from './edgeDomainService.js'
 import { normalizeDomainValue, normalizeHostname } from '../../utils/domainUtils.js'
@@ -374,6 +375,50 @@ export const verifyTenantDomain = async ({ tenantId, hostname: raw }) => {
     if (entradaActual) {
       entradaActual.edgeVerification = pendiente.length ? pendiente : undefined
       await tenant.save()
+    }
+
+    /**
+     * Y EL SUBDOMINIO DE PLATAFORMA PASA A REDIRIGIR AL DOMINIO PROPIO.
+     *
+     * El comercio nace en `sutienda.henkart.com.ar` y al crecer conecta
+     * `sutienda.com`. Sin esto los DOS quedan sirviendo el mismo catálogo:
+     * Google ve contenido duplicado y reparte la autoridad entre las dos
+     * direcciones, así que el comercio posiciona a medias — y la mitad se la
+     * lleva un dominio que ni siquiera es suyo.
+     *
+     * Sólo aplica cuando lo que se acaba de verificar es un dominio PROPIO de
+     * tienda. Al activar un subdominio de plataforma no hay nada que
+     * redirigir, y un dominio de panel no sirve catálogo.
+     *
+     * Fail-soft, igual que el alta en el borde: el dominio ya quedó
+     * verificado y que el proveedor falle no puede deshacerlo. Si no sale, el
+     * comercio tiene su dominio andando y conserva el subdominio — que es el
+     * estado de antes, no uno peor.
+     */
+    const esDominioPropioDeTienda = entry.type === 'custom_domain' && entry.context !== 'admin'
+
+    if (esDominioPropioDeTienda) {
+      const subdominio = (tenant.domains || []).find(
+        d =>
+          d.type === 'platform_subdomain' &&
+          d.status === 'active' &&
+          d.context !== 'admin' &&
+          d.hostname !== hostname,
+      )
+
+      if (subdominio) {
+        const redireccion = await redirigirDominioEnBorde(subdominio.hostname, hostname)
+
+        if (!redireccion.ok) {
+          logger.warn('[DOMINIO] El subdominio sigue sirviendo la tienda en paralelo', {
+            tenantId: String(tenantId),
+            subdominio: subdominio.hostname,
+            destino: hostname,
+            motivo: redireccion.motivo,
+            nota: 'Dos direcciones con el mismo catálogo reparten la autoridad de búsqueda.',
+          })
+        }
+      }
     }
   }
 
