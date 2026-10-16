@@ -1,0 +1,411 @@
+/* Login del panel. Todo cuelga de .hk-auth: no toca el resto del admin.
+   Mismos tokens que SubscriptionPage.css (la paleta sale del logo). Nativos y no MUI/Ant:
+   Ant Design v6 inyecta su CSS en runtime y pisa las clases propias. */
+
+.hk-auth {
+  --hk-navy-950: #040817;
+  --hk-navy-900: #050b1f;
+  --hk-navy-800: #0a1433;
+  --hk-blue: #0b6bff;
+  --hk-blue-soft: #5aa2ff;
+  --hk-cyan: #14d8ff;
+  --hk-ink: #0a1230;
+  --hk-muted: #55618a;
+  --hk-paper: #f4f7ff;
+  --hk-line: #dfe6fb;
+  --hk-on-dark: #b9c6ee;
+  --hk-on-dark-soft: #8ea0d6;
+  --hk-danger: #b42318;
+  --hk-danger-bg: #fef3f2;
+  --hk-danger-line: #fecdca;
+  --hk-ok: #067647;
+  --hk-gradient: linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%);
+  --hk-gradient-text: linear-gradient(100deg, #14d8ff 0%, #5aa2ff 38%, #a06bff 74%, #e24bff 100%);
+  --hk-display: Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif;
+
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  color: var(--hk-ink);
+  background: var(--hk-paper);
+  font-family:
+    Roboto,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hk-auth *,
+.hk-auth *::before,
+.hk-auth *::after {
+  box-sizing: border-box;
+}
+
+.hk-auth a:focus-visible,
+.hk-auth button:focus-visible,
+.hk-auth input:focus-visible {
+  outline: 3px solid var(--hk-blue-soft);
+  outline-offset: 3px;
+}
+
+/* ───────────── Panel de marca ───────────── */
+
+.hk-auth-brand {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(520px 380px at 12% 8%, rgba(11, 107, 255, 0.34), transparent 70%),
+    radial-gradient(480px 420px at 92% 92%, rgba(122, 44, 255, 0.3), transparent 70%),
+    radial-gradient(300px 260px at 78% 18%, rgba(20, 216, 255, 0.14), transparent 70%),
+    var(--hk-navy-900);
+}
+
+.hk-auth-brand-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  width: 100%;
+  max-width: 560px;
+  margin-left: auto;
+  padding: 44px 56px 56px;
+}
+
+.hk-auth-logo {
+  display: block;
+  height: 35px;
+  width: auto;
+}
+
+.hk-auth-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--hk-cyan);
+}
+
+.hk-auth-tagline {
+  margin: 14px 0 0;
+  font-family: var(--hk-display);
+  font-size: clamp(30px, 3.2vw, 42px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.hk-auth-gradient {
+  background: var(--hk-gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hk-auth-benefits {
+  display: grid;
+  gap: 20px;
+  margin: 40px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.hk-auth-benefits li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.hk-auth-benefit-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 18px;
+  color: var(--hk-cyan);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.hk-auth-benefits b {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+.hk-auth-benefits small {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--hk-on-dark);
+}
+
+/* ───────────── Formulario ───────────── */
+
+.hk-auth-main {
+  display: grid;
+  place-items: center;
+  padding: 40px 24px;
+}
+
+.hk-auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.hk-auth-card h1 {
+  margin: 0;
+  font-family: var(--hk-display);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.hk-auth-lead {
+  margin: 8px 0 28px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--hk-muted);
+}
+
+.hk-auth-field {
+  margin-bottom: 18px;
+}
+.hk-auth-field label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.hk-auth-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hk-auth-label-row .hk-auth-link {
+  margin-bottom: 7px;
+  font-size: 13px;
+}
+
+.hk-auth-field input {
+  width: 100%;
+  height: 50px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--hk-ink);
+  background: #fff;
+  border: 1.5px solid var(--hk-line);
+  border-radius: 12px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.hk-auth-field input:hover {
+  border-color: #c3cff2;
+}
+.hk-auth-field input:focus {
+  outline: none;
+  border-color: var(--hk-blue);
+  box-shadow: 0 0 0 4px rgba(11, 107, 255, 0.16);
+}
+.hk-auth-field input[aria-invalid='true'] {
+  border-color: var(--hk-danger);
+}
+.hk-auth-field input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.14);
+}
+
+.hk-auth-password {
+  position: relative;
+}
+.hk-auth-password input {
+  padding-right: 52px;
+}
+.hk-auth-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 18px;
+  color: var(--hk-muted);
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.hk-auth-eye:hover {
+  color: var(--hk-blue);
+  background: var(--hk-paper);
+}
+
+.hk-auth-field-error {
+  margin: 7px 0 0;
+  font-size: 13px;
+  color: var(--hk-danger);
+}
+
+.hk-auth-link {
+  color: var(--hk-muted);
+  font-weight: 500;
+  text-decoration: none;
+}
+.hk-auth-link:hover {
+  color: var(--hk-blue);
+  text-decoration: underline;
+}
+.hk-auth-link.is-strong {
+  color: var(--hk-blue);
+  font-weight: 700;
+}
+
+.hk-auth-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 52px;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--hk-gradient);
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px -10px rgba(11, 107, 255, 0.7);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    filter 0.15s;
+}
+.hk-auth-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 28px -10px rgba(11, 107, 255, 0.75);
+}
+.hk-auth-submit:disabled {
+  cursor: progress;
+  opacity: 0.85;
+}
+.hk-auth-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: hk-auth-spin 0.7s linear infinite;
+}
+@keyframes hk-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hk-auth-alert {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--hk-danger);
+  background: var(--hk-danger-bg);
+  border: 1px solid var(--hk-danger-line);
+  border-radius: 12px;
+}
+.hk-auth-alert p {
+  margin: 0 0 10px;
+}
+.hk-auth-alert.is-info {
+  color: var(--hk-ink);
+  background: #eef4ff;
+  border-color: #cfe0ff;
+}
+.hk-auth-alert .hk-auth-resend-ok {
+  color: var(--hk-ok);
+}
+.hk-auth-alert .hk-auth-resend-error {
+  color: var(--hk-danger);
+}
+.hk-auth-secondary {
+  width: 100%;
+  height: 44px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hk-blue);
+  background: #fff;
+  border: 1.5px solid var(--hk-blue);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.hk-auth-secondary:disabled {
+  color: var(--hk-muted);
+  border-color: var(--hk-line);
+  cursor: not-allowed;
+}
+
+.hk-auth-foot {
+  margin: 28px 0 0;
+  padding-top: 22px;
+  font-size: 14px;
+  text-align: center;
+  color: var(--hk-muted);
+  border-top: 1px solid var(--hk-line);
+}
+.hk-auth-dot {
+  margin: 0 10px;
+}
+
+/* ───────────── Responsive ───────────── */
+
+@media (max-width: 920px) {
+  .hk-auth {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  /* En el celular el panel de marca queda como franja con el logo: lo que importa es el formulario. */
+  .hk-auth-brand-inner {
+    gap: 0;
+    max-width: none;
+    padding: 20px 24px;
+  }
+  .hk-auth-pitch {
+    display: none;
+  }
+  .hk-auth-main {
+    align-items: start;
+    padding-top: 36px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hk-auth-main {
+    padding: 28px 16px 40px;
+  }
+  .hk-auth-card h1 {
+    font-size: 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hk-auth *,
+  .hk-auth *::before,
+  .hk-auth *::after {
+    transition: none !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
