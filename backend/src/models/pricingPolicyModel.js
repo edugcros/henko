@@ -104,7 +104,14 @@ const pricingPolicySchema = new mongoose.Schema(
 )
 
 // Una política por comercio.
-pricingPolicySchema.index({ tenantId: 1 }, { unique: true })
+//
+// LLEVA NOMBRE PROPIO A PROPÓSITO. tenantPlugin ya declara un { tenantId: 1 }
+// no único para el aislamiento, y Mongo deriva el nombre de las claves: los dos
+// salían 'tenantId_1', y el único rebotaba con "An existing index has the same
+// name" (código 86). Con autoIndex apagado eso no se veía; en producción el
+// índice único no existía y se podían guardar dos políticas para un comercio.
+// Mismo arreglo que aiTenantPolicyModel.
+pricingPolicySchema.index({ tenantId: 1 }, { unique: true, name: 'pricingPolicy_tenant_unique' })
 
 pricingPolicySchema.plugin(tenantPlugin)
 
