@@ -473,6 +473,14 @@ const PlatformLanding = () => {
             <div className="hk-feature-grid">
               {features.map(feature => {
                 const Icon = feature.icon
+
+                // Fail closed instead of crashing the entire public landing if a
+                // future feature is configured with an unavailable icon component.
+                if (typeof Icon !== 'function') {
+                  console.error('[PlatformLanding] Icono de feature inválido:', feature.title)
+                  return null
+                }
+
                 return (
                   <article className="hk-feature-card" key={feature.title}>
                     <div className="hk-feature-icon">
