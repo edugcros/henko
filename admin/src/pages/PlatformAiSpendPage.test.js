@@ -750,9 +750,52 @@ describe('tipo de cambio', () => {
     mockGetUsdRate.mockRejectedValue(new Error('sin red'))
     load()
 
-    await waitFor(() => expect(screen.getByText('$33.12')).toBeInTheDocument())
+    // «USD 33.12» y no «$33.12»: el símbolo `$` lo usan las DOS monedas —Intl
+    // imprime «$33.12» para dólares y «$ 33» para pesos—, así que un monto en
+    // dólares marcado solo con el signo es indistinguible de uno en pesos que
+    // vale 1.530 veces menos.
+    await waitFor(() => expect(screen.getByText('USD 33.12')).toBeInTheDocument())
 
     expect(screen.getByText(/no hay tipo de cambio cargado/)).toBeInTheDocument()
+  })
+
+  test('cuando falla la cotización lo dice, y avisa que la fila mezcla monedas', async () => {
+    // El fallback era SILENCIOSO: los montos pasaban a dólares y, con el mismo
+    // signo `$`, nada lo delataba. Peor, la columna de margen nace en pesos y
+    // se quedaba en pesos al lado de los dólares: la fila quedaba incomparable,
+    // que es justo la comparación para la que existe la tabla.
+    mockGetUsdRate.mockRejectedValue(new Error('sin red'))
+    load()
+
+    await waitFor(() =>
+      expect(screen.getByText(/No se pudo cargar el tipo de cambio/)).toBeInTheDocument(),
+    )
+  })
+
+  test('los encabezados de plata declaran su moneda, y no contradicen a sus celdas', async () => {
+    mockGetUsdRate.mockResolvedValue(TIPO_DE_CAMBIO)
+    // Con comercios: la tabla que lleva estos encabezados solo se dibuja
+    // cuando hay filas que mostrar.
+    load(CON_COMERCIOS)
+
+    // Con cotización, las columnas convertibles están en pesos...
+    await waitFor(() => expect(screen.getByText('Paga HENKO (ARS)')).toBeInTheDocument())
+
+    // ...y el margen también, pero por otro motivo: nace en pesos. Su etiqueta
+    // es fija justamente porque NO depende de la cotización.
+    expect(screen.getByText('Margen (ARS)')).toBeInTheDocument()
+  })
+
+  test('sin cotización el encabezado acompaña a la celda y pasa a dólares', async () => {
+    // La propiedad que importa: encabezado y celda salen del mismo contexto,
+    // así que no se pueden separar. Un «(ARS)» fijo mentiría en este estado.
+    mockGetUsdRate.mockRejectedValue(new Error('sin red'))
+    load(CON_COMERCIOS)
+
+    await waitFor(() => expect(screen.getByText('Paga HENKO (USD)')).toBeInTheDocument())
+
+    // El margen NO cambia: sigue en pesos porque nunca se convirtió.
+    expect(screen.getByText('Margen (ARS)')).toBeInTheDocument()
   })
 
   test('no se puede guardar sin decir de dónde sale el valor', async () => {

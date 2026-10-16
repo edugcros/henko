@@ -48,10 +48,26 @@ import {
   deleteTenant,
 } from '../services/platformService'
 
+/**
+ * LAS DOS MONEDAS SE IMPRIMEN CON SU CÓDIGO, NUNCA CON EL SÍMBOLO.
+ *
+ * Con `currencyDisplay: 'symbol'`, que es el default, Intl imprime:
+ *
+ *   dólares   $1,530.00
+ *   pesos     $ 1.530
+ *
+ * Son dos montos que difieren 1.530 veces y se distinguen por una coma contra
+ * un punto. En una pantalla que además CAMBIA de moneda según si llegó la
+ * cotización, eso es ilegible: el mismo lugar puede decir una cosa o la otra y
+ * nada lo aclara. Con 'code' quedan «USD 1,530.00» y «ARS 1.530», y el número
+ * se explica solo sin depender del encabezado ni de que el lector recuerde en
+ * qué estado está la pantalla.
+ */
 const formatUsd = value =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
+    currencyDisplay: 'code',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0)
@@ -68,6 +84,7 @@ const formatArs = value =>
   new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
+    currencyDisplay: 'code',
     maximumFractionDigits: 0,
   }).format(Number(value) || 0)
 
@@ -103,13 +120,56 @@ const formatMoney = (valorUsd, rate) => {
  * mantiene: alcanza con que un componente nuevo se olvide de recibirlo para que
  * muestre dolares donde todo lo demas muestra pesos.
  */
-const TipoDeCambioContext = createContext(null)
+/**
+ * EN QUÉ ESTADO ESTÁ LA COTIZACIÓN, Y NO SOLO CUÁNTO VALE.
+ *
+ * Antes el contexto era el número a secas, así que `null` significaba dos
+ * cosas incompatibles: «todavía no llegó» y «falló y no va a llegar». La
+ * pantalla trataba a las dos igual —mostraba dólares— y el resultado era que
+ * el primer render salía en dólares y saltaba a pesos al resolverse la
+ * llamada, sin que el salto se anunciara. Con el símbolo `$` en ambas monedas,
+ * ese salto era invisible y cambiaba el número 1.530 veces.
+ */
+const FX = Object.freeze({
+  CARGANDO: 'cargando',
+  LISTO: 'listo',
+  SIN_CAMBIO: 'sin-cambio',
+})
 
-/** `dinero(x)` da pesos cuando hay cambio cargado y dólares cuando no. */
+const TipoDeCambioContext = createContext({ rate: null, estado: FX.CARGANDO })
+
+/**
+ * Las dos formas de mostrar plata, separadas por la UNIDAD DE ORIGEN.
+ *
+ * `dinero(x)`     x viene en DÓLARES. Lo convierte si hay cotización.
+ * `dineroArs(x)`  x YA viene en pesos. No se convierte nada.
+ *
+ * La distinción no es cosmética. El margen de un comercio nace en pesos
+ * —planPriceArs menos los costos convertidos— y volver a pasarlo por `dinero`
+ * lo multiplicaría otra vez por el cambio. El backend ya documenta por qué el
+ * margen se calcula en pesos: cuando se calculaba en dólares, se corría solo
+ * cada vez que se movía el tipo de cambio. Tener dos helpers con nombre impide
+ * que alguien elija el equivocado sin darse cuenta.
+ *
+ * Mientras la cotización está en vuelo, `dinero` devuelve un guion en vez de
+ * un número: es preferible esperar medio segundo a mostrar dólares y que se
+ * conviertan en pesos a continuación.
+ */
 const useDinero = () => {
-  const rate = useContext(TipoDeCambioContext)
+  const { rate, estado } = useContext(TipoDeCambioContext)
 
-  return useMemo(() => ({ dinero: valorUsd => formatMoney(valorUsd, rate), rate }), [rate])
+  return useMemo(
+    () => ({
+      dinero: valorUsd => (estado === FX.CARGANDO ? '—' : formatMoney(valorUsd, rate)),
+      dineroArs: valorArs => formatArs(valorArs),
+      rate,
+      estado,
+      // En qué moneda está la pantalla AHORA. Lo usan los encabezados para no
+      // contradecir a sus propias celdas.
+      moneda: rate ? 'ARS' : 'USD',
+    }),
+    [rate, estado],
+  )
 }
 
 const formatTokens = value => new Intl.NumberFormat('es-AR').format(Number(value) || 0)
@@ -151,6 +211,11 @@ const BUDGET_SOURCE_LABEL = {
  * en la pantalla: es un diálogo que pide el motivo y muestra qué implica.
  */
 function BudgetDialog({ open, budget, onClose, onSaved }) {
+  // El techo se ESCRIBE en dólares —es la unidad en la que el backend lo
+  // compara contra el gasto— pero el resto de la pantalla lo MUESTRA en pesos.
+  // Sin cerrar ese viaje de ida y vuelta, se escribe «100» y más tarde se lee
+  // «ARS 153.000» en otra parte sin forma de relacionar los dos números.
+  const { rate } = useDinero()
   const [tokens, setTokens] = useState('')
   const [usd, setUsd] = useState('')
   const [share, setShare] = useState('')
@@ -247,13 +312,20 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
             solo se podía tocar por variable de entorno en Render, sin motivo
             ni historial. */}
         <TextField
-          label="Techo en dólares"
+          label="Techo en dólares (USD)"
           type="number"
           fullWidth
           value={usd}
           onChange={event => setUsd(event.target.value)}
           sx={{ mb: 2 }}
-          helperText="Vacío = lo decide la variable de entorno. Corta cuando el gasto del mes llega acá, aunque sobren tokens."
+          helperText={
+            // El equivalente aparece MIENTRAS se escribe, que es cuando sirve
+            // para decidir. Solo si hay cotización: sin ella, inventar una
+            // conversión sería peor que no mostrarla.
+            Number(usd) > 0 && rate
+              ? `Equivale a ${formatArs(Number(usd) * rate)} al cambio de hoy. Corta cuando el gasto del mes llega acá, aunque sobren tokens.`
+              : 'Vacío = lo decide la variable de entorno. Corta cuando el gasto del mes llega acá, aunque sobren tokens.'
+          }
         />
 
         {/* El reparto por comercio: qué fracción del techo puede llevarse UNO.
@@ -348,6 +420,12 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
  * deja nada", que es una afirmación sobre el negocio que nadie hizo.
  */
 function MargenDelComercio({ margen }) {
+  // `dineroArs` y no `dinero`: este número YA viene en pesos del backend, que
+  // lo calcula restándole al precio del plan —nativo en pesos— los costos ya
+  // convertidos. Pasarlo por `dinero` lo multiplicaría una segunda vez por el
+  // tipo de cambio.
+  const { dineroArs } = useDinero()
+
   if (!margen) {
     return (
       <Tooltip title="Este comercio no aparece en el reporte de margen">
@@ -375,7 +453,7 @@ function MargenDelComercio({ margen }) {
         sx={{ fontWeight: 600 }}
         color={margen.unprofitable ? 'error.main' : 'success.main'}
       >
-        {formatArs(margen.estimatedMarginArs)}
+        {dineroArs(margen.estimatedMarginArs)}
       </Typography>
       <Typography variant="caption" color="text.secondary">
         {margen.marginPercent === null ? 'sobre plan sin precio' : `${margen.marginPercent}%`}
@@ -1340,8 +1418,8 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
   )
 }
 
-function ContenidoDelGasto({ fx, onFxSaved }) {
-  const { dinero } = useDinero()
+function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
+  const { dinero, moneda } = useDinero()
   const [loading, setLoading] = useState(true)
   // El margen por comercio. Es el MISMO reporte que la pantalla de margen, no
   // un calculo nuevo: dos calculos del mismo numero terminarian dando cifras
@@ -1453,14 +1531,37 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Período {report.period} · lo que paga HENKO por los comercios que usan la key compartida.
-        {fx?.rate
-          ? ` Los montos están en pesos, a $${formatTokens(fx.rate)} por dólar.`
-          : ' Los montos están en dólares: no hay tipo de cambio cargado.'}
+        {/* TRES ESTADOS Y NO DOS. Esto miraba `fx?.rate`, que es null tanto
+            mientras la cotización viaja como cuando falló, así que durante la
+            carga afirmaba «no hay tipo de cambio cargado» —y se desdecía medio
+            segundo después—. */}
+        {fxEstado === FX.CARGANDO
+          ? ' Cargando el tipo de cambio…'
+          : fx?.rate
+            ? ` Los montos están en pesos (ARS), a $${formatTokens(fx.rate)} por dólar.`
+            : ' Los montos están en dólares (USD): no hay tipo de cambio cargado.'}
       </Typography>
 
       {/* Arriba de todo porque es el número del que depende el resto: si está
           viejo, cada peso de esta pantalla está mal. */}
       <TipoDeCambioCard fx={fx} onSaved={onFxSaved} />
+
+      {/* LA COTIZACIÓN NO CARGÓ, Y HAY QUE DECIRLO.
+
+          Hasta ahora este caso era silencioso: fallaba la llamada, los montos
+          caían a dólares y nada lo anunciaba. Con el símbolo `$` en las dos
+          monedas, la pantalla pasaba a mostrar números 1.530 veces más chicos
+          sin ninguna señal — y la columna de margen, que nace en pesos, seguía
+          en pesos al lado. La fila quedaba mezclada e incomparable, que es
+          justo la comparación para la que existe esta tabla. */}
+      {fxEstado === FX.SIN_CAMBIO && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <strong>No se pudo cargar el tipo de cambio.</strong> Los costos se muestran en dólares
+          (USD), que es como los factura el proveedor. La columna «Margen» sigue en pesos (ARS)
+          porque nace en pesos: en esta tabla las dos monedas conviven, y cada número lleva su
+          código adelante.
+        </Alert>
+      )}
 
       {breaker.tripped && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -1697,7 +1798,14 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
               <TableHead>
                 <TableRow>
                   <TableCell>Comercio</TableCell>
-                  <TableCell align="right">Paga HENKO</TableCell>
+                  {/* LA MONEDA EN EL ENCABEZADO, Y CALCULADA, NO ESCRITA.
+
+                      Estas columnas cambian de moneda según si cargó la
+                      cotización, así que un «(USD)» fijo acá contradiría a sus
+                      propias celdas la mitad del tiempo. `moneda` sale del
+                      mismo contexto que las formatea, de modo que encabezado y
+                      celda no se pueden separar. */}
+                  <TableCell align="right">Paga HENKO ({moneda})</TableCell>
                   {/* Cuánto lleva de SU techo en plata. El de tokens, más a la
                       derecha, no contesta lo mismo: entre modelos de la cadena
                       hay 5x de tarifa. */}
@@ -1733,7 +1841,12 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
                       siempre, unido por tenantId. Dos cálculos del mismo número
                       terminarían dando cifras distintas para el mismo
                       comercio. */}
-                  <TableCell align="right">Margen</TableCell>
+                  {/* Fijo y no dinámico, a diferencia de «Paga HENKO»: el
+                      margen SIEMPRE está en pesos porque nace en pesos. Es la
+                      única columna de plata que no depende de la cotización, y
+                      marcarlo es lo que evita leerla como si fuera dólares
+                      cuando el resto de la fila sí lo es. */}
+                  <TableCell align="right">Margen (ARS)</TableCell>
                   {/* «Consumo» y ya no «Tokens»: la celda muestra dos unidades
                       distintas, y titularla con una sola es lo que hacía
                       invisible a la otra. */}
@@ -1951,7 +2064,7 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
           <TableHead>
             <TableRow>
               <TableCell>Función</TableCell>
-              <TableCell align="right">Costo</TableCell>
+              <TableCell align="right">Costo ({moneda})</TableCell>
               <TableCell align="right">Tokens</TableCell>
               <TableCell align="right">Operaciones</TableCell>
             </TableRow>
@@ -1990,7 +2103,7 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
           <TableHead>
             <TableRow>
               <TableCell>Modelo</TableCell>
-              <TableCell align="right">Costo</TableCell>
+              <TableCell align="right">Costo ({moneda})</TableCell>
               <TableCell align="right">Tokens</TableCell>
               <TableCell align="right">Operaciones</TableCell>
             </TableRow>
@@ -2160,16 +2273,24 @@ function ContenidoDelGasto({ fx, onFxSaved }) {
  */
 export default function PlatformAiSpendPage() {
   const [fx, setFx] = useState(null)
+  // Arranca en CARGANDO y nunca vuelve: una recarga después de guardar el
+  // cambio no debe vaciar los números que ya están en pantalla.
+  const [fxEstado, setFxEstado] = useState(FX.CARGANDO)
 
   const cargarCambio = useCallback(async ({ signal } = {}) => {
     try {
       const data = await getUsdRate()
-      if (!signal?.cancelled) setFx(data)
+      if (signal?.cancelled) return
+      setFx(data)
+      setFxEstado(FX.LISTO)
     } catch {
       // Que falle el cambio no puede dejar la pantalla sin el gasto, que es lo
-      // que se vino a ver. Sin cambio los montos se muestran en dólares: es
-      // peor, pero no es nada.
-      if (!signal?.cancelled) setFx(null)
+      // que se vino a ver. Sin cambio los montos se muestran en dólares — pero
+      // AHORA SE DICE: antes el fallback era silencioso y, con el símbolo `$`
+      // en las dos monedas, indistinguible de los pesos.
+      if (signal?.cancelled) return
+      setFx(null)
+      setFxEstado(FX.SIN_CAMBIO)
     }
   }, [])
 
@@ -2183,9 +2304,14 @@ export default function PlatformAiSpendPage() {
 
   const rate = Number.isFinite(fx?.rate) && fx.rate > 0 ? fx.rate : null
 
+  // Memoizado porque es un objeto: sin esto, cada render de la página crea una
+  // referencia nueva y vuelve a renderizar a TODO consumidor del contexto, que
+  // acá son las tablas enteras.
+  const tipoDeCambio = useMemo(() => ({ rate, estado: fxEstado }), [rate, fxEstado])
+
   return (
-    <TipoDeCambioContext.Provider value={rate}>
-      <ContenidoDelGasto fx={fx} onFxSaved={cargarCambio} />
+    <TipoDeCambioContext.Provider value={tipoDeCambio}>
+      <ContenidoDelGasto fx={fx} fxEstado={fxEstado} onFxSaved={cargarCambio} />
     </TipoDeCambioContext.Provider>
   )
 }
