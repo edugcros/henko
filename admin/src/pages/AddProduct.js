@@ -84,7 +84,7 @@ const SECTION_IDS = {
 
 const normalizeString = (value = '') => String(value || '').trim()
 
-const toTitleCase = value => {
+export const toTitleCase = value => {
   const clean = normalizeString(value).replace(/\s+/g, ' ')
 
   if (!clean) return ''
@@ -109,14 +109,14 @@ const slugifyKeyPart = (value = '') =>
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-_]/g, '')
 
-const buildVariantKey = (attributes = {}) =>
+export const buildVariantKey = (attributes = {}) =>
   Object.entries(attributes)
     .filter(([key, value]) => normalizeString(key) && normalizeString(value))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => `${slugifyKeyPart(key)}:${slugifyKeyPart(value)}`)
     .join('|')
 
-const buildVariantName = (attributes = {}) =>
+export const buildVariantName = (attributes = {}) =>
   Object.entries(attributes)
     .filter(([, value]) => normalizeString(value))
     .map(([key, value]) => `${key}: ${value}`)
@@ -342,7 +342,7 @@ const QUICK_MODE_FIELD_KEYS = [
 
 const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(DYNAMIC_FIELD_TYPES.map(item => item.value))
 
-const buildGeneratedVariantSku = (productTitle, attributes, index) => {
+export const buildGeneratedVariantSku = (productTitle, attributes, index) => {
   const titlePart = slugifyKeyPart(productTitle || 'producto')
     .replace(/-/g, '')
     .slice(0, 12)
@@ -358,7 +358,7 @@ const buildGeneratedVariantSku = (productTitle, attributes, index) => {
     .slice(0, 64)
 }
 
-const normalizeNumberValue = value => {
+export const normalizeNumberValue = value => {
   const parsed = Number(value ?? 0)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
@@ -366,13 +366,13 @@ const normalizeNumberValue = value => {
 // Como normalizeNumberValue, pero preserva "no informado" como null —
 // costoUnitario (Bloque 8.5) nunca debe convertirse en 0 por defecto, un 0
 // se leería como "no cuesta nada", no como "sin dato".
-const normalizeOptionalNumberValue = value => {
+export const normalizeOptionalNumberValue = value => {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
-const normalizeSku = value => {
+export const normalizeSku = value => {
   const clean = normalizeString(value).toUpperCase()
 
   if (!clean) return ''
@@ -391,12 +391,12 @@ const buildVariantDisplayName = variant => {
   )
 }
 
-const getVariantStockTotal = variants =>
+export const getVariantStockTotal = variants =>
   safeArray(variants)
     .filter(variant => variant?.isActive !== false)
     .reduce((total, variant) => total + normalizeNumberValue(variant?.stock), 0)
 
-const getVariantAttributesConfig = (dynamicAttributes, selectedAttributes) => {
+export const getVariantAttributesConfig = (dynamicAttributes, selectedAttributes) => {
   return safeArray(dynamicAttributes)
     .filter(attr => safeArray(selectedAttributes?.[attr.name]).length > 0)
     .map((attr, index) => ({
@@ -433,7 +433,7 @@ const sanitizeUploadFiles = files => {
   return uniqueFiles.slice(0, MAX_PRODUCT_IMAGES)
 }
 
-const validateSelectedFiles = files => {
+export const validateSelectedFiles = files => {
   const invalidType = safeArray(files).find(file => !isAllowedImageFile(file))
   if (invalidType) {
     return `El archivo ${invalidType.name || 'seleccionado'} no tiene un formato de imagen permitido.`
@@ -465,7 +465,7 @@ const isAllowedVideoFile = file => {
   return ALLOWED_VIDEO_TYPES.has(mimeType) || extensionAllowed
 }
 
-const validateSelectedVideoFile = file => {
+export const validateSelectedVideoFile = file => {
   if (!file) return null
 
   if (!isAllowedVideoFile(file)) {
@@ -503,7 +503,7 @@ const getVideoDuration = file =>
 
 const getJobFlag = (job, key) => Boolean(job?.[key] ?? job?.metadata?.[key])
 
-const validateVariantsForSubmit = variants => {
+export const validateVariantsForSubmit = variants => {
   if (!safeArray(variants).length) {
     return 'Activaste variantes, pero todavía no generaste ninguna combinación.'
   }
@@ -552,7 +552,7 @@ const validateVariantsForSubmit = variants => {
   return null
 }
 
-const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
+export const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
   const requiredFields = [
     ['titulo', 'El título es obligatorio'],
     ['descripcion', 'La descripción comercial es obligatoria'],
@@ -577,7 +577,7 @@ const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) =>
   return null
 }
 
-const parseQuickVariantText = value => {
+export const parseQuickVariantText = value => {
   const clean = normalizeString(value)
 
   if (!clean) return []
@@ -620,7 +620,7 @@ const parseQuickVariantText = value => {
     .filter(Boolean)
 }
 
-const inferTechnicalFieldType = value => {
+export const inferTechnicalFieldType = value => {
   const clean = normalizeString(value)
   if (!clean) return 'text'
   if (/^(si|sí|no|true|false)$/i.test(clean)) return 'boolean'
@@ -629,7 +629,7 @@ const inferTechnicalFieldType = value => {
   return clean.length > 90 ? 'textarea' : 'text'
 }
 
-const parseTechnicalFieldText = value => {
+export const parseTechnicalFieldText = value => {
   const clean = normalizeString(value)
 
   if (!clean) return { fields: [], values: {} }
@@ -685,7 +685,7 @@ const parseTechnicalFieldText = value => {
   return { fields, values }
 }
 
-const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
+export const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
   const merged = new Map()
 
   safeArray(current).forEach((attribute, index) => {
@@ -712,7 +712,7 @@ const mergeVariantAttributeDefinitions = (current = [], incoming = []) => {
   return [...merged.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
 }
 
-const mergeSelectedVariantValues = (current = {}, incoming = {}) => {
+export const mergeSelectedVariantValues = (current = {}, incoming = {}) => {
   const next = { ...(current || {}) }
 
   Object.entries(incoming || {}).forEach(([key, values]) => {
@@ -728,7 +728,7 @@ const mergeSelectedVariantValues = (current = {}, incoming = {}) => {
   return next
 }
 
-const generateVariantRowsFromSelection = ({
+export const generateVariantRowsFromSelection = ({
   attributes = [],
   selectedAttributes = {},
   previousVariants = [],
@@ -797,7 +797,7 @@ const generateVariantRowsFromSelection = ({
   return { variants, total }
 }
 
-const normalizeDynamicFieldType = value => {
+export const normalizeDynamicFieldType = value => {
   const clean = normalizeString(value).toLowerCase()
 
   if (['textarea', 'longtext', 'long_text', 'multiline'].includes(clean)) return 'textarea'
@@ -830,7 +830,7 @@ const parseDynamicFieldOptions = value => {
   return []
 }
 
-const normalizeDynamicFieldDefinition = (field, index = 0) => {
+export const normalizeDynamicFieldDefinition = (field, index = 0) => {
   if (!field) return null
 
   if (typeof field === 'string') {
@@ -869,7 +869,7 @@ const normalizeDynamicFieldDefinition = (field, index = 0) => {
   }
 }
 
-const extractTemplateDynamicFields = templatePayload => {
+export const extractTemplateDynamicFields = templatePayload => {
   const candidates = [
     templatePayload?.productAttributes,
     templatePayload?.productFields,
@@ -928,7 +928,7 @@ const extractTemplateDynamicFields = templatePayload => {
   )
 }
 
-const normalizeDynamicFieldValues = (fields = [], rawValues = {}) => {
+export const normalizeDynamicFieldValues = (fields = [], rawValues = {}) => {
   const result = {}
 
   safeArray(fields).forEach(field => {
@@ -961,7 +961,7 @@ const normalizeDynamicFieldValues = (fields = [], rawValues = {}) => {
   return result
 }
 
-const buildSeoPayload = values => {
+export const buildSeoPayload = values => {
   const title = normalizeString(values.titulo || values.title)
   const description = normalizeString(values.descripcion || values.description)
   const technicalDescription = normalizeString(
@@ -1027,7 +1027,7 @@ const buildSeoPayload = values => {
   }
 }
 
-const buildSeoFormValues = values => {
+export const buildSeoFormValues = values => {
   const seoPayload = buildSeoPayload(values)
 
   return {
@@ -1046,7 +1046,7 @@ const buildSeoFormValues = values => {
   }
 }
 
-const buildLogisticsPayload = values => {
+export const buildLogisticsPayload = values => {
   const dimensions = {
     length: normalizeNumberValue(values.packageLengthCm),
     width: normalizeNumberValue(values.packageWidthCm),
@@ -3141,7 +3141,205 @@ const REQUIRED_PRECIO_RULES = [{ required: true, message: 'El precio es obligato
 const REQUIRED_CANTIDAD_RULES = [{ required: true, message: 'La cantidad es obligatoria' }]
 const REQUIRED_CONDICION_RULES = [{ required: true, message: 'La condición es obligatoria' }]
 
-export default function AddProduct() {
+// ─────────────────────────────────────────────────────────────────────────────
+// Progreso de la carga
+//
+// Qué falta para poder publicar, y en qué paso está la persona. Son funciones puras para poder
+// probarlas: viven afuera del componente.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const buildProductReadiness = ({
+  imageCount = 0,
+  title,
+  description,
+  category,
+  subcategory,
+  price,
+  stock,
+  brand,
+  hasVariants = false,
+  variants = [],
+  useTechnicalSheet = false,
+  technicalFieldCount = 0,
+}) => {
+  const checks = [
+    {
+      key: 'images',
+      label: 'Imagen',
+      done: imageCount > 0,
+      required: true,
+    },
+    {
+      key: 'title',
+      label: 'Título',
+      done: Boolean(normalizeString(title)),
+      required: true,
+    },
+    {
+      key: 'description',
+      label: 'Descripción',
+      done: Boolean(normalizeString(description)),
+      required: true,
+    },
+    {
+      key: 'categoria',
+      label: 'Categoría',
+      done: Boolean(normalizeString(category)),
+      required: true,
+    },
+    {
+      key: 'subcategoria',
+      label: 'Subcategoría',
+      done: Boolean(normalizeString(subcategory)),
+      required: true,
+    },
+    {
+      key: 'price',
+      label: 'Precio',
+      done: Number(price || 0) > 0,
+      required: true,
+    },
+    {
+      key: 'stock',
+      label: hasVariants ? 'Stock por variantes' : 'Stock',
+      done: hasVariants
+        ? variants.some(variant => Number(variant.stock || 0) > 0)
+        : Number(stock || 0) > 0,
+      required: true,
+    },
+    {
+      key: 'marca',
+      label: 'Marca',
+      done: Boolean(normalizeString(brand)),
+      required: false,
+    },
+    {
+      key: 'ficha',
+      label: 'Ficha técnica',
+      done: !useTechnicalSheet || technicalFieldCount > 0,
+      required: false,
+    },
+    {
+      key: 'variantes',
+      label: 'Variantes',
+      done: !hasVariants || variants.length > 0,
+      required: false,
+    },
+  ]
+
+  const requiredChecks = checks.filter(check => check.required)
+  const doneRequired = requiredChecks.filter(check => check.done).length
+  const percent = Math.round((doneRequired / requiredChecks.length) * 100)
+
+  return {
+    checks,
+    requiredChecks,
+    doneRequired,
+    percent,
+    isReady: doneRequired === requiredChecks.length,
+  }
+}
+
+// Los pasos de la barra de arriba. Cada uno mira las verificaciones de buildProductReadiness POR SU
+// CLAVE. Acá se buscaban 'imagenes', 'titulo', 'descripcion' y 'precio', que no existen (las claves
+// son 'images', 'title', 'description' y 'price'): el paso «Imágenes» quedaba siempre pendiente aunque
+// ya hubiera fotos, y «Información» y «Precio» ignoraban el título, la descripción y el precio.
+export const buildWizardSteps = ({ readiness, useTechnicalSheet, hasVariants }) => {
+  const checkByKey = key => readiness.checks.find(check => check.key === key)
+  const statusFor = keys => {
+    const relevant = keys.map(checkByKey).filter(Boolean)
+    if (!relevant.length) return 'wait'
+    return relevant.every(check => check.done) ? 'finish' : 'process'
+  }
+
+  return [
+    {
+      key: 'imagenes',
+      title: 'Imágenes',
+      sectionId: SECTION_IDS.imagenes,
+      status: statusFor(['images']),
+    },
+    {
+      key: 'informacion',
+      title: 'Información',
+      sectionId: SECTION_IDS.informacion,
+      status: statusFor(['title', 'description', 'categoria', 'subcategoria']),
+    },
+    {
+      key: 'ficha',
+      title: 'Ficha técnica',
+      sectionId: SECTION_IDS.ficha,
+      optional: true,
+      status: useTechnicalSheet ? statusFor(['ficha']) : 'wait',
+    },
+    {
+      key: 'variantes',
+      title: 'Variantes',
+      sectionId: SECTION_IDS.variantes,
+      optional: true,
+      status: hasVariants ? statusFor(['variantes']) : 'wait',
+    },
+    {
+      key: 'precio',
+      title: 'Precio y SEO',
+      sectionId: SECTION_IDS.precio,
+      status: statusFor(['price', 'stock']),
+    },
+    {
+      key: 'publicar',
+      title: 'Publicar',
+      sectionId: SECTION_IDS.publicar,
+      status: readiness.isReady ? 'finish' : 'wait',
+    },
+  ]
+}
+
+// El paso en el que está la persona: el primero obligatorio que todavía no se terminó.
+export const getWizardCurrentStep = steps => {
+  const index = steps.findIndex(step => !step.optional && step.status !== 'finish')
+
+  return index === -1 ? steps.length - 1 : index
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marca de Henkart para toda la pantalla
+//
+// El tema va en un componente de afuera: useToken() lee el tema del ConfigProvider más cercano
+// POR ENCIMA de quien lo llama, y el formulario tenía su ConfigProvider adentro, así que sus propios
+// estilos en línea seguían leyendo los colores del tema general.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ADD_PRODUCT_THEME = {
+  token: {
+    colorPrimary: '#0b6bff',
+    colorInfo: '#0b6bff',
+    colorLink: '#0b6bff',
+    colorBgLayout: '#f4f7ff',
+    fontFamily: "Roboto, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+    fontSize: 15,
+    controlHeight: 40,
+    controlHeightLG: 48,
+    borderRadius: 12,
+  },
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+
+const HERO_BG = [
+  'radial-gradient(520px 320px at 6% 0%, rgba(11,107,255,0.36), transparent 70%)',
+  'radial-gradient(460px 360px at 100% 100%, rgba(122,44,255,0.32), transparent 70%)',
+  '#050b1f',
+].join(', ')
+
+const HERO_TILE_STYLE = {
+  padding: 14,
+  borderRadius: 16,
+  textAlign: 'center',
+  background: 'rgba(255, 255, 255, 0.07)',
+  border: '1px solid rgba(255, 255, 255, 0.12)',
+}
+
+function AddProductForm() {
   const [form] = Form.useForm()
   const dispatch = useDispatch()
   const { token } = useToken()
@@ -3267,97 +3465,37 @@ export default function AddProduct() {
   const watchedStock = Form.useWatch('cantidad', form)
   const watchedBrand = Form.useWatch('marca', form)
 
-  const productReadiness = useMemo(() => {
-    const checks = [
-      {
-        key: 'images',
-        label: 'Imagen',
-        done: fileList.length > 0,
-        required: true,
-      },
-      {
-        key: 'title',
-        label: 'Título',
-        done: Boolean(normalizeString(watchedTitle)),
-        required: true,
-      },
-      {
-        key: 'description',
-        label: 'Descripción',
-        done: Boolean(normalizeString(watchedDescription)),
-        required: true,
-      },
-      {
-        key: 'categoria',
-        label: 'Categoría',
-        done: Boolean(normalizeString(selectedCategory)),
-        required: true,
-      },
-      {
-        key: 'subcategoria',
-        label: 'Subcategoría',
-        done: Boolean(normalizeString(selectedSubcategory)),
-        required: true,
-      },
-      {
-        key: 'price',
-        label: 'Precio',
-        done: Number(watchedPrice || 0) > 0,
-        required: true,
-      },
-      {
-        key: 'stock',
-        label: hasVariants ? 'Stock por variantes' : 'Stock',
-        done: hasVariants
-          ? variants.some(variant => Number(variant.stock || 0) > 0)
-          : Number(watchedStock || 0) > 0,
-        required: true,
-      },
-      {
-        key: 'marca',
-        label: 'Marca',
-        done: Boolean(normalizeString(watchedBrand)),
-        required: false,
-      },
-      {
-        key: 'ficha',
-        label: 'Ficha técnica',
-        done: !useTechnicalSheet || dynamicProductFields.length > 0,
-        required: false,
-      },
-      {
-        key: 'variantes',
-        label: 'Variantes',
-        done: !hasVariants || variants.length > 0,
-        required: false,
-      },
-    ]
-
-    const requiredChecks = checks.filter(check => check.required)
-    const doneRequired = requiredChecks.filter(check => check.done).length
-    const percent = Math.round((doneRequired / requiredChecks.length) * 100)
-
-    return {
-      checks,
-      requiredChecks,
-      doneRequired,
-      percent,
-      isReady: doneRequired === requiredChecks.length,
-    }
-  }, [
-    dynamicProductFields.length,
-    fileList.length,
-    hasVariants,
-    selectedCategory,
-    selectedSubcategory,
-    useTechnicalSheet,
-    variants,
-    watchedBrand,
-    watchedDescription,
-    watchedPrice,
-    watchedStock,
-    watchedTitle,
-  ])
+  const productReadiness = useMemo(
+    () =>
+      buildProductReadiness({
+        imageCount: fileList.length,
+        title: watchedTitle,
+        description: watchedDescription,
+        category: selectedCategory,
+        subcategory: selectedSubcategory,
+        price: watchedPrice,
+        stock: watchedStock,
+        brand: watchedBrand,
+        hasVariants,
+        variants,
+        useTechnicalSheet,
+        technicalFieldCount: dynamicProductFields.length,
+      }),
+    [
+      dynamicProductFields.length,
+      fileList.length,
+      hasVariants,
+      selectedCategory,
+      selectedSubcategory,
+      useTechnicalSheet,
+      variants,
+      watchedBrand,
+      watchedDescription,
+      watchedPrice,
+      watchedStock,
+      watchedTitle,
+    ],
+  )
 
   const missingRequiredLabels = useMemo(
     () => productReadiness.requiredChecks.filter(check => !check.done).map(check => check.label),
@@ -3370,60 +3508,12 @@ export default function AddProduct() {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
-  const wizardSteps = useMemo(() => {
-    const checkByKey = key => productReadiness.checks.find(c => c.key === key)
-    const statusFor = keys => {
-      const relevant = keys.map(checkByKey).filter(Boolean)
-      if (!relevant.length) return 'wait'
-      return relevant.every(check => check.done) ? 'finish' : 'process'
-    }
+  const wizardSteps = useMemo(
+    () => buildWizardSteps({ readiness: productReadiness, useTechnicalSheet, hasVariants }),
+    [productReadiness, useTechnicalSheet, hasVariants],
+  )
 
-    return [
-      {
-        key: 'imagenes',
-        title: 'Imágenes',
-        sectionId: SECTION_IDS.imagenes,
-        status: statusFor(['imagenes']),
-      },
-      {
-        key: 'informacion',
-        title: 'Información',
-        sectionId: SECTION_IDS.informacion,
-        status: statusFor(['titulo', 'descripcion', 'categoria', 'subcategoria']),
-      },
-      {
-        key: 'ficha',
-        title: 'Ficha técnica',
-        sectionId: SECTION_IDS.ficha,
-        optional: true,
-        status: useTechnicalSheet ? statusFor(['ficha']) : 'wait',
-      },
-      {
-        key: 'variantes',
-        title: 'Variantes',
-        sectionId: SECTION_IDS.variantes,
-        optional: true,
-        status: hasVariants ? statusFor(['variantes']) : 'wait',
-      },
-      {
-        key: 'precio',
-        title: 'Precio y SEO',
-        sectionId: SECTION_IDS.precio,
-        status: statusFor(['precio', 'stock']),
-      },
-      {
-        key: 'publicar',
-        title: 'Publicar',
-        sectionId: SECTION_IDS.publicar,
-        status: productReadiness.isReady ? 'finish' : 'wait',
-      },
-    ]
-  }, [productReadiness, useTechnicalSheet, hasVariants])
-
-  const wizardCurrentStep = useMemo(() => {
-    const idx = wizardSteps.findIndex(step => !step.optional && step.status !== 'finish')
-    return idx === -1 ? wizardSteps.length - 1 : idx
-  }, [wizardSteps])
+  const wizardCurrentStep = useMemo(() => getWizardCurrentStep(wizardSteps), [wizardSteps])
 
   const categoryOptions = useMemo(
     () => catalogCategories.map(category => buildTitleCaseOption(category?.name)).filter(Boolean),
@@ -5451,16 +5541,7 @@ export default function AddProduct() {
   }
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          fontSize: 15,
-          controlHeight: 40,
-          controlHeightLG: 48,
-          borderRadius: 12,
-        },
-      }}
-    >
+    <>
       <div
         className="add-product-stable-page"
         style={{
@@ -5482,120 +5563,103 @@ export default function AddProduct() {
           >
             <div
               style={{
-                marginBottom: 28,
-                padding: '28px 28px 24px',
+                marginBottom: 24,
+                padding: '30px 30px 26px',
                 borderRadius: 24,
-                background: `linear-gradient(135deg, ${token.colorPrimary}14 0%, ${token.colorBgContainer} 52%, ${token.colorInfoBg || token.colorPrimaryBg} 100%)`,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                boxShadow: '0 18px 45px rgba(15, 23, 42, 0.06)',
+                color: '#fff',
+                background: HERO_BG,
+                boxShadow: '0 24px 50px -28px rgba(5, 11, 31, 0.7)',
               }}
             >
               <Row gutter={[24, 20]} align="middle" justify="space-between">
                 <Col xs={24} lg={15}>
                   <Space direction="vertical" size={8}>
+                    <span
+                      style={{
+                        color: '#14d8ff',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        letterSpacing: '0.16em',
+                      }}
+                    >
+                      NUEVO PRODUCTO
+                    </span>
+
+                    <Title
+                      level={1}
+                      style={{
+                        margin: 0,
+                        color: '#fff',
+                        fontFamily: DISPLAY_FONT,
+                        fontWeight: 800,
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      Creá tu producto
+                    </Title>
+
+                    <Text style={{ color: '#b9c6ee', fontSize: 15 }}>
+                      Subí las imágenes, revisá lo que propone la IA, completá la ficha técnica, las
+                      variantes y la logística, y publicá cuando quieras.
+                    </Text>
+
                     <Space wrap size={10}>
-                      <Tag color="processing" style={{ borderRadius: 999, padding: '3px 12px' }}>
-                        AddProduct IA
-                      </Tag>
-                      <Tag color="success" style={{ borderRadius: 999, padding: '3px 12px' }}>
-                        Multi-tenant
-                      </Tag>
                       {hasVariants && (
                         <Tag color="blue" style={{ borderRadius: 999, padding: '3px 12px' }}>
                           {variants.length} variantes
                         </Tag>
                       )}
-                    </Space>
 
-                    <Title level={2} style={{ margin: 0, letterSpacing: '-0.04em' }}>
-                      <ThunderboltOutlined style={{ color: token.colorPrimary, marginRight: 12 }} />
-                      Crear producto con IA guiada
-                    </Title>
-
-                    <Text type="secondary" style={{ fontSize: 15 }}>
-                      Subí imágenes, revisá la propuesta de IA, completá ficha técnica, variantes,
-                      logística y publicá con control total.
-                    </Text>
-
-                    {hasUserWorkspace && (
-                      <Popconfirm
-                        title="¿Vaciar el formulario?"
-                        description="Se van a perder las imágenes, variantes, ficha técnica y demás datos cargados. Esta acción no se puede deshacer."
-                        okText="Vaciar todo"
-                        cancelText="Cancelar"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={() => {
-                          resetProductWorkspace()
-                          message.success('Formulario vacío. Podés empezar de nuevo.')
-                        }}
-                      >
-                        <Button
-                          htmlType="button"
-                          danger
-                          type="text"
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          disabled={savingProduct || isLoading}
+                      {hasUserWorkspace && (
+                        <Popconfirm
+                          title="¿Vaciar el formulario?"
+                          description="Se van a perder las imágenes, variantes, ficha técnica y demás datos cargados. Esta acción no se puede deshacer."
+                          okText="Vaciar todo"
+                          cancelText="Cancelar"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={() => {
+                            resetProductWorkspace()
+                            message.success('Formulario vacío. Podés empezar de nuevo.')
+                          }}
                         >
-                          Vaciar formulario
-                        </Button>
-                      </Popconfirm>
-                    )}
+                          <Button
+                            htmlType="button"
+                            danger
+                            type="text"
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            disabled={savingProduct || isLoading}
+                          >
+                            Vaciar formulario
+                          </Button>
+                        </Popconfirm>
+                      )}
+                    </Space>
                   </Space>
                 </Col>
 
                 <Col xs={24} lg={9}>
                   <Row gutter={[12, 12]}>
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          Imágenes
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{fileList.length}</div>
-                      </div>
-                    </Col>
-
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          Variantes
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{variants.length}</div>
-                      </div>
-                    </Col>
-
-                    <Col xs={24} sm={8}>
-                      <div
-                        style={{
-                          padding: 14,
-                          borderRadius: 16,
-                          background: token.colorBgContainer,
-                          border: `1px solid ${token.colorBorderSecondary}`,
-                          textAlign: 'center',
-                        }}
-                      >
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          IA
-                        </Text>
-                        <div style={{ fontSize: 22, fontWeight: 800 }}>{iaResult ? 'OK' : '—'}</div>
-                      </div>
-                    </Col>
+                    {[
+                      ['Imágenes', fileList.length],
+                      ['Variantes', variants.length],
+                      ['IA', iaResult ? 'OK' : '—'],
+                    ].map(([label, value]) => (
+                      <Col xs={8} key={label}>
+                        <div style={HERO_TILE_STYLE}>
+                          <Text style={{ color: '#b9c6ee', fontSize: 13 }}>{label}</Text>
+                          <div
+                            style={{
+                              fontSize: 24,
+                              fontWeight: 800,
+                              fontFamily: DISPLAY_FONT,
+                            }}
+                          >
+                            {value}
+                          </div>
+                        </div>
+                      </Col>
+                    ))}
                   </Row>
                 </Col>
               </Row>
@@ -8279,8 +8343,8 @@ export default function AddProduct() {
                                 <Switch
                                   checked={publishProduct}
                                   onChange={setPublishProduct}
-                                  checkedChildren="ON"
-                                  unCheckedChildren="OFF"
+                                  checkedChildren="Visible"
+                                  unCheckedChildren="Borrador"
                                 />
                               </Space>
                             </div>
@@ -8319,8 +8383,8 @@ export default function AddProduct() {
                                 display: 'block',
                               }}
                             >
-                              Se validará tenant, imágenes, variantes y metadatos IA antes de
-                              publicar.
+                              Antes de publicar se revisan las imágenes, las variantes y los datos
+                              del producto.
                             </Text>
                           </Space>
                         </Card>
@@ -8438,8 +8502,10 @@ export default function AddProduct() {
         }
 
         .add-product-card-title {
+          font-family: ${DISPLAY_FONT};
           font-size: 17px;
-          font-weight: 700;
+          font-weight: 800;
+          letter-spacing: -0.01em;
         }
 
         .add-product-step-badge {
@@ -8450,7 +8516,7 @@ export default function AddProduct() {
           height: 22px;
           padding: 0 6px;
           border-radius: 999px;
-          background: ${token.colorPrimary};
+          background: linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%);
           color: ${token.colorTextLightSolid || '#fff'};
           font-size: 12px;
           font-weight: 700;
@@ -8492,7 +8558,9 @@ export default function AddProduct() {
             flex: 1 1 auto;
           }
 
+          /* En vertical la barra mide más de 300 px: pegada arriba tapaba media pantalla. */
           .add-product-steps-bar {
+            position: static !important;
             padding: 10px 12px !important;
           }
 
@@ -8502,6 +8570,15 @@ export default function AddProduct() {
 
           .add-product-card-title {
             font-size: 15px;
+          }
+
+          .add-product-stable-page .ant-card-head-title {
+            white-space: normal;
+          }
+
+          .add-product-stable-page .ant-card-head-title .ant-space {
+            flex-wrap: wrap;
+            row-gap: 4px;
           }
         }
 
@@ -8519,6 +8596,14 @@ export default function AddProduct() {
         }
       `}</style>
       </div>
+    </>
+  )
+}
+
+export default function AddProduct() {
+  return (
+    <ConfigProvider theme={ADD_PRODUCT_THEME}>
+      <AddProductForm />
     </ConfigProvider>
   )
 }
