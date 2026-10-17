@@ -30,6 +30,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -37,30 +38,91 @@ import {
 } from '@mui/material'
 
 import { getPlanPrices, updatePlanPrice } from '../services/platformService.js'
-import { PLAN_PRESENTATION, SELLABLE_PLANS } from '../constants/plans.js'
+import {
+  PLAN_PRESENTATION,
+  SELLABLE_PLANS,
+  formatArs,
+  isPlanContratable,
+} from '../constants/plans.js'
 
-const formatArs = value => {
-  if (value === null || value === undefined) return 'Sin configurar'
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
 
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(value)
-}
+const money = value => formatArs(value, { sinPrecio: 'Sin configurar' })
 
 const formatDate = value =>
   value ? new Date(value).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
 /** De dónde salió el número. Distinguir lo decidido de lo que quedó así. */
 const SOURCE_LABEL = {
-  panel: { text: 'Definido acá', color: 'primary' },
-  env: { text: 'Variable de entorno', color: 'warning' },
+  panel: {
+    text: 'Definido acá',
+    color: 'primary',
+    hint: 'Lo definiste desde esta pantalla.',
+  },
+  env: {
+    text: 'Variable de entorno',
+    color: 'warning',
+    hint: 'Viene de una variable de entorno del servidor.',
+  },
   // El caso que importa: nadie lo configuró todavía, y hasta que alguien lo haga
   // el plan no se puede contratar. Antes esto no existía porque el precio venía
   // escrito en el código.
-  unset: { text: 'Sin configurar', color: 'error' },
-  default: { text: 'Por defecto', color: 'default' },
+  unset: {
+    text: 'Sin configurar',
+    color: 'error',
+    hint: 'Nadie lo configuró todavía.',
+  },
+  default: {
+    text: 'Por defecto',
+    color: 'default',
+    hint: 'Es el valor por defecto.',
+  },
+}
+
+// El historial guarda el nombre de la configuración, no el del plan. Se traduce acá; si el backend
+// agrega una clave que esta pantalla no conoce, se muestra tal cual en lugar de adivinar.
+const PLAN_OF_SETTING = {
+  planPriceStarterArs: 'starter',
+  planPriceProArs: 'pro',
+}
+
+const planName = plan => PLAN_PRESENTATION[plan]?.name || plan
+
+/**
+ * Qué va a pasar con el valor que está escrito en el campo, dicho antes de guardar.
+ *
+ * Lo del cero importa: el backend lo acepta, pero un plan en cero no se puede contratar (al crear
+ * la suscripción se rechaza por «sin precio definido») y las pantallas de planes lo muestran como
+ * «A definir». No hay planes gratis hoy, y el diálogo decía lo contrario.
+ */
+const describePrice = raw => {
+  const trimmed = String(raw).trim()
+
+  if (trimmed === '') {
+    return {
+      severity: 'info',
+      text: 'Se quita el precio definido acá. Queda el de la variable de entorno si hay una; si no, el plan queda sin precio y no se puede contratar.',
+    }
+  }
+
+  const parsed = Number(trimmed)
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { severity: 'error', text: 'El precio tiene que ser un número de pesos.' }
+  }
+
+  if (parsed === 0) {
+    return {
+      severity: 'warning',
+      text: 'Con 0 el plan se guarda, pero no se puede contratar: hoy el checkout no cobra montos en cero y las pantallas de planes lo muestran como «A definir».',
+    }
+  }
+
+  return {
+    severity: 'success',
+    text: `El plan va a costar ${money(Math.round(parsed))} por mes.`,
+  }
 }
 
 const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
@@ -69,20 +131,21 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const preview = describePrice(price)
+
   const handleSave = async () => {
     setSaving(true)
     setError('')
 
     try {
       // Vacío deja el plan SIN PRECIO, y sin precio no se puede contratar.
-      // No es lo mismo que cero: cero es gratis, y hay que escribirlo a
-      // propósito.
+      // No es lo mismo que cero: cero se guarda, pero tampoco se puede contratar.
       const trimmed = price.trim()
       const parsed = trimmed === '' ? null : Number(trimmed)
 
       if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
         setError(
-          'El precio tiene que ser un número de pesos, o vacío para volver al valor por defecto.',
+          'El precio tiene que ser un número de pesos, o vacío para dejar el plan sin precio.',
         )
         setSaving(false)
         return
@@ -99,7 +162,9 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Precio de {PLAN_PRESENTATION[plan]?.name || plan}</DialogTitle>
+      <DialogTitle sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800 }}>
+        Precio de {planName(plan)}
+      </DialogTitle>
 
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -111,8 +176,12 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
             onChange={event => setPrice(event.target.value)}
             type="number"
             fullWidth
-            helperText="Vacío deja el plan sin precio y no se puede contratar. 0 lo hace gratis."
+            helperText="Vacío quita el precio definido acá."
           />
+
+          <Alert severity={preview.severity} variant="outlined" role="status">
+            {preview.text}
+          </Alert>
 
           <TextField
             label="Por qué se cambia"
@@ -137,15 +206,117 @@ const PriceDialog = ({ plan, currentPrice, onClose, onSaved }) => {
         </Stack>
       </DialogContent>
 
-      <DialogActions>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={saving}>
           Cancelar
         </Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving || !reason.trim()}>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={saving || !reason.trim() || preview.severity === 'error'}
+        >
           {saving ? 'Guardando...' : 'Guardar'}
         </Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+const PlanPriceCard = ({ row, onChange }) => {
+  const presentation = PLAN_PRESENTATION[row.plan]
+  const PlanIcon = presentation?.icon
+  const origen = SOURCE_LABEL[row.source] || SOURCE_LABEL.default
+  const contratable = isPlanContratable(row.monthlyPriceArs)
+  const hasPrice = row.monthlyPriceArs !== null && row.monthlyPriceArs !== undefined
+
+  return (
+    <Paper
+      component="article"
+      aria-label={`Plan ${planName(row.plan)}`}
+      variant="outlined"
+      sx={{
+        p: 3,
+        borderRadius: 4,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        borderColor: contratable ? 'divider' : 'warning.main',
+      }}
+    >
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+        {PlanIcon && (
+          <Box
+            aria-hidden="true"
+            sx={{
+              width: 44,
+              height: 44,
+              display: 'grid',
+              placeItems: 'center',
+              color: '#fff',
+              fontSize: 20,
+              borderRadius: 3,
+              background: GRADIENT,
+              flexShrink: 0,
+            }}
+          >
+            <PlanIcon />
+          </Box>
+        )}
+        <Typography
+          component="h2"
+          sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, flex: 1 }}
+        >
+          {planName(row.plan)}
+        </Typography>
+        <Chip size="small" label={origen.text} color={origen.color} variant="outlined" />
+      </Stack>
+
+      <Box>
+        <Typography
+          component="p"
+          sx={{
+            fontFamily: DISPLAY_FONT,
+            fontWeight: 800,
+            fontSize: hasPrice ? 34 : 24,
+            lineHeight: 1.15,
+            letterSpacing: '-0.02em',
+            fontVariantNumeric: 'tabular-nums',
+            color: hasPrice ? 'text.primary' : 'text.secondary',
+          }}
+        >
+          {money(row.monthlyPriceArs)}
+          {hasPrice && (
+            <Typography
+              component="span"
+              variant="body2"
+              color="text.secondary"
+              sx={{ ml: 0.75, fontWeight: 400, letterSpacing: 0 }}
+            >
+              / mes
+            </Typography>
+          )}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {origen.hint}
+        </Typography>
+      </Box>
+
+      <Chip
+        size="small"
+        color={contratable ? 'success' : 'warning'}
+        label={contratable ? 'Se puede contratar' : 'No se puede contratar'}
+        sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
+      />
+
+      <Button
+        variant="contained"
+        size="large"
+        onClick={onChange}
+        sx={{ mt: 'auto', textTransform: 'none', fontWeight: 700, borderRadius: 3 }}
+      >
+        Cambiar precio
+      </Button>
+    </Paper>
   )
 }
 
@@ -175,7 +346,7 @@ const PlatformPlanPricesPage = () => {
   if (loading) {
     return (
       <Stack sx={{ alignItems: 'center', py: 6 }}>
-        <CircularProgress />
+        <CircularProgress aria-label="Cargando precios" />
       </Stack>
     )
   }
@@ -183,7 +354,16 @@ const PlatformPlanPricesPage = () => {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={load}>
+              Reintentar
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </Box>
     )
   }
@@ -193,92 +373,93 @@ const PlatformPlanPricesPage = () => {
   // plan que acá no se sabe editar, es preferible no mostrarlo a ofrecer un
   // formulario que no tiene dónde guardar.
   const editable = (data?.plans || []).filter(row => SELLABLE_PLANS.includes(row.plan))
+  const history = data?.history || []
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1000, mx: 'auto' }}>
+      <Typography
+        variant="overline"
+        sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.16em' }}
+      >
+        PLATAFORMA
+      </Typography>
+      <Typography
+        component="h1"
+        sx={{
+          fontFamily: DISPLAY_FONT,
+          fontWeight: 800,
+          fontSize: { xs: 26, md: 32 },
+          letterSpacing: '-0.02em',
+          lineHeight: 1.15,
+        }}
+      >
         Precios de los planes
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography color="text.secondary" sx={{ mt: 1, mb: 4, maxWidth: 640 }}>
         Lo que se define acá es lo que se muestra en la pantalla de planes, en el checkout y lo que
         se le cobra al comercio. En pesos.
       </Typography>
 
-      <Paper variant="outlined" sx={{ mb: 4, borderRadius: 2 }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Plan</TableCell>
-              <TableCell align="right">Precio mensual</TableCell>
-              <TableCell>Origen</TableCell>
-              <TableCell align="right">Acción</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {editable.map(row => {
-              const origen = SOURCE_LABEL[row.source] || SOURCE_LABEL.default
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+          gap: 3,
+          mb: 5,
+        }}
+      >
+        {editable.map(row => (
+          <PlanPriceCard
+            key={row.plan}
+            row={row}
+            onChange={() => setEditing({ plan: row.plan, price: row.monthlyPriceArs })}
+          />
+        ))}
+      </Box>
 
-              return (
-                <TableRow key={row.plan}>
-                  <TableCell>{PLAN_PRESENTATION[row.plan]?.name || row.plan}</TableCell>
-                  <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {formatArs(row.monthlyPriceArs)}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      label={origen.text}
-                      color={origen.color}
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      onClick={() => setEditing({ plan: row.plan, price: row.monthlyPriceArs })}
-                    >
-                      Cambiar
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </Paper>
-
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+      <Typography
+        component="h2"
+        sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, mb: 2 }}
+      >
         Historial
       </Typography>
 
-      {(data?.history || []).length === 0 ? (
+      {history.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           Todavía no se cambió ningún precio desde acá.
         </Typography>
       ) : (
-        <Paper variant="outlined" sx={{ borderRadius: 2 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Cuándo</TableCell>
-                <TableCell>Quién</TableCell>
-                <TableCell align="right">De</TableCell>
-                <TableCell align="right">A</TableCell>
-                <TableCell>Por qué</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.history.map(row => (
-                <TableRow key={row._id || `${row.setting}-${row.createdAt}`}>
-                  <TableCell>{formatDate(row.createdAt)}</TableCell>
-                  <TableCell>{row.changedByEmail}</TableCell>
-                  <TableCell align="right">{formatArs(row.previousValue)}</TableCell>
-                  <TableCell align="right">{formatArs(row.value)}</TableCell>
-                  <TableCell>{row.reason || '—'}</TableCell>
+        <Paper variant="outlined" sx={{ borderRadius: 3 }}>
+          <TableContainer>
+            <Table size="small" sx={{ minWidth: 640 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Cuándo</TableCell>
+                  <TableCell>Plan</TableCell>
+                  <TableCell>Quién</TableCell>
+                  <TableCell align="right">De</TableCell>
+                  <TableCell align="right">A</TableCell>
+                  <TableCell>Por qué</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHead>
+              <TableBody>
+                {history.map(row => (
+                  <TableRow key={row._id || `${row.setting}-${row.createdAt}`}>
+                    <TableCell>{formatDate(row.createdAt)}</TableCell>
+                    <TableCell>{planName(PLAN_OF_SETTING[row.setting] || row.setting)}</TableCell>
+                    <TableCell>{row.changedByEmail}</TableCell>
+                    <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {money(row.previousValue)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {money(row.value)}
+                    </TableCell>
+                    <TableCell>{row.reason || '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       )}
 
