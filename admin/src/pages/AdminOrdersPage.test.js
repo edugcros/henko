@@ -139,8 +139,10 @@ const montar = ({ ordenes = ORDENES, resumen, paginacion, ...resto } = {}) => {
 const ultimaConsulta = () => mockGetOrders.mock.calls[mockGetOrders.mock.calls.length - 1][0]
 const fila = numero => screen.getByText(`#${numero}`).closest('tr')
 
-// Los botones de ícono de cada fila no tienen nombre accesible: se buscan por su ícono.
-const botonDeFila = (numero, icono) => within(fila(numero)).getByTestId(icono).closest('button')
+const botonDeFila = (numero, nombre) => within(fila(numero)).getByRole('button', { name: nombre })
+
+const comboPago = () => within(panel()).getByRole('combobox', { name: /estado del pago/i })
+const comboLogistica = () => within(panel()).getByRole('combobox', { name: /estado logístico/i })
 
 const abrirOrden = async numero => {
   await userEvent.click(screen.getByText(`#${numero}`))
@@ -390,7 +392,7 @@ describe('Pedidos · consulta al servidor', () => {
     await userEvent.type(buscador, 'ana')
     await waitFor(() => expect(ultimaConsulta().q).toBe('ana'), { timeout: 2000 })
 
-    await userEvent.click(screen.getByTestId('CloseIcon').closest('button'))
+    await userEvent.click(screen.getByRole('button', { name: /borrar la búsqueda/i }))
 
     expect(buscador.value).toBe('')
     await waitFor(() => expect(ultimaConsulta().q).toBe(''))
@@ -400,7 +402,9 @@ describe('Pedidos · consulta al servidor', () => {
     montar({ paginacion: { total: 40, page: 3, pages: 4, limit: 10 } })
     await waitFor(() => expect(mockGetOrders).toHaveBeenCalled())
 
-    const [estadoOrden, pago, logistica] = screen.getAllByRole('combobox')
+    const estadoOrden = screen.getByRole('combobox', { name: /estado orden/i })
+    const pago = screen.getByRole('combobox', { name: /^pago$/i })
+    const logistica = screen.getByRole('combobox', { name: /^logística$/i })
 
     await elegir(estadoOrden, 'Enviada')
     await waitFor(() => expect(ultimaConsulta()).toMatchObject({ status: 'shipped', page: 1 }))
@@ -420,7 +424,7 @@ describe('Pedidos · consulta al servidor', () => {
     montar({ paginacion: { total: 25, page: 1, pages: 3, limit: 10 } })
     await waitFor(() => expect(mockGetOrders).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /page 2|página 2/i }))
+    await userEvent.click(screen.getByRole('button', { name: /ir a la página 2/i }))
 
     await waitFor(() => expect(ultimaConsulta().page).toBe(2))
   })
@@ -428,7 +432,7 @@ describe('Pedidos · consulta al servidor', () => {
   test('con una sola página no hay paginación', () => {
     montar()
 
-    expect(screen.queryByRole('button', { name: /page 2|página 2/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /ir a la página 2/i })).toBeNull()
   })
 
   test('«Actualizar» vuelve a pedir lo mismo', async () => {
@@ -463,6 +467,11 @@ describe('Pedidos · lo que se ve', () => {
     expect(pagada.getByText('Preparando')).toBeTruthy()
   })
 
+  const tile = nombre =>
+    within(screen.getByRole('region', { name: /resumen de pedidos/i }))
+      .getByText(nombre)
+      .closest('button, div')
+
   test('el resumen sale del servidor, sobre todo lo filtrado y no solo de la página', () => {
     montar({
       paginacion: { total: 250, page: 1, pages: 25, limit: 10 },
@@ -473,20 +482,62 @@ describe('Pedidos · lo que se ve', () => {
     })
 
     expect(screen.getByText(/250 pedidos/)).toBeTruthy()
-    expect(screen.getByText(/12\.340,00/)).toBeTruthy()
-    expect(screen.getByText('25 abiertas')).toBeTruthy()
-    expect(screen.getByText('7 procesando')).toBeTruthy()
-    expect(screen.getByText('30 entregadas')).toBeTruthy()
+    expect(within(tile('Pedidos')).getByText('250')).toBeTruthy()
+    expect(within(tile('Ventas')).getByText(/12\.340,00/)).toBeTruthy()
+    expect(within(tile('Abiertas')).getByText('25')).toBeTruthy()
+    expect(within(tile('Procesando')).getByText('7')).toBeTruthy()
+    expect(within(tile('Entregadas')).getByText('30')).toBeTruthy()
   })
 
   test('sin resumen del servidor cuenta lo que hay cargado', () => {
     montar()
 
     expect(screen.getByText(/3 pedidos/)).toBeTruthy()
-    expect(screen.getByText(/331\.500,00/)).toBeTruthy()
-    expect(screen.getByText('2 abiertas')).toBeTruthy()
-    expect(screen.getByText('1 procesando')).toBeTruthy()
-    expect(screen.getByText('0 entregadas')).toBeTruthy()
+    expect(within(tile('Ventas')).getByText(/331\.500,00/)).toBeTruthy()
+    expect(within(tile('Abiertas')).getByText('2')).toBeTruthy()
+    expect(within(tile('Procesando')).getByText('1')).toBeTruthy()
+    expect(within(tile('Entregadas')).getByText('0')).toBeTruthy()
+  })
+
+  test('tocar una cifra del resumen filtra por ese estado, y tocarla de nuevo lo quita', async () => {
+    montar()
+    await waitFor(() => expect(mockGetOrders).toHaveBeenCalled())
+
+    await userEvent.click(tile('Abiertas'))
+    await waitFor(() => expect(ultimaConsulta()).toMatchObject({ status: 'open', page: 1 }))
+    expect(tile('Abiertas').getAttribute('aria-pressed')).toBe('true')
+
+    await userEvent.click(tile('Procesando'))
+    await waitFor(() => expect(ultimaConsulta().status).toBe('processing'))
+
+    await userEvent.click(tile('Procesando'))
+    await waitFor(() => expect(ultimaConsulta().status).toBe(''))
+  })
+
+  test('«Limpiar filtros» aparece solo con filtros y los saca todos juntos', async () => {
+    montar({ paginacion: { total: 40, page: 3, pages: 4, limit: 10 } })
+    await waitFor(() => expect(mockGetOrders).toHaveBeenCalled())
+
+    expect(screen.queryByRole('button', { name: /limpiar filtros/i })).toBeNull()
+
+    await elegir(screen.getByRole('combobox', { name: /estado orden/i }), 'Enviada')
+    await elegir(screen.getByRole('combobox', { name: /^pago$/i }), 'Aprobado')
+    await userEvent.type(screen.getByRole('textbox', { name: /buscar pedidos/i }), 'ana')
+    await waitFor(() => expect(ultimaConsulta().q).toBe('ana'), { timeout: 2000 })
+
+    await userEvent.click(screen.getByRole('button', { name: /limpiar filtros/i }))
+
+    await waitFor(() =>
+      expect(ultimaConsulta()).toMatchObject({
+        status: '',
+        paymentStatus: '',
+        fulfillmentStatus: '',
+        q: '',
+        page: 1,
+      }),
+    )
+    expect(screen.getByRole('textbox', { name: /buscar pedidos/i }).value).toBe('')
+    expect(screen.queryByRole('button', { name: /limpiar filtros/i })).toBeNull()
   })
 
   test('sin pedidos avisa que no se encontraron', () => {
@@ -575,7 +626,7 @@ describe('Pedidos · detalle de un pedido', () => {
   test('«Ver detalle» abre el pedido en una ventana con el cliente', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'VisibilityIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Ver detalle'))
 
     const ventana = await screen.findByRole('dialog')
 
@@ -588,10 +639,10 @@ describe('Pedidos · detalle de un pedido', () => {
   test('la ventana de detalle se cierra con la cruz', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'VisibilityIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Ver detalle'))
     const ventana = await screen.findByRole('dialog')
 
-    await userEvent.click(within(ventana).getAllByRole('button')[0])
+    await userEvent.click(within(ventana).getByRole('button', { name: /cerrar el detalle/i }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
@@ -602,9 +653,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1001')
 
-    const combos = within(panel()).getAllByRole('combobox')
-
-    await elegir(combos[0], 'Aprobado')
+    await elegir(comboPago(), 'Aprobado')
 
     expect(mockUpdatePayment).toHaveBeenCalledWith({
       id: 'o1aaaaaa0001',
@@ -617,7 +666,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1002')
 
-    await elegir(within(panel()).getAllByRole('combobox')[0], 'Aprobado')
+    await elegir(comboPago(), 'Aprobado')
 
     expect(mockUpdatePayment).not.toHaveBeenCalled()
 
@@ -642,7 +691,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1002')
 
-    await elegir(within(panel()).getAllByRole('combobox')[0], 'Aprobado')
+    await elegir(comboPago(), 'Aprobado')
 
     const dialogo = await screen.findByRole('dialog')
 
@@ -656,7 +705,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1001')
 
-    const [, logistica] = within(panel()).getAllByRole('combobox')
+    const logistica = comboLogistica()
 
     expect(logistica.getAttribute('aria-disabled')).toBe('true')
     expect(screen.getByText(/la logística se habilita cuando el pago está aprobado/i)).toBeTruthy()
@@ -666,7 +715,8 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1003')
 
-    const [pago, logistica] = within(panel()).getAllByRole('combobox')
+    const pago = comboPago()
+    const logistica = comboLogistica()
 
     expect(pago.getAttribute('aria-disabled')).toBe('true')
 
@@ -683,7 +733,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1003')
 
-    await userEvent.click(within(panel()).getAllByRole('combobox')[1])
+    await userEvent.click(comboLogistica())
 
     expect(screen.queryByRole('option', { name: 'Sin preparar' })).toBeNull()
     expect(screen.getByRole('option', { name: 'Lista para envío' })).toBeTruthy()
@@ -699,7 +749,7 @@ describe('Pedidos · pago y logística', () => {
     montar()
     await abrirOrden('A-1001')
 
-    await elegir(within(panel()).getAllByRole('combobox')[0], 'Rechazado')
+    await elegir(comboPago(), 'Rechazado')
 
     expect(await screen.findByText('El pago ya fue conciliado')).toBeTruthy()
   })
@@ -817,7 +867,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
   test('eliminar una orden común pide confirmación y no fuerza el borrado', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'DeleteForeverIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Eliminar orden'))
 
     const dialogo = await screen.findByRole('dialog')
 
@@ -839,7 +889,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
   test('eliminar una orden protegida lo avisa en el mensaje', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1003', 'DeleteForeverIcon'))
+    await userEvent.click(botonDeFila('A-1003', 'Eliminar orden'))
 
     const dialogo = await screen.findByRole('dialog')
 
@@ -864,7 +914,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
     }))
     montar()
 
-    await userEvent.click(botonDeFila('A-1003', 'DeleteForeverIcon'))
+    await userEvent.click(botonDeFila('A-1003', 'Eliminar orden'))
     await confirmar('Sí, eliminar')
 
     expect(await screen.findByText('Confirmar Eliminación Forzada')).toBeTruthy()
@@ -891,7 +941,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
     }))
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'DeleteForeverIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Eliminar orden'))
     await confirmar('Sí, eliminar')
 
     expect(await screen.findByText('Sin permiso')).toBeTruthy()
@@ -901,7 +951,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
   test('eliminar desde el detalle cierra la ventana del pedido', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'VisibilityIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Ver detalle'))
     const ventana = await screen.findByRole('dialog')
 
     await userEvent.click(within(ventana).getByRole('button', { name: /^eliminar$/i }))
@@ -918,7 +968,7 @@ describe('Pedidos · cancelar, reembolsar y eliminar', () => {
   test('cancelar el diálogo de confirmación no manda nada', async () => {
     montar()
 
-    await userEvent.click(botonDeFila('A-1001', 'DeleteForeverIcon'))
+    await userEvent.click(botonDeFila('A-1001', 'Eliminar orden'))
     await confirmar('Cancelar')
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -940,5 +990,77 @@ describe('Pedidos · exportar', () => {
     montar({ ordenes: [] })
 
     expect(screen.getByRole('button', { name: /exportar/i }).disabled).toBe(true)
+  })
+})
+
+describe('Pedidos · en el celular', () => {
+  const estrecha = () => {
+    window.matchMedia = query => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })
+  }
+
+  afterEach(() => {
+    delete window.matchMedia
+  })
+
+  test('no hay tabla: cada pedido es una tarjeta con todo a la vista', () => {
+    estrecha()
+    montar()
+
+    expect(screen.queryByRole('table')).toBeNull()
+
+    const tarjetas = screen.getAllByRole('article')
+
+    expect(tarjetas).toHaveLength(3)
+
+    const primera = within(tarjetas[0])
+
+    expect(primera.getByText('#A-1001')).toBeTruthy()
+    expect(primera.getByText('ana@mail.com')).toBeTruthy()
+    expect(primera.getByText('Ana Pérez')).toBeTruthy()
+    expect(primera.getByText(/1\.500,00/)).toBeTruthy()
+    expect(primera.getByText('Abierta')).toBeTruthy()
+    expect(primera.getByText('Pendiente')).toBeTruthy()
+    expect(primera.getByText('Sin preparar')).toBeTruthy()
+  })
+
+  test('«Ver detalle» abre la ventana del pedido con todos sus paneles', async () => {
+    estrecha()
+    montar()
+
+    await userEvent.click(
+      within(screen.getAllByRole('article')[1]).getByRole('button', { name: /ver detalle/i }),
+    )
+
+    const ventana = await screen.findByRole('dialog')
+
+    expect(within(ventana).getByText('Pedido #A-1002')).toBeTruthy()
+    expect(within(ventana).getByText('Campera Dainese')).toBeTruthy()
+    expect(within(ventana).getByText('Panel de Control')).toBeTruthy()
+  })
+
+  test('eliminar desde la tarjeta pide la misma confirmación', async () => {
+    estrecha()
+    montar()
+
+    await userEvent.click(
+      within(screen.getAllByRole('article')[0]).getByRole('button', { name: /eliminar orden/i }),
+    )
+
+    expect(await screen.findByText('Confirmar Eliminación')).toBeTruthy()
+  })
+
+  test('sin pedidos muestra el mismo aviso que en escritorio', () => {
+    estrecha()
+    montar({ ordenes: [] })
+
+    expect(screen.getByText(/no se encontraron pedidos/i)).toBeTruthy()
+    expect(screen.queryByRole('article')).toBeNull()
   })
 })
