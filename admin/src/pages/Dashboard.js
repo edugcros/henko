@@ -6,50 +6,29 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
-  InputAdornment,
-  MenuItem,
   Paper,
-  Select,
   Skeleton,
   Stack,
-  Step,
-  StepContent,
-  StepLabel,
-  Stepper,
-  Tab,
-  Tabs,
-  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material'
 import {
   Analytics as AnalyticsIcon,
   AutoAwesome as SparkleIcon,
   Campaign as CampaignIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon,
   People as UsersIcon,
   Payments as PaymentsIcon,
   Refresh as RefreshIcon,
   RemoveShoppingCart as AbandonedCartIcon,
-  Save as SaveIcon,
-  Settings as SettingsIcon,
   ShoppingCart as CartIcon,
   SmartToy as AiIcon,
   TrendingUp as TrendIcon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
 import {
@@ -70,62 +49,104 @@ import { getPlanName } from '../constants/plans.js'
 
 const DEBUG = process.env.REACT_APP_DEBUG_API === 'true'
 
+// Identidad de Henkart (la misma de la pantalla de planes, las de acceso y Mi suscripción).
+const BRAND = {
+  navy: '#050b1f',
+  blue: '#0b6bff',
+  violet: '#7a2cff',
+  cyan: '#14d8ff',
+  muted: '#55618a',
+  line: '#dfe6fb',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+
+const HERO_BG = [
+  'radial-gradient(420px 260px at 6% 0%, rgba(11,107,255,0.34), transparent 70%)',
+  'radial-gradient(380px 300px at 100% 100%, rgba(122,44,255,0.3), transparent 70%)',
+  BRAND.navy,
+].join(', ')
+
 const CHART_COLORS = {
-  primary: '#6366F1',
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  purple: '#8B5CF6',
-  slate: '#64748B',
-  teal: '#14B8A6',
+  primary: BRAND.blue,
+  success: '#12b76a',
+  warning: '#f79009',
+  error: '#f04438',
+  purple: BRAND.violet,
+  slate: '#8892b0',
+  teal: '#06b6d4',
 }
 
-const KPI_GRADIENTS = {
-  revenue: 'linear-gradient(135deg, #6366F1 0%, #818CF8 100%)',
-  orders: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
-  ticket: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)',
-  conversion: 'linear-gradient(135deg, #14B8A6 0%, #2DD4BF 100%)',
-  activeCarts: 'linear-gradient(135deg, #10B981 0%, #6EE7B7 100%)',
-  activeValue: 'linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%)',
-  abandonedCarts: 'linear-gradient(135deg, #EF4444 0%, #F87171 100%)',
-  abandonedValue: 'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',
-  metaRevenue: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
-  recoveredRevenue: 'linear-gradient(135deg, #22C55E 0%, #4ADE80 100%)',
-  aiInfluencedRevenue: 'linear-gradient(135deg, #7C3AED 0%, #A78BFA 100%)',
-  totalGeneratedValue: 'linear-gradient(135deg, #4338CA 0%, #A855F7 100%)',
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
+
+const LABEL_SX = {
+  display: 'block',
+  color: 'text.secondary',
+  fontWeight: 700,
+  letterSpacing: '0.12em',
+  lineHeight: 1.6,
 }
 
-const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
+const GRID_PROPS = { strokeDasharray: '3 3', stroke: '#e8edfb' }
+const AXIS_TICK = { fill: BRAND.muted, fontSize: 12 }
 
-const formatMoney = value =>
+const PERIOD_OPTIONS = [7, 30, 90, 180]
+
+const PERIOD_GROUP_SX = {
+  bgcolor: 'rgba(255,255,255,0.08)',
+  borderRadius: 3,
+  '& .MuiToggleButton-root': {
+    color: '#d7e1ff',
+    border: 'none',
+    borderRadius: 3,
+    '&.Mui-selected': {
+      color: '#fff',
+      bgcolor: BRAND.blue,
+      '&:hover': { bgcolor: BRAND.blue },
+    },
+  },
+}
+
+// El estado de la suscripción, dicho en palabras. Lo que no se reconoce se lee «Ninguna».
+const SUBSCRIPTION_STATUS = {
+  active: { label: 'Activa', color: 'success' },
+  trialing: { label: 'En prueba', color: 'info' },
+  past_due: { label: 'Pendiente de pago', color: 'warning' },
+  cancelled: { label: 'Cancelada', color: 'error' },
+  none: { label: 'Ninguna', color: 'default' },
+}
+
+export const formatNumber = value => Number(value || 0).toLocaleString('es-AR')
+
+export const formatMoney = value =>
   `$${Number(value || 0).toLocaleString('es-AR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 
-const formatPercent = value => `${Number(value || 0).toFixed(2)}%`
+export const formatPercent = value => `${Number(value || 0).toFixed(2)}%`
 
-const safeArray = value => (Array.isArray(value) ? value : [])
+export const safeArray = value => (Array.isArray(value) ? value : [])
 
-const firstNonEmptyArray = (...values) => {
+export const firstNonEmptyArray = (...values) => {
   return values.find(value => Array.isArray(value) && value.length > 0) || []
 }
 
-const toNumber = value => {
+export const toNumber = value => {
   const parsed = Number(value ?? 0)
 
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const getSummarySessions = (summary = {}, userBehavior = {}) => {
+export const getSummarySessions = (summary = {}, userBehavior = {}) => {
   return toNumber(summary.sessions ?? userBehavior.sessions ?? 0)
 }
 
-const getPaidOrders = (summary = {}) => {
+export const getPaidOrders = (summary = {}) => {
   return toNumber(summary.paidOrders ?? summary.orders ?? 0)
 }
 
-const formatDateLabel = value => {
+export const formatDateLabel = value => {
   const raw = String(value || '')
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
@@ -158,7 +179,7 @@ const normalizeDailyRow = row => ({
   abandonedCartValue: toNumber(row?.abandonedCartValue),
 })
 
-const mergeDailyMetricRows = (...rowGroups) => {
+export const mergeDailyMetricRows = (...rowGroups) => {
   const byDate = new Map()
 
   rowGroups.forEach(group => {
@@ -197,7 +218,7 @@ const mergeDailyMetricRows = (...rowGroups) => {
   return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)))
 }
 
-const buildDailyRows = data => {
+export const buildDailyRows = data => {
   const trends = data?.trends || {}
   const userBehavior = data?.userBehavior || {}
 
@@ -211,12 +232,12 @@ const buildDailyRows = data => {
   )
 }
 
-const getVerticalChartHeight = (rows = [], minHeight = 340) => {
+export const getVerticalChartHeight = (rows = [], minHeight = 340) => {
   const count = Array.isArray(rows) ? rows.length : 0
   return Math.max(minHeight, count * 48 + 90)
 }
 
-const truncateText = (value, max = 28) => {
+export const truncateText = (value, max = 28) => {
   const text = String(value || '')
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
@@ -228,7 +249,7 @@ const normalizeLookupKey = value =>
     .trim()
     .toLowerCase()
 
-const getProductKeyFromPath = path => {
+export const getProductKeyFromPath = path => {
   const cleanPath = String(path || '')
     .split('?')[0]
     .replace(/\/+$/, '')
@@ -246,7 +267,7 @@ const getProductKeyFromPath = path => {
   }
 }
 
-const getProductImage = product => {
+export const getProductImage = product => {
   const candidates = [
     product?.image,
     product?.imageUrl,
@@ -283,7 +304,7 @@ const getProductImage = product => {
   return candidates.map(resolveCandidate).find(Boolean) || ''
 }
 
-const getProductDisplayName = product => {
+export const getProductDisplayName = product => {
   return (
     product?.fullName ||
     product?.title ||
@@ -310,7 +331,7 @@ const getProductIdentityKeys = product => {
     .filter(Boolean)
 }
 
-const buildProductCatalog = (...groups) => {
+export const buildProductCatalog = (...groups) => {
   const byKey = new Map()
   const catalog = []
 
@@ -346,10 +367,14 @@ const buildProductCatalog = (...groups) => {
       catalog.push(normalized)
     })
 
-  return catalog
+  // Se devuelve la versión COMBINADA, no la primera que se vio. El mapa guardaba el producto ya
+  // enriquecido con los datos de las otras listas, pero el arreglo devuelto seguía apuntando al
+  // original: si la primera lista no traía imagen y otra sí, la imagen se perdía y las páginas
+  // destacadas mostraban el cuadrito de relleno en lugar del producto.
+  return catalog.map(product => byKey.get(getProductIdentityKeys(product)[0]) || product)
 }
 
-const buildProductLookup = (...groups) => {
+export const buildProductLookup = (...groups) => {
   const lookup = new Map()
 
   groups
@@ -365,7 +390,7 @@ const buildProductLookup = (...groups) => {
   return lookup
 }
 
-const getPageLabel = path => {
+export const getPageLabel = path => {
   const cleanPath =
     String(path || '/')
       .split('?')[0]
@@ -386,7 +411,7 @@ const getPageLabel = path => {
   return labels[cleanPath] || cleanPath
 }
 
-const normalizeTopPageRows = (rows, productLookup) => {
+export const normalizeTopPageRows = (rows, productLookup) => {
   return safeArray(rows)
     .slice(0, 8)
     .map(row => {
@@ -408,7 +433,7 @@ const normalizeTopPageRows = (rows, productLookup) => {
     })
 }
 
-const normalizeSearchRows = (rows, productCatalog, productLookup) => {
+export const normalizeSearchRows = (rows, productCatalog, productLookup) => {
   return safeArray(rows)
     .slice(0, 8)
     .map(row => {
@@ -523,7 +548,7 @@ const SearchInsightItem = ({ item }) => (
   </Paper>
 )
 
-const buildFunnelChartData = (userBehavior = {}, payment = {}, summary = {}) => {
+export const buildFunnelChartData = (userBehavior = {}, payment = {}, summary = {}) => {
   const sessions = getSummarySessions(summary, userBehavior)
 
   const rows = [
@@ -584,7 +609,7 @@ const buildFunnelChartData = (userBehavior = {}, payment = {}, summary = {}) => 
   })
 }
 
-const normalizeTopProductRows = rows => {
+export const normalizeTopProductRows = rows => {
   return safeArray(rows)
     .slice(0, 10)
     .map(row => {
@@ -605,103 +630,104 @@ const normalizeTopProductRows = rows => {
     })
 }
 
-const DashboardSectionTitle = ({ title, description }) => (
+const DashboardSectionTitle = ({ title, description, level = 'h2' }) => (
   <Box sx={{ mb: 2.5 }}>
-    <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
-      <Box
-        sx={{
-          width: 4,
-          height: 22,
-          borderRadius: 2,
-          background: KPI_GRADIENTS.revenue,
-        }}
-      />
-      <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: -0.3 }}>
-        {title}
-      </Typography>
-    </Stack>
+    <Typography
+      component={level}
+      sx={{
+        fontFamily: DISPLAY_FONT,
+        fontWeight: 800,
+        fontSize: level === 'h2' ? 22 : 18,
+        letterSpacing: '-0.01em',
+      }}
+    >
+      {title}
+    </Typography>
     {description && (
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, pl: 2 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 760 }}>
         {description}
       </Typography>
     )}
   </Box>
 )
 
-const KpiCard = ({ title, value, icon: Icon, color, description, trend, gradient }) => (
-  <Card
+const IconChip = ({ icon: Icon, color = BRAND.blue, size = 44 }) => (
+  <Box
+    aria-hidden="true"
     sx={{
-      height: '100%',
+      width: size,
+      height: size,
       borderRadius: 3,
-      border: '1px solid',
-      borderColor: 'divider',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-      transition: 'box-shadow 0.2s, transform 0.2s',
-      '&:hover': {
-        boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-        transform: 'translateY(-2px)',
-      },
+      display: 'grid',
+      placeItems: 'center',
+      flexShrink: 0,
+      bgcolor: `${color}1a`,
+      color,
     }}
   >
-    <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-      <Stack
-        direction="row"
-        spacing={2}
-        sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
-      >
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography
-            variant="body2"
-            color="text.secondary"
+    <Icon sx={{ fontSize: size * 0.5 }} />
+  </Box>
+)
 
-            sx={{ fontWeight: 600, mb: 0.5, letterSpacing: 0.3 }}
-          >
-            {title}
-          </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.2 }}>
-            {value}
-          </Typography>
-          {trend !== undefined && trend !== null && Number(trend) !== 0 && (
-            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1 }}>
-              <TrendIcon
-                sx={{
-                  fontSize: 16,
-                  color: Number(trend) >= 0 ? 'success.main' : 'error.main',
-                  transform: Number(trend) < 0 ? 'rotate(180deg)' : 'none',
-                }}
-              />
-              <Typography
-                variant="caption"
-                sx={{ fontWeight: 700 }}
-                color={Number(trend) >= 0 ? 'success.main' : 'error.main'}
-              >
-                {Number(trend) > 0 ? '+' : ''}
-                {Number(trend).toFixed(1)}%
-              </Typography>
-              <Typography variant="caption" color="text.disabled">
-                vs anterior
-              </Typography>
-            </Stack>
-          )}
-        </Box>
-        <Box
+const KpiCard = ({ title, value, icon: Icon, color, trend }) => (
+  <Box>
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', mb: 1.25 }}>
+      <IconChip icon={Icon} color={color} size={34} />
+      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+        {title}
+      </Typography>
+    </Stack>
+    <Typography
+      sx={{
+        fontFamily: DISPLAY_FONT,
+        fontWeight: 800,
+        fontSize: 28,
+        lineHeight: 1.15,
+        letterSpacing: '-0.02em',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {value}
+    </Typography>
+    {trend !== undefined && trend !== null && Number(trend) !== 0 && (
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mt: 1 }}>
+        <TrendIcon
           sx={{
-            width: 52,
-            height: 52,
-            borderRadius: 3,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: gradient || `${color || CHART_COLORS.primary}18`,
-            color: gradient ? '#fff' : color || CHART_COLORS.primary,
-            flexShrink: 0,
+            fontSize: 16,
+            color: Number(trend) >= 0 ? 'success.main' : 'error.main',
+            transform: Number(trend) < 0 ? 'rotate(180deg)' : 'none',
           }}
+        />
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 700 }}
+          color={Number(trend) >= 0 ? 'success.main' : 'error.main'}
         >
-          <Icon sx={{ fontSize: 26 }} />
-        </Box>
+          {Number(trend) > 0 ? '+' : ''}
+          {Number(trend).toFixed(1)}%
+        </Typography>
+        <Typography variant="caption" color="text.disabled">
+          vs anterior
+        </Typography>
       </Stack>
-    </CardContent>
-  </Card>
+    )}
+  </Box>
+)
+
+const ChartCard = ({ title, description, children }) => (
+  <Paper
+    variant="outlined"
+    // Los textos de los gráficos (SVG) heredan la tipografía de la tarjeta: sin esto salían en la del sistema.
+    sx={{
+      ...PANEL_SX,
+      p: { xs: 2.5, md: 3 },
+      height: '100%',
+      fontFamily: 'Roboto, ui-sans-serif, system-ui, sans-serif',
+    }}
+  >
+    <DashboardSectionTitle title={title} description={description} level="h3" />
+    {children}
+  </Paper>
 )
 
 const EmptyState = ({ message }) => (
@@ -775,6 +801,10 @@ const BarTooltip = ({ active, payload, label, formatter }) => {
 }
 
 const AnalyticsDashboardView = () => {
+  const navigate = useNavigate()
+  // En un celular los nombres de producto no pueden quitarle 180 px al gráfico: las barras quedaban
+  // aplastadas contra el borde.
+  const isNarrow = useMediaQuery('(max-width:600px)')
   const { enqueueSnackbar } = useSnackbar()
   // Sin este guard, el polling seguía tirando /api/dash/stats cada 30s aún
   // con la sesión caída: el interceptor de axios reintenta un refresh en 401
@@ -935,11 +965,9 @@ const AnalyticsDashboardView = () => {
       <Alert
         severity="error"
         action={
-          <Tooltip title="Reintentar">
-            <IconButton onClick={() => fetchData()} color="inherit">
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
+          <Button color="inherit" size="small" onClick={() => fetchData()}>
+            Reintentar
+          </Button>
         }
       >
         {error}
@@ -947,95 +975,84 @@ const AnalyticsDashboardView = () => {
     )
   }
 
+  const statusInfo = SUBSCRIPTION_STATUS[subscriptionMetrics?.status] || SUBSCRIPTION_STATUS.none
+
   return (
-    <Box>
-      <Paper
+    <Stack spacing={5}>
+      {/* ── Encabezado y período ───────────────────────── */}
+      <Box
+        component="header"
         sx={{
           p: { xs: 2.5, md: 3.5 },
           mb: 3,
           borderRadius: 4,
-          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)',
           color: '#fff',
-          position: 'relative',
-          overflow: 'hidden',
+          background: HERO_BG,
         }}
       >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: -40,
-            right: -40,
-            width: 200,
-            height: 200,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.06)',
-          }}
-        />
-        <Box
-          sx={{
-            position: 'absolute',
-            bottom: -60,
-            right: 80,
-            width: 140,
-            height: 140,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.04)',
-          }}
-        />
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-
-          spacing={2}
-          sx={{
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', md: 'center' },
-            position: 'relative',
-            zIndex: 1,
-          }}
+          spacing={2.5}
+          sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' } }}
         >
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: -0.5 }}>
+            <Typography
+              variant="overline"
+              sx={{ color: BRAND.cyan, fontWeight: 700, letterSpacing: '0.16em' }}
+            >
+              TU TIENDA
+            </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 800,
+                fontSize: { xs: 26, md: 34 },
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+              }}
+            >
               Panel de control
             </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.5 }}>
+            <Typography sx={{ mt: 1, color: '#b9c6ee', maxWidth: 560 }}>
               Ventas, tráfico, carritos, productos y conversión en tiempo real.
             </Typography>
           </Box>
 
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-            <Select
+            <ToggleButtonGroup
+              exclusive
               size="small"
               value={days}
-              onChange={event => setDays(Number(event.target.value))}
-              sx={{
-                minWidth: 170,
-                bgcolor: 'rgba(255,255,255,0.15)',
-                color: '#fff',
-                borderRadius: 2,
-                '& .MuiSelect-icon': { color: '#fff' },
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(255,255,255,0.25)',
-                },
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(255,255,255,0.4)',
-                },
+              onChange={(_, value) => {
+                if (value !== null) setDays(Number(value))
               }}
+              aria-label="Período"
+              sx={PERIOD_GROUP_SX}
             >
-              <MenuItem value={7}>Últimos 7 días</MenuItem>
-              <MenuItem value={30}>Últimos 30 días</MenuItem>
-              <MenuItem value={90}>Últimos 90 días</MenuItem>
-              <MenuItem value={180}>Últimos 180 días</MenuItem>
-            </Select>
+              {PERIOD_OPTIONS.map(option => (
+                <ToggleButton
+                  key={option}
+                  value={option}
+                  aria-label={`Últimos ${option} días`}
+                  sx={{ px: 1.75, textTransform: 'none', fontWeight: 700 }}
+                >
+                  {option} días
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
 
             <Tooltip title="Actualizar">
               <span>
                 <IconButton
+                  aria-label="Actualizar"
                   onClick={() => fetchData()}
                   disabled={loading || refreshing}
                   sx={{
                     color: '#fff',
                     bgcolor: 'rgba(255,255,255,0.12)',
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.22)' },
+                    '&.Mui-disabled': { color: 'rgba(255,255,255,0.4)' },
                   }}
                 >
                   <RefreshIcon />
@@ -1044,85 +1061,82 @@ const AnalyticsDashboardView = () => {
             </Tooltip>
           </Stack>
         </Stack>
-      </Paper>
+      </Box>
 
+      {/* ── Plan de suscripción ───────────────────────── */}
       {subscriptionMetrics && (
-        <>
-          <DashboardSectionTitle
-            title="Estado de suscripción"
-            description="Información del plan de suscripción actual y estado de pago."
-          />
-          <Grid container spacing={2.5} sx={{ mb: 4 }}>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-              <KpiCard
-                title="Plan actual"
-                value={
-                  subscriptionLoading ? (
-                    <Skeleton width={80} />
-                  ) : (
-                    // El nombre sale de constants/plans.js. Acá había una
-                    // cadena de ternarios que además mentía: cualquier plan
-                    // desconocido caía en 'Profesional', así que se mostraba
-                    // como Pro algo que no lo era.
-                    getPlanName(subscriptionMetrics.currentPlan)
-                  )
-                }
-                icon={PaymentsIcon}
-                gradient={
-                  subscriptionMetrics.isActive
-                    ? KPI_GRADIENTS.activeCarts
-                    : KPI_GRADIENTS.abandonedCarts
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-              <KpiCard
-                title="Estado"
-                value={
-                  subscriptionLoading ? (
-                    <Skeleton width={80} />
-                  ) : subscriptionMetrics.status === 'active' ? (
-                    '✓ Activa'
-                  ) : subscriptionMetrics.status === 'trialing' ? (
-                    'En prueba'
-                  ) : subscriptionMetrics.status === 'past_due' ? (
-                    '⚠ Pendiente'
-                  ) : subscriptionMetrics.status === 'cancelled' ? (
-                    'Cancelada'
-                  ) : (
-                    'Ninguna'
-                  )
-                }
-                icon={CheckIcon}
-                gradient={
-                  subscriptionMetrics.status === 'active'
-                    ? KPI_GRADIENTS.activeCarts
-                    : subscriptionMetrics.status === 'past_due'
-                      ? KPI_GRADIENTS.abandonedCarts
-                      : KPI_GRADIENTS.conversion
-                }
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-              <KpiCard
-                title="Ingreso recurrente mensual"
-                value={
-                  subscriptionLoading ? (
+        <Paper
+          component="section"
+          aria-label="Tu plan"
+          variant="outlined"
+          sx={{ ...PANEL_SX, p: { xs: 2.5, md: 3 } }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={3}
+            sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
+          >
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+              <IconChip icon={PaymentsIcon} />
+              <Box>
+                <Typography variant="overline" sx={LABEL_SX}>
+                  TU PLAN
+                </Typography>
+                <Stack
+                  direction="row"
+                  spacing={1.25}
+                  sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+                >
+                  <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22 }}>
+                    {subscriptionLoading ? (
+                      <Skeleton width={100} />
+                    ) : (
+                      // El nombre sale de constants/plans.js. Acá había una
+                      // cadena de ternarios que además mentía: cualquier plan
+                      // desconocido caía en 'Profesional', así que se mostraba
+                      // como Pro algo que no lo era.
+                      getPlanName(subscriptionMetrics.currentPlan)
+                    )}
+                  </Typography>
+                  {!subscriptionLoading && (
+                    <Chip
+                      size="small"
+                      label={statusInfo.label}
+                      color={statusInfo.color}
+                      sx={{ fontWeight: 700 }}
+                    />
+                  )}
+                </Stack>
+              </Box>
+            </Stack>
+
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={{ xs: 2, sm: 5 }}
+              sx={{ alignItems: { sm: 'center' } }}
+            >
+              <Box>
+                <Typography variant="overline" sx={LABEL_SX}>
+                  CUOTA MENSUAL DEL PLAN
+                </Typography>
+                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+                  {subscriptionLoading ? (
                     <Skeleton width={90} />
-                  ) : (
+                  ) : subscriptionMetrics.mrr > 0 ? (
                     formatMoney(subscriptionMetrics.mrr)
-                  )
-                }
-                icon={TrendIcon}
-                gradient={KPI_GRADIENTS.revenue}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-              <KpiCard
-                title="Próximo pago"
-                value={
-                  subscriptionLoading ? (
-                    <Skeleton width={80} />
+                  ) : (
+                    '—'
+                  )}
+                </Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="overline" sx={LABEL_SX}>
+                  PRÓXIMO PAGO
+                </Typography>
+                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+                  {subscriptionLoading ? (
+                    <Skeleton width={90} />
                   ) : subscriptionMetrics.nextBillingAt ? (
                     // Mostraba lastPaymentAt: el título prometía una fecha
                     // futura y el número era la del último cobro. El próximo
@@ -1131,170 +1145,284 @@ const AnalyticsDashboardView = () => {
                     new Date(subscriptionMetrics.nextBillingAt).toLocaleDateString('es-AR')
                   ) : (
                     'No disponible'
-                  )
-                }
-                icon={PaymentsIcon}
-                gradient={KPI_GRADIENTS.metaRevenue}
-              />
-            </Grid>
-          </Grid>
-        </>
+                  )}
+                </Typography>
+              </Box>
+
+              <Button
+                variant="outlined"
+                onClick={() => navigate('/admin/mi-suscripcion')}
+                sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 3, flexShrink: 0 }}
+              >
+                Administrar plan
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
       )}
 
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Ventas aprobadas"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.revenue)}
-            icon={TrendIcon}
-            trend={summary.revenueGrowth}
-            gradient={KPI_GRADIENTS.revenue}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Órdenes pagadas"
-            value={loading ? <Skeleton width={90} /> : formatNumber(paidOrders)}
-            icon={CartIcon}
-            trend={summary.ordersGrowth}
-            gradient={KPI_GRADIENTS.orders}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Ticket promedio"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.averageOrderValue)}
-            icon={PaymentsIcon}
-            gradient={KPI_GRADIENTS.ticket}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Conversión real"
-            value={loading ? <Skeleton width={90} /> : formatPercent(summary.conversionRate)}
-            icon={UsersIcon}
-            gradient={KPI_GRADIENTS.conversion}
-          />
-        </Grid>
-      </Grid>
+      {/* ── Lo principal del período ──────────────────── */}
+      <Paper component="section" aria-label="Resumen del período" variant="outlined" sx={PANEL_SX}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+          }}
+        >
+          {[
+            {
+              title: 'Ventas aprobadas',
+              value: formatMoney(summary.revenue),
+              icon: TrendIcon,
+              trend: summary.revenueGrowth,
+            },
+            {
+              title: 'Órdenes pagadas',
+              value: formatNumber(paidOrders),
+              icon: CartIcon,
+              trend: summary.ordersGrowth,
+            },
+            {
+              title: 'Ticket promedio',
+              value: formatMoney(summary.averageOrderValue),
+              icon: PaymentsIcon,
+            },
+            {
+              title: 'Conversión real',
+              value: formatPercent(summary.conversionRate),
+              icon: UsersIcon,
+            },
+          ].map((stat, index) => (
+            <Box
+              key={stat.title}
+              sx={{
+                p: { xs: 2.5, md: 3 },
+                borderTop: { xs: index === 0 ? 'none' : '1px solid', sm: 'none' },
+                borderLeft: { lg: index === 0 ? 'none' : '1px solid' },
+                borderColor: 'divider',
+                ...(index >= 2 && { borderTop: { sm: '1px solid', lg: 'none' } }),
+              }}
+            >
+              <KpiCard
+                title={stat.title}
+                value={loading ? <Skeleton width={100} /> : stat.value}
+                icon={stat.icon}
+                trend={stat.trend}
+              />
+            </Box>
+          ))}
+        </Box>
+      </Paper>
 
-      <DashboardSectionTitle
-        title="Valor generado por HENKO"
-        description="Ventas con atribución de campaña, influencia de IA o recuperación de carrito, sumadas una sola vez por orden aunque cumplan más de una condición a la vez."
-      />
+      <Box component="section">
+        <DashboardSectionTitle
+          title="Valor generado por HENKO"
+          description="Ventas con atribución de campaña, influencia de IA o recuperación de carrito, sumadas una sola vez por orden aunque cumplan más de una condición a la vez."
+        />
 
-      <Grid container spacing={2.5} sx={{ mb: 2.5 }}>
-        <Grid size={12}>
-          <KpiCard
-            title="Valor total generado por HENKO"
-            value={loading ? <Skeleton width={140} /> : formatMoney(summary.totalGeneratedValue)}
-            icon={SparkleIcon}
-            gradient={KPI_GRADIENTS.totalGeneratedValue}
-          />
-        </Grid>
-      </Grid>
-
-      <DashboardSectionTitle
-        title="Impacto de campañas, recuperación e IA"
-        description="Recortes de la venta total: cuánto vino de campañas de Meta, cuánto se recuperó por WhatsApp y cuánto influyó el agente de IA. Se calculan al momento de aprobar el pago, así que en un comercio con cancelaciones frecuentes pueden no sumar exacto contra las ventas aprobadas de arriba."
-      />
-
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Ingreso por campañas"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.metaRevenue)}
-            icon={CampaignIcon}
-            gradient={KPI_GRADIENTS.metaRevenue}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Recuperado por WhatsApp"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.recoveredRevenue)}
-            icon={WhatsAppIcon}
-            gradient={KPI_GRADIENTS.recoveredRevenue}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Influenciado por IA"
-            value={loading ? <Skeleton width={90} /> : formatMoney(summary.aiInfluencedRevenue)}
-            icon={AiIcon}
-            gradient={KPI_GRADIENTS.aiInfluencedRevenue}
-          />
-        </Grid>
-      </Grid>
-
-      <DashboardSectionTitle
-        title="Carritos"
-        description="Diferenciamos carritos activos de abandonados para entender intención de compra y recuperación potencial."
-      />
-
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Carritos activos"
-            value={loading ? <Skeleton width={80} /> : formatNumber(summary.activeCarts)}
-            icon={CartIcon}
-            gradient={KPI_GRADIENTS.activeCarts}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Valor activo"
-            value={loading ? <Skeleton width={80} /> : formatMoney(summary.activeCartValue)}
-            icon={PaymentsIcon}
-            gradient={KPI_GRADIENTS.activeValue}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Carritos abandonados"
-            value={loading ? <Skeleton width={80} /> : formatNumber(summary.abandonedCarts)}
-            icon={AbandonedCartIcon}
-            gradient={KPI_GRADIENTS.abandonedCarts}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <KpiCard
-            title="Valor abandonado"
-            value={loading ? <Skeleton width={80} /> : formatMoney(summary.abandonedCartValue)}
-            icon={AbandonedCartIcon}
-            gradient={KPI_GRADIENTS.abandonedValue}
-          />
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Card
+        <Box
+          component="section"
+          aria-label="Valor generado por HENKO"
+          sx={{
+            p: { xs: 2.5, md: 3.5 },
+            mb: 1.5,
+            borderRadius: 4,
+            color: '#fff',
+            background: HERO_BG,
+          }}
+        >
+          <Box
             sx={{
-              height: '100%',
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(0, 1.4fr)' },
+              gap: { xs: 3, lg: 5 },
+              alignItems: 'center',
             }}
           >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Ventas, sesiones y carritos reales por día"
-                description="Cruza revenue pagado, sesiones reales y carritos activos/abandonados desde MongoDB."
-              />
+            <Box>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', color: BRAND.cyan }}>
+                <SparkleIcon fontSize="small" />
+                <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: '0.12em' }}>
+                  Valor total generado por HENKO
+                </Typography>
+              </Stack>
+              <Typography
+                sx={{
+                  mt: 0.5,
+                  fontFamily: DISPLAY_FONT,
+                  fontWeight: 800,
+                  fontSize: { xs: 34, md: 44 },
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1.1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {loading ? (
+                  <Skeleton width={200} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+                ) : (
+                  formatMoney(summary.totalGeneratedValue)
+                )}
+              </Typography>
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+                gap: 1.5,
+              }}
+            >
+              {[
+                { title: 'Ingreso por campañas', value: summary.metaRevenue, icon: CampaignIcon },
+                {
+                  title: 'Recuperado por WhatsApp',
+                  value: summary.recoveredRevenue,
+                  icon: WhatsAppIcon,
+                },
+                { title: 'Influenciado por IA', value: summary.aiInfluencedRevenue, icon: AiIcon },
+              ].map(item => (
+                <Box
+                  key={item.title}
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    bgcolor: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <item.icon sx={{ fontSize: 20, color: BRAND.cyan }} />
+                  <Typography variant="body2" sx={{ mt: 1, color: '#b9c6ee', fontWeight: 600 }}>
+                    {item.title}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontFamily: DISPLAY_FONT,
+                      fontWeight: 800,
+                      fontSize: 22,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {loading ? (
+                      <Skeleton width={90} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+                    ) : (
+                      formatMoney(item.value)
+                    )}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 0.5 }}>
+          Cada recorte se calcula al momento de aprobar el pago: cuánto vino de campañas de Meta,
+          cuánto se recuperó por WhatsApp y cuánto influyó el agente de IA. En un comercio con
+          cancelaciones frecuentes pueden no sumar exacto contra las ventas aprobadas de arriba.
+        </Typography>
+      </Box>
+
+      <Box component="section">
+        <DashboardSectionTitle
+          title="Carritos"
+          description="Diferenciamos carritos activos de abandonados para entender intención de compra y recuperación potencial."
+        />
+
+        <Paper
+          component="section"
+          aria-label="Carritos"
+          variant="outlined"
+          sx={{ ...PANEL_SX, mb: 3 }}
+        >
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' } }}>
+            {[
+              {
+                group: 'activos',
+                items: [
+                  {
+                    title: 'Carritos activos',
+                    value: formatNumber(summary.activeCarts),
+                    icon: CartIcon,
+                  },
+                  {
+                    title: 'Valor activo',
+                    value: formatMoney(summary.activeCartValue),
+                    icon: PaymentsIcon,
+                  },
+                ],
+                color: CHART_COLORS.success,
+              },
+              {
+                group: 'abandonados',
+                items: [
+                  {
+                    title: 'Carritos abandonados',
+                    value: formatNumber(summary.abandonedCarts),
+                    icon: AbandonedCartIcon,
+                  },
+                  {
+                    title: 'Valor abandonado',
+                    value: formatMoney(summary.abandonedCartValue),
+                    icon: AbandonedCartIcon,
+                  },
+                ],
+                color: CHART_COLORS.error,
+              },
+            ].map((group, index) => (
+              <Box
+                key={group.group}
+                sx={{
+                  p: { xs: 2.5, md: 3 },
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 2,
+                  borderLeft: { md: index === 0 ? 'none' : '1px solid' },
+                  borderTop: { xs: index === 0 ? 'none' : '1px solid', md: 'none' },
+                  borderColor: 'divider',
+                }}
+              >
+                {group.items.map(item => (
+                  <KpiCard
+                    key={item.title}
+                    title={item.title}
+                    value={loading ? <Skeleton width={80} /> : item.value}
+                    icon={item.icon}
+                    color={group.color}
+                  />
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid size={{ xs: 12, md: 7 }}>
+            <ChartCard
+              title="Ventas, sesiones y carritos por día"
+              description="Cruza ventas pagadas, sesiones y carritos activos y abandonados, día por día."
+            >
               <Box sx={{ height: 360 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={360} />
                 ) : dailyRows.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dailyRows} margin={{ top: 8, right: 18, bottom: 18, left: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tickFormatter={formatDateLabel} minTickGap={18} />
+                      <CartesianGrid {...GRID_PROPS} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={formatDateLabel}
+                        minTickGap={18}
+                        tick={AXIS_TICK}
+                      />
                       <YAxis
                         yAxisId="money"
                         tickFormatter={value => `$${Number(value || 0).toLocaleString('es-AR')}`}
+                        tick={AXIS_TICK}
                       />
-                      <YAxis yAxisId="count" orientation="right" allowDecimals={false} />
+                      <YAxis
+                        yAxisId="count"
+                        orientation="right"
+                        allowDecimals={false}
+                        tick={AXIS_TICK}
+                      />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
                         content={
@@ -1339,34 +1467,23 @@ const AnalyticsDashboardView = () => {
                   <EmptyState message="Todavía no hay actividad diaria suficiente." />
                 )}
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+            </ChartCard>
+          </Grid>
 
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card
-            sx={{
-              height: '100%',
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Activos vs abandonados"
-                description="Comparación directa de cantidad de carritos y productos involucrados."
-              />
+          <Grid size={{ xs: 12, md: 5 }}>
+            <ChartCard
+              title="Activos vs abandonados"
+              description="Cuántos carritos y cuántos productos hay en cada grupo."
+            >
               <Box sx={{ height: 330 }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={330} />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={cartComparisonRows}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
+                      <CartesianGrid {...GRID_PROPS} />
+                      <XAxis dataKey="name" tick={AXIS_TICK} />
+                      <YAxis tick={AXIS_TICK} />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
                         content={
@@ -1393,36 +1510,21 @@ const AnalyticsDashboardView = () => {
                   </ResponsiveContainer>
                 )}
               </Box>
-            </CardContent>
-          </Card>
+            </ChartCard>
+          </Grid>
         </Grid>
-      </Grid>
+      </Box>
 
-      <DashboardSectionTitle
-        title="Productos"
-        description="Compará lo que más vende contra lo que más visita la audiencia."
-      />
+      <Box component="section">
+        <DashboardSectionTitle
+          title="Productos"
+          description="Compará lo que más vende contra lo que más visita la audiencia."
+        />
 
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Productos más vendidos"
-                description="Ordenados por revenue aprobado."
-              />
-              <Box
-                sx={{
-                  height: loading ? 340 : getVerticalChartHeight(topSellingProducts, 360),
-                }}
-              >
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <ChartCard title="Productos más vendidos" description="Ordenados por ventas aprobadas.">
+              <Box sx={{ height: loading ? 340 : getVerticalChartHeight(topSellingProducts, 360) }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topSellingProducts.length ? (
@@ -1433,14 +1535,14 @@ const AnalyticsDashboardView = () => {
                       margin={{ top: 8, right: 28, bottom: 8, left: 12 }}
                       barCategoryGap={14}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" tickFormatter={formatMoney} />
+                      <CartesianGrid {...GRID_PROPS} />
+                      <XAxis type="number" tickFormatter={formatMoney} tick={AXIS_TICK} />
                       <YAxis
                         dataKey="name"
                         type="category"
-                        width={180}
+                        width={isNarrow ? 110 : 180}
                         interval={0}
-                        tick={{ fontSize: 12 }}
+                        tick={AXIS_TICK}
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
@@ -1448,7 +1550,7 @@ const AnalyticsDashboardView = () => {
                       />
                       <Bar
                         dataKey="revenue"
-                        name="Revenue"
+                        name="Ventas"
                         fill={CHART_COLORS.primary}
                         radius={[0, 8, 8, 0]}
                       />
@@ -1458,29 +1560,15 @@ const AnalyticsDashboardView = () => {
                   <EmptyState message="Todavía no hay productos vendidos." />
                 )}
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+            </ChartCard>
+          </Grid>
 
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Productos más visitados"
-                description="Ordenados por vistas de producto y enriquecidos con clicks y add to cart."
-              />
-              <Box
-                sx={{
-                  height: loading ? 340 : getVerticalChartHeight(topVisitedProducts, 360),
-                }}
-              >
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <ChartCard
+              title="Productos más visitados"
+              description="Ordenados por vistas, con sus clicks y las veces que se agregaron al carrito."
+            >
+              <Box sx={{ height: loading ? 340 : getVerticalChartHeight(topVisitedProducts, 360) }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topVisitedProducts.length ? (
@@ -1491,14 +1579,14 @@ const AnalyticsDashboardView = () => {
                       margin={{ top: 8, right: 28, bottom: 8, left: 12 }}
                       barCategoryGap={14}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" allowDecimals={false} />
+                      <CartesianGrid {...GRID_PROPS} />
+                      <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} />
                       <YAxis
                         dataKey="name"
                         type="category"
-                        width={180}
+                        width={isNarrow ? 110 : 180}
                         interval={0}
-                        tick={{ fontSize: 12 }}
+                        tick={AXIS_TICK}
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
@@ -1520,7 +1608,7 @@ const AnalyticsDashboardView = () => {
                       />
                       <Bar
                         dataKey="addToCart"
-                        name="Add to cart"
+                        name="Agregados al carrito"
                         fill={CHART_COLORS.success}
                         radius={[0, 8, 8, 0]}
                         maxBarSize={26}
@@ -1531,29 +1619,15 @@ const AnalyticsDashboardView = () => {
                   <EmptyState message="Todavía no hay visitas de productos registradas." />
                 )}
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+            </ChartCard>
+          </Grid>
 
-        <Grid size={{ xs: 12, lg: 4 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Productos con más clicks"
-                description="Clicks por producto desde cards, listados, búsquedas o bloques promocionales."
-              />
-              <Box
-                sx={{
-                  height: loading ? 340 : getVerticalChartHeight(topClickedProducts, 360),
-                }}
-              >
+          <Grid size={{ xs: 12, lg: 4 }}>
+            <ChartCard
+              title="Productos con más clicks"
+              description="Clicks por producto desde tarjetas, listados, búsquedas o bloques promocionales."
+            >
+              <Box sx={{ height: loading ? 340 : getVerticalChartHeight(topClickedProducts, 360) }}>
                 {loading ? (
                   <Skeleton variant="rectangular" height={340} />
                 ) : topClickedProducts.length ? (
@@ -1564,14 +1638,14 @@ const AnalyticsDashboardView = () => {
                       margin={{ top: 8, right: 28, bottom: 8, left: 12 }}
                       barCategoryGap={14}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" allowDecimals={false} />
+                      <CartesianGrid {...GRID_PROPS} />
+                      <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} />
                       <YAxis
                         dataKey="name"
                         type="category"
-                        width={180}
+                        width={isNarrow ? 110 : 180}
                         interval={0}
-                        tick={{ fontSize: 12 }}
+                        tick={AXIS_TICK}
                       />
                       <Legend verticalAlign="top" height={32} />
                       <RechartsTooltip
@@ -1590,210 +1664,174 @@ const AnalyticsDashboardView = () => {
                   <EmptyState message="Todavía no hay clicks de productos registrados." />
                 )}
               </Box>
-            </CardContent>
-          </Card>
+            </ChartCard>
+          </Grid>
         </Grid>
-      </Grid>
+      </Box>
 
-      <Grid container spacing={3} sx={{ mb: 3 }}>
+      {/* ── Conversión y tráfico ──────────────────────── */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, lg: 7 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
+          <ChartCard
+            title="Embudo de conversión"
+            description="De las sesiones a las compras: cuántas personas llegan a cada paso."
           >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Funnel de conversión"
-                description="Cada barra usa conteos reales: sesiones, vistas, clicks, carrito, checkout, pagos y compras."
-              />
-              <Box sx={{ height: 360 }}>
-                {loading ? (
-                  <Skeleton variant="rectangular" height={360} />
-                ) : funnelRows.length ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={funnelRows} layout="vertical" margin={{ left: 20, right: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" allowDecimals={false} />
-                      <YAxis dataKey="name" type="category" width={125} />
-                      <RechartsTooltip
-                        content={
-                          <BarTooltip
-                            formatter={(value, key) =>
-                              key === 'rate' ? formatPercent(value) : formatNumber(value)
-                            }
-                          />
-                        }
-                      />
-                      <Bar
-                        dataKey="value"
-                        name="Eventos reales"
-                        fill={CHART_COLORS.teal}
-                        radius={[0, 8, 8, 0]}
-                        maxBarSize={28}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <EmptyState message="Todavía no hay eventos suficientes para el funnel." />
-                )}
-              </Box>
-            </CardContent>
-          </Card>
+            <Box sx={{ height: 360 }}>
+              {loading ? (
+                <Skeleton variant="rectangular" height={360} />
+              ) : funnelRows.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={funnelRows} layout="vertical" margin={{ left: 20, right: 24 }}>
+                    <CartesianGrid {...GRID_PROPS} />
+                    <XAxis type="number" allowDecimals={false} tick={AXIS_TICK} />
+                    <YAxis dataKey="name" type="category" width={125} tick={AXIS_TICK} />
+                    <RechartsTooltip
+                      content={
+                        <BarTooltip
+                          formatter={(value, key) =>
+                            key === 'rate' ? formatPercent(value) : formatNumber(value)
+                          }
+                        />
+                      }
+                    />
+                    <Bar
+                      dataKey="value"
+                      name="Cantidad"
+                      fill={CHART_COLORS.teal}
+                      radius={[0, 8, 8, 0]}
+                      maxBarSize={28}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyState message="Todavía no hay eventos suficientes para el funnel." />
+              )}
+            </Box>
+          </ChartCard>
         </Grid>
 
         <Grid size={{ xs: 12, lg: 5 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              height: '100%',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
+          <ChartCard
+            title="Tráfico por fuente"
+            description="Sesiones y conversiones según de dónde llegó cada visita."
           >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Tráfico por fuente"
-                description="Sesiones y conversiones agrupadas por UTM source."
-              />
-              <Box sx={{ height: 360 }}>
-                {loading ? (
-                  <Skeleton variant="rectangular" height={360} />
-                ) : trafficRows.length ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={trafficRows} layout="vertical" margin={{ left: 15, right: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" />
-                      <YAxis dataKey="channel" type="category" width={110} />
-                      <Legend verticalAlign="top" height={32} />
-                      <RechartsTooltip
-                        content={<BarTooltip formatter={value => formatNumber(value)} />}
-                      />
-                      <Bar
-                        dataKey="sessions"
-                        name="Sesiones"
-                        fill={CHART_COLORS.slate}
-                        radius={[0, 8, 8, 0]}
-                      />
-                      <Bar
-                        dataKey="conversions"
-                        name="Conversiones"
-                        fill={CHART_COLORS.success}
-                        radius={[0, 8, 8, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <EmptyState message="Todavía no hay fuentes de tráfico registradas." />
-                )}
-              </Box>
-            </CardContent>
-          </Card>
+            <Box sx={{ height: 360 }}>
+              {loading ? (
+                <Skeleton variant="rectangular" height={360} />
+              ) : trafficRows.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trafficRows} layout="vertical" margin={{ left: 15, right: 24 }}>
+                    <CartesianGrid {...GRID_PROPS} />
+                    <XAxis type="number" tick={AXIS_TICK} />
+                    <YAxis dataKey="channel" type="category" width={110} tick={AXIS_TICK} />
+                    <Legend verticalAlign="top" height={32} />
+                    <RechartsTooltip
+                      content={<BarTooltip formatter={value => formatNumber(value)} />}
+                    />
+                    <Bar
+                      dataKey="sessions"
+                      name="Sesiones"
+                      fill={CHART_COLORS.slate}
+                      radius={[0, 8, 8, 0]}
+                    />
+                    <Bar
+                      dataKey="conversions"
+                      name="Conversiones"
+                      fill={CHART_COLORS.success}
+                      radius={[0, 8, 8, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyState message="Todavía no hay fuentes de tráfico registradas." />
+              )}
+            </Box>
+          </ChartCard>
         </Grid>
       </Grid>
 
+      {/* ── Detalle ───────────────────────────────────── */}
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
-            <CardContent>
-              <DashboardSectionTitle title="Últimos carritos activos" />
-              <Stack spacing={1.5}>
-                {safeArray(activeCarts.latest).length ? (
-                  safeArray(activeCarts.latest)
-                    .slice(0, 6)
-                    .map(cart => (
-                      <Paper key={cart.cartId} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack direction="row" sx={{ justifyContent: 'space-between' }} spacing={2}>
-                          <Box sx={{ minWidth: 0 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
-                              Carrito #{String(cart.cartId || '').slice(-6)}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatNumber(cart.itemCount)} productos ·{' '}
-                              {new Date(cart.updatedAt).toLocaleString('es-AR')}
-                            </Typography>
-                          </Box>
-                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
-                            {formatMoney(cart.value)}
+          <ChartCard title="Últimos carritos activos">
+            <Stack spacing={1.5}>
+              {safeArray(activeCarts.latest).length ? (
+                safeArray(activeCarts.latest)
+                  .slice(0, 6)
+                  .map(cart => (
+                    <Paper key={cart.cartId} variant="outlined" sx={{ p: 1.5, borderRadius: 3 }}>
+                      <Stack direction="row" sx={{ justifyContent: 'space-between' }} spacing={2}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 800 }} noWrap>
+                            Carrito #{String(cart.cartId || '').slice(-6)}
                           </Typography>
-                        </Stack>
-                      </Paper>
-                    ))
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No hay carritos activos recientes.
-                  </Typography>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatNumber(cart.itemCount)} productos ·{' '}
+                            {new Date(cart.updatedAt).toLocaleString('es-AR')}
+                          </Typography>
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {formatMoney(cart.value)}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  ))
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No hay carritos activos recientes.
+                </Typography>
+              )}
+            </Stack>
+          </ChartCard>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card
-            sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
+          <ChartCard
+            title="Productos, páginas y búsquedas destacadas"
+            description="Cuando la URL pertenece a un producto, se muestra nombre e imagen en lugar de la dirección técnica."
           >
-            <CardContent>
-              <DashboardSectionTitle
-                title="Productos, páginas y búsquedas destacadas"
-                description="Cuando la URL pertenece a un producto, se muestra nombre e imagen en lugar del path técnico."
-              />
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
-                    Productos o páginas más vistas
-                  </Typography>
-                  <Stack spacing={1}>
-                    {topPages.length ? (
-                      topPages.map(page => <PageInsightItem key={page.path} item={page} />)
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        Sin visitas.
-                      </Typography>
-                    )}
-                  </Stack>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
-                    Búsquedas frecuentes
-                  </Typography>
-                  <Stack spacing={1}>
-                    {topSearches.length ? (
-                      topSearches.map(search => (
-                        <SearchInsightItem
-                          key={`${search.query}-${search.productId || 'query'}`}
-                          item={search}
-                        />
-                      ))
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        Sin búsquedas.
-                      </Typography>
-                    )}
-                  </Stack>
-                </Grid>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                  Productos o páginas más vistas
+                </Typography>
+                <Stack spacing={1}>
+                  {topPages.length ? (
+                    topPages.map(page => <PageInsightItem key={page.path} item={page} />)
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Sin visitas.
+                    </Typography>
+                  )}
+                </Stack>
               </Grid>
-            </CardContent>
-          </Card>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                  Búsquedas frecuentes
+                </Typography>
+                <Stack spacing={1}>
+                  {topSearches.length ? (
+                    topSearches.map(search => (
+                      <SearchInsightItem
+                        key={`${search.query}-${search.productId || 'query'}`}
+                        item={search}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Sin búsquedas.
+                    </Typography>
+                  )}
+                </Stack>
+              </Grid>
+            </Grid>
+          </ChartCard>
         </Grid>
       </Grid>
-    </Box>
+    </Stack>
   )
 }
 
