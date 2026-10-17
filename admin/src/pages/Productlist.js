@@ -5,7 +5,7 @@ import { getAdminProducts, updateAProduct, deleteProduct } from '@features/produ
 import {
   Box,
   Typography,
-  Card,
+  ButtonBase,
   IconButton,
   Tooltip,
   CircularProgress,
@@ -15,6 +15,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Paper,
   Chip,
   Avatar,
@@ -34,6 +35,7 @@ import {
   Divider,
   Stack,
   useTheme,
+  useMediaQuery,
   alpha,
   Alert,
   Snackbar,
@@ -52,6 +54,7 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Drafts as DraftsIcon,
+  FilterAltOff as FilterOffIcon,
 } from '@mui/icons-material'
 
 // ============================================================================
@@ -83,6 +86,39 @@ const VISIBILITY_FILTER_OPTIONS = [
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 5
 const SEARCH_DEBOUNCE_MS = 400
+
+// Identidad de Henkart (la misma de la pantalla de planes, las de acceso y el Dashboard).
+const BRAND = {
+  blue: '#0b6bff',
+  violet: '#7a2cff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
+
+const HEAD_CELL_SX = {
+  fontWeight: 700,
+  color: BRAND.muted,
+  fontSize: 13,
+  letterSpacing: '0.04em',
+  py: 1.5,
+}
+
+// Las etiquetas de la paginación vienen en inglés por defecto («Go to page 3»): un lector de pantalla
+// las leía así en una interfaz en español.
+const getPaginationLabel = (type, page, selected) => {
+  if (type === 'page') return selected ? `Página ${page}, actual` : `Ir a la página ${page}`
+  if (type === 'first') return 'Primera página'
+  if (type === 'last') return 'Última página'
+  if (type === 'next') return 'Página siguiente'
+
+  return 'Página anterior'
+}
 
 // ============================================================================
 // HELPERS
@@ -137,45 +173,59 @@ const buildBackendSort = (field, order) => {
 }
 
 // ============================================================================
-// SUB-COMPONENTE: StatCard
+// SUB-COMPONENTE: SummaryTile
 // ============================================================================
 
-const StatCard = ({ title, value, icon, color, onClick, active }) => (
-  <Card
+const SummaryTile = ({ title, value, icon, color, onClick, active }) => (
+  <ButtonBase
     onClick={onClick}
+    aria-pressed={Boolean(active)}
     sx={{
-      p: 2,
-      borderRadius: 2,
-      flex: 1,
-      minWidth: 110,
-      cursor: onClick ? 'pointer' : 'default',
-      border: active ? `2px solid ${color}` : '2px solid transparent',
-      transition: 'border-color 0.15s ease',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 1,
+      p: 2.5,
+      textAlign: 'left',
+      borderBottom: '3px solid',
+      borderBottomColor: active ? color : 'transparent',
+      borderRight: '1px solid',
+      borderRightColor: BRAND.line,
+      backgroundColor: active ? alpha(color, 0.06) : 'transparent',
+      transition: 'background-color 0.15s ease',
+      '&:hover': { backgroundColor: alpha(color, 0.06) },
+      '&.Mui-focusVisible': { outline: `2px solid ${color}`, outlineOffset: -2 },
     }}
   >
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Box>
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
-          {title}
-        </Typography>
-        <Typography variant="h5" sx={{ fontWeight: 700 }} color={color}>
-          {value}
-        </Typography>
-      </Box>
-
-      <Box
+    <Box
+      aria-hidden="true"
+      sx={{
+        p: 0.75,
+        borderRadius: 2,
+        backgroundColor: alpha(color, 0.1),
+        color,
+        display: 'flex',
+      }}
+    >
+      {React.cloneElement(icon, { sx: { fontSize: 20 } })}
+    </Box>
+    <Box>
+      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+        {title}
+      </Typography>
+      <Typography
         sx={{
-          p: 1,
-          borderRadius: 2,
-          backgroundColor: alpha(color, 0.1),
-          color,
-          display: 'flex',
+          fontFamily: DISPLAY_FONT,
+          fontWeight: 800,
+          fontSize: 26,
+          lineHeight: 1.15,
+          fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {React.cloneElement(icon, { sx: { fontSize: 24 } })}
-      </Box>
+        {value}
+      </Typography>
     </Box>
-  </Card>
+  </ButtonBase>
 )
 
 // ============================================================================
@@ -186,6 +236,9 @@ const Productlist = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const theme = useTheme()
+  // En un celular la tabla obligaba a deslizar de costado y los botones de cada fila quedaban fuera
+  // de pantalla. Ahí cada producto se muestra como una tarjeta con todo a la vista.
+  const isNarrow = useMediaQuery('(max-width:600px)')
 
   const {
     adminProducts = [],
@@ -231,13 +284,21 @@ const Productlist = () => {
   // ============================================================================
 
   useEffect(() => {
+    const next = searchInput.trim()
+
+    // Solo si la búsqueda CAMBIÓ. Antes el temporizador arrancaba igual al abrir la lista y, al
+    // cumplirse (400 ms), volvía a la página 1 aunque nadie hubiera buscado nada: quien pasaba de
+    // página en esos primeros instantes rebotaba, y escribir un espacio al final de una búsqueda
+    // vigente también lo mandaba a la 1.
+    if (next === searchTerm) return undefined
+
     const handle = setTimeout(() => {
-      setSearchTerm(searchInput.trim())
+      setSearchTerm(next)
       setPage(1)
     }, SEARCH_DEBOUNCE_MS)
 
     return () => clearTimeout(handle)
-  }, [searchInput])
+  }, [searchInput, searchTerm])
 
   // ============================================================================
   // FETCH (server-side: búsqueda, filtros, orden y paginación)
@@ -507,79 +568,158 @@ const Productlist = () => {
     )
   }
 
+  const hayFiltros = Boolean(searchInput.trim() || statusFilter || visibilityFilter || stockFilter)
+
+  const clearFilters = () => {
+    setSearchInput('')
+    setSearchTerm('')
+    setStatusFilter('')
+    setVisibilityFilter('')
+    setStockFilter('')
+    setPage(1)
+  }
+
+  const clearStatusAndStock = () => {
+    setStatusFilter('')
+    setStockFilter('')
+    setPage(1)
+  }
+
+  const sortCell = field => ({
+    sortDirection: sortBy === field ? sortOrder : false,
+  })
+
+  const catalogoVacio = !hayFiltros && stats.total === 0
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto' }}>
+      <Box
+        component="header"
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'flex-end' },
+          gap: 2,
+          mb: 4,
+        }}
+      >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography
+            variant="overline"
+            sx={{ color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+          >
+            CATÁLOGO
+          </Typography>
+          <Typography
+            component="h1"
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontWeight: 800,
+              fontSize: { xs: 26, md: 34 },
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
+            }}
+          >
             Productos
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {stats.total} productos en catálogo
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            {stats.total} {stats.total === 1 ? 'producto' : 'productos'} en catálogo
           </Typography>
         </Box>
 
         <Button
           variant="contained"
+          size="large"
           startIcon={<AddIcon />}
           onClick={() => navigate('/admin/AddProduct')}
-          sx={{ borderRadius: 2, textTransform: 'none' }}
+          sx={{
+            borderRadius: 3,
+            textTransform: 'none',
+            fontWeight: 700,
+            px: 3,
+            background: GRADIENT,
+            flexShrink: 0,
+          }}
         >
-          Nuevo Producto
+          Nuevo producto
         </Button>
       </Box>
 
-      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <StatCard
-          title="Total"
-          value={stats.total}
-          icon={<InventoryIcon />}
-          color={theme.palette.primary.main}
-        />
-        <StatCard
-          title="Activos"
-          value={stats.byStatus?.active || 0}
-          icon={<TrendingUpIcon />}
-          color={theme.palette.success.main}
-          onClick={() => toggleStatusFilter('active')}
-          active={statusFilter === 'active'}
-        />
-        <StatCard
-          title="Borradores"
-          value={stats.byStatus?.draft || 0}
-          icon={<DraftsIcon />}
-          color={theme.palette.info.main}
-          onClick={() => toggleStatusFilter('draft')}
-          active={statusFilter === 'draft'}
-        />
-        <StatCard
-          title="Archivados"
-          value={stats.byStatus?.archived || 0}
-          icon={<ArchiveIcon />}
-          color={theme.palette.text.secondary}
-          onClick={() => toggleStatusFilter('archived')}
-          active={statusFilter === 'archived'}
-        />
-        <StatCard
-          title="Stock Bajo"
-          value={stats.lowStock || 0}
-          icon={<TrendingDownIcon />}
-          color={theme.palette.warning.main}
-          onClick={() => toggleStockFilter('low')}
-          active={stockFilter === 'low'}
-        />
-        <StatCard
-          title="Sin Stock"
-          value={stats.outOfStock || 0}
-          icon={<TrendingDownIcon />}
-          color={theme.palette.error.main}
-          onClick={() => toggleStockFilter('out')}
-          active={stockFilter === 'out'}
-        />
-      </Stack>
+      {/* El resumen es también el filtro rápido: cada cifra se toca para ver esos productos. */}
+      <Paper
+        component="section"
+        aria-label="Resumen del catálogo"
+        variant="outlined"
+        sx={{ ...PANEL_SX, mb: 3, overflow: 'hidden' }}
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, 1fr)',
+              sm: 'repeat(3, 1fr)',
+              lg: 'repeat(6, 1fr)',
+            },
+          }}
+        >
+          <SummaryTile
+            title="Total"
+            value={stats.total}
+            icon={<InventoryIcon />}
+            color={BRAND.blue}
+            onClick={clearStatusAndStock}
+            active={!statusFilter && !stockFilter}
+          />
+          <SummaryTile
+            title="Activos"
+            value={stats.byStatus?.active || 0}
+            icon={<TrendingUpIcon />}
+            color={theme.palette.success.main}
+            onClick={() => toggleStatusFilter('active')}
+            active={statusFilter === 'active'}
+          />
+          <SummaryTile
+            title="Borradores"
+            value={stats.byStatus?.draft || 0}
+            icon={<DraftsIcon />}
+            color={BRAND.violet}
+            onClick={() => toggleStatusFilter('draft')}
+            active={statusFilter === 'draft'}
+          />
+          <SummaryTile
+            title="Archivados"
+            value={stats.byStatus?.archived || 0}
+            icon={<ArchiveIcon />}
+            color={theme.palette.text.secondary}
+            onClick={() => toggleStatusFilter('archived')}
+            active={statusFilter === 'archived'}
+          />
+          <SummaryTile
+            title="Stock Bajo"
+            value={stats.lowStock || 0}
+            icon={<TrendingDownIcon />}
+            color={theme.palette.warning.main}
+            onClick={() => toggleStockFilter('low')}
+            active={stockFilter === 'low'}
+          />
+          <SummaryTile
+            title="Sin Stock"
+            value={stats.outOfStock || 0}
+            icon={<TrendingDownIcon />}
+            color={theme.palette.error.main}
+            onClick={() => toggleStockFilter('out')}
+            active={stockFilter === 'out'}
+          />
+        </Box>
+      </Paper>
 
-      <Card sx={{ mb: 3, p: 2, borderRadius: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: 'center' }}>
+      <Paper variant="outlined" sx={{ ...PANEL_SX, mb: 3, p: 2 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          sx={{ alignItems: { md: 'center' } }}
+        >
           <TextField
             fullWidth
             size="small"
@@ -594,13 +734,15 @@ const Productlist = () => {
                   </InputAdornment>
                 ),
               },
+              htmlInput: { 'aria-label': 'Buscar productos' },
             }}
-            sx={{ maxWidth: { sm: 380 } }}
+            sx={{ maxWidth: { md: 540 } }}
           />
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Estado</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel id="filtro-estado-label">Estado</InputLabel>
             <Select
+              labelId="filtro-estado-label"
               label="Estado"
               value={statusFilter}
               onChange={e => handleStatusFilterChange(e.target.value)}
@@ -613,9 +755,10 @@ const Productlist = () => {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Visibilidad</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel id="filtro-visibilidad-label">Visibilidad</InputLabel>
             <Select
+              labelId="filtro-visibilidad-label"
               label="Visibilidad"
               value={visibilityFilter}
               onChange={e => handleVisibilityFilterChange(e.target.value)}
@@ -628,12 +771,23 @@ const Productlist = () => {
             </Select>
           </FormControl>
 
-          <Box sx={{ flex: 1 }} />
+          {hayFiltros && (
+            <Button
+              onClick={clearFilters}
+              startIcon={<FilterOffIcon />}
+              sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
+            >
+              Limpiar filtros
+            </Button>
+          )}
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+
+          <FormControl size="small" sx={{ minWidth: 160 }}>
             <Select
               value={rowsPerPage}
               onChange={e => handleRowsPerPageChange(Number(e.target.value))}
+              SelectDisplayProps={{ 'aria-label': 'Productos por página' }}
             >
               <MenuItem value={10}>10 por página</MenuItem>
               <MenuItem value={25}>25 por página</MenuItem>
@@ -641,7 +795,7 @@ const Productlist = () => {
             </Select>
           </FormControl>
         </Stack>
-      </Card>
+      </Paper>
 
       {isAdminLoading && hasLoadedOnce.current && (
         <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />
@@ -653,38 +807,9 @@ const Productlist = () => {
         </Alert>
       )}
 
-      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2 }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
-              <TableCell
-                onClick={() => handleSort('title')}
-                sx={{ cursor: 'pointer', fontWeight: 700 }}
-              >
-                Producto {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>SKU</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Categoría</TableCell>
-              <TableCell
-                onClick={() => handleSort('price')}
-                sx={{ cursor: 'pointer', fontWeight: 700 }}
-              >
-                Precio {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </TableCell>
-              <TableCell
-                onClick={() => handleSort('stock')}
-                sx={{ cursor: 'pointer', fontWeight: 700 }}
-              >
-                Stock {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Acciones
-              </TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
+      <Paper variant="outlined" sx={{ ...PANEL_SX, overflow: 'hidden' }}>
+        {isNarrow ? (
+          <Stack spacing={1.5} sx={{ p: 1.5 }}>
             {adminProducts.map(product => {
               const stock = toNumber(product.stock, 0)
               const minAlert = getLowStockThreshold(product)
@@ -696,160 +821,411 @@ const Productlist = () => {
               }
 
               return (
-                <TableRow
+                <Paper
                   key={product._id}
-                  hover
+                  component="article"
+                  variant="outlined"
                   sx={{
-                    '&:last-child td, &:last-child th': { border: 0 },
+                    p: 2,
+                    borderRadius: 3,
+                    borderColor: BRAND.line,
                     opacity: isMutating ? 0.6 : 1,
-                    backgroundColor:
-                      stock === 0 ? alpha(theme.palette.error.main, 0.05) : 'inherit',
+                    backgroundColor: stock === 0 ? alpha(theme.palette.error.main, 0.04) : '#fff',
                   }}
                 >
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar
-                        src={getProductMainImage(product)}
-                        alt={product.title}
-                        variant="rounded"
-                        sx={{ width: 50, height: 50 }}
-                      >
-                        {product.title?.charAt(0) || '?'}
-                      </Avatar>
-
-                      <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                          {product.title || 'Sin título'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {getProductBrand(product)}
-                          {product.visibility === 'hidden' && ' · Oculto'}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontFamily: 'monospace' }}
-                      color="text.secondary"
+                  <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                    <Avatar
+                      src={getProductMainImage(product)}
+                      alt={product.title}
+                      variant="rounded"
+                      sx={{ width: 56, height: 56, borderRadius: 3, bgcolor: BRAND.paper }}
                     >
-                      {getProductSku(product)}
-                    </Typography>
-                  </TableCell>
+                      {product.title?.charAt(0) || '?'}
+                    </Avatar>
 
-                  <TableCell>
-                    <Stack direction="column" spacing={0.5}>
-                      <Chip
-                        label={product.categoria || 'Sin categoría'}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.75rem', width: 'fit-content' }}
-                      />
-                      {product.subcategoria && (
-                        <Typography variant="caption" color="text.secondary">
-                          {product.subcategoria}
-                        </Typography>
-                      )}
-                    </Stack>
-                  </TableCell>
-
-                  <TableCell>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      {formatPrice(product.price)}
-                    </Typography>
-                  </TableCell>
-
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700, fontSize: '1rem' }}
-
-                        color={
-                          stock === 0
-                            ? 'error.main'
-                            : stock < minAlert
-                              ? 'warning.main'
-                              : 'success.main'
-                        }
-                      >
-                        {stock}
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {product.title || 'Sin título'}
                       </Typography>
-
-                      <Chip
-                        icon={stockStatus.icon}
-                        label={stockStatus.label}
-                        size="small"
+                      <Typography variant="caption" color="text.secondary">
+                        {getProductBrand(product)}
+                        {product.visibility === 'hidden' && ' · Oculto'}
+                      </Typography>
+                      <Typography
                         sx={{
-                          backgroundColor: alpha(stockStatus.bgColor, 0.1),
-                          color: stockStatus.bgColor,
-                          fontWeight: 600,
-                          border: `1px solid ${alpha(stockStatus.bgColor, 0.3)}`,
-                          '& .MuiChip-icon': {
-                            color: stockStatus.bgColor,
-                          },
+                          mt: 0.5,
+                          fontFamily: DISPLAY_FONT,
+                          fontWeight: 800,
+                          fontVariantNumeric: 'tabular-nums',
                         }}
-                      />
-
-                      {product.hasVariants && (
-                        <Tooltip title="Stock agregado de todas las variantes">
-                          <Chip label="Variantes" size="small" variant="outlined" />
-                        </Tooltip>
-                      )}
+                      >
+                        {formatPrice(product.price)}
+                      </Typography>
                     </Box>
-                  </TableCell>
 
-                  <TableCell>
+                    <Box sx={{ display: 'flex', flexShrink: 0 }}>
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          disabled={isMutating}
+                          onClick={() => navigate(`/admin/edit-product/${product._id}`)}
+                          sx={{ color: BRAND.blue }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+
+                      <Tooltip title="Más acciones">
+                        <IconButton
+                          size="small"
+                          disabled={isMutating}
+                          onClick={e => openMenu(e, product)}
+                        >
+                          {isMutating ? (
+                            <CircularProgress size={18} />
+                          ) : (
+                            <MoreVertIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                      mt: 1.5,
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontFamily: DISPLAY_FONT,
+                        fontWeight: 800,
+                        minWidth: 24,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                      color={
+                        stock === 0
+                          ? 'error.main'
+                          : stock < minAlert
+                            ? 'warning.main'
+                            : 'success.main'
+                      }
+                    >
+                      {stock}
+                    </Typography>
+
+                    <Chip
+                      icon={stockStatus.icon}
+                      label={stockStatus.label}
+                      size="small"
+                      sx={{
+                        backgroundColor: alpha(stockStatus.bgColor, 0.1),
+                        color: stockStatus.bgColor,
+                        fontWeight: 600,
+                        border: `1px solid ${alpha(stockStatus.bgColor, 0.3)}`,
+                        '& .MuiChip-icon': { color: stockStatus.bgColor },
+                      }}
+                    />
+
+                    {product.hasVariants && (
+                      <Chip label="Variantes" size="small" variant="outlined" />
+                    )}
+
                     <Chip
                       label={statusMeta.label}
                       size="small"
                       color={statusMeta.color}
                       variant={product.status === 'active' ? 'filled' : 'outlined'}
                     />
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <Tooltip title="Editar">
-                      <IconButton
-                        size="small"
-                        disabled={isMutating}
-                        onClick={() => navigate(`/admin/edit-product/${product._id}`)}
-                        sx={{ color: theme.palette.primary.main }}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-
-                    <Tooltip title="Más acciones">
-                      <IconButton
-                        size="small"
-                        disabled={isMutating}
-                        onClick={e => openMenu(e, product)}
-                      >
-                        {isMutating ? (
-                          <CircularProgress size={18} />
-                        ) : (
-                          <MoreVertIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
+                  </Box>
+                </Paper>
               )
             })}
+          </Stack>
+        ) : (
+          <TableContainer>
+            <Table size="medium" sx={{ minWidth: 640 }}>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: BRAND.paper }}>
+                  <TableCell {...sortCell('title')} sx={HEAD_CELL_SX}>
+                    <TableSortLabel
+                      active={sortBy === 'title'}
+                      direction={sortBy === 'title' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('title')}
+                    >
+                      Producto
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sx={{ ...HEAD_CELL_SX, display: { xs: 'none', md: 'table-cell' } }}>
+                    SKU
+                  </TableCell>
+                  <TableCell sx={{ ...HEAD_CELL_SX, display: { xs: 'none', lg: 'table-cell' } }}>
+                    Categoría
+                  </TableCell>
+                  <TableCell {...sortCell('price')} sx={HEAD_CELL_SX}>
+                    <TableSortLabel
+                      active={sortBy === 'price'}
+                      direction={sortBy === 'price' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('price')}
+                    >
+                      Precio
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell {...sortCell('stock')} sx={HEAD_CELL_SX}>
+                    <TableSortLabel
+                      active={sortBy === 'stock'}
+                      direction={sortBy === 'stock' ? sortOrder : 'asc'}
+                      onClick={() => handleSort('stock')}
+                    >
+                      Stock
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell sx={HEAD_CELL_SX}>Estado</TableCell>
+                  <TableCell align="right" sx={HEAD_CELL_SX}>
+                    Acciones
+                  </TableCell>
+                </TableRow>
+              </TableHead>
 
-            {adminProducts.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No se encontraron productos</Typography>
-                </TableCell>
-              </TableRow>
+              <TableBody>
+                {adminProducts.map(product => {
+                  const stock = toNumber(product.stock, 0)
+                  const minAlert = getLowStockThreshold(product)
+                  const stockStatus = getStockStatus(stock, minAlert)
+                  const isMutating = mutatingId === product._id
+                  const statusMeta = PRODUCT_STATUS_META[product.status] || {
+                    label: product.status || 'Sin estado',
+                    color: 'default',
+                  }
+
+                  return (
+                    <TableRow
+                      key={product._id}
+                      hover
+                      sx={{
+                        '&:last-child td, &:last-child th': { border: 0 },
+                        opacity: isMutating ? 0.6 : 1,
+                        backgroundColor:
+                          stock === 0 ? alpha(theme.palette.error.main, 0.04) : 'inherit',
+                      }}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Avatar
+                            src={getProductMainImage(product)}
+                            alt={product.title}
+                            variant="rounded"
+                            sx={{ width: 52, height: 52, borderRadius: 3, bgcolor: BRAND.paper }}
+                          >
+                            {product.title?.charAt(0) || '?'}
+                          </Avatar>
+
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                              {product.title || 'Sin título'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {getProductBrand(product)}
+                              {product.visibility === 'hidden' && ' · Oculto'}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+
+                      <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: 'monospace' }}
+                          color="text.secondary"
+                        >
+                          {getProductSku(product)}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                        <Stack direction="column" spacing={0.5}>
+                          <Chip
+                            label={product.categoria || 'Sin categoría'}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: '0.75rem', width: 'fit-content' }}
+                          />
+                          {product.subcategoria && (
+                            <Typography variant="caption" color="text.secondary">
+                              {product.subcategoria}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography
+                          sx={{
+                            fontFamily: DISPLAY_FONT,
+                            fontWeight: 800,
+                            fontVariantNumeric: 'tabular-nums',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {formatPrice(product.price)}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell>
+                        <Box
+                          sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+                        >
+                          <Typography
+                            sx={{
+                              fontFamily: DISPLAY_FONT,
+                              fontWeight: 800,
+                              fontSize: '1.05rem',
+                              minWidth: 28,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                            color={
+                              stock === 0
+                                ? 'error.main'
+                                : stock < minAlert
+                                  ? 'warning.main'
+                                  : 'success.main'
+                            }
+                          >
+                            {stock}
+                          </Typography>
+
+                          <Chip
+                            icon={stockStatus.icon}
+                            label={stockStatus.label}
+                            size="small"
+                            sx={{
+                              backgroundColor: alpha(stockStatus.bgColor, 0.1),
+                              color: stockStatus.bgColor,
+                              fontWeight: 600,
+                              border: `1px solid ${alpha(stockStatus.bgColor, 0.3)}`,
+                              '& .MuiChip-icon': {
+                                color: stockStatus.bgColor,
+                              },
+                            }}
+                          />
+
+                          {product.hasVariants && (
+                            <Tooltip title="Stock agregado de todas las variantes">
+                              <Chip label="Variantes" size="small" variant="outlined" />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+
+                      <TableCell>
+                        <Chip
+                          label={statusMeta.label}
+                          size="small"
+                          color={statusMeta.color}
+                          variant={product.status === 'active' ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                        <Tooltip title="Editar">
+                          <IconButton
+                            size="small"
+                            disabled={isMutating}
+                            onClick={() => navigate(`/admin/edit-product/${product._id}`)}
+                            sx={{ color: BRAND.blue }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Más acciones">
+                          <IconButton
+                            size="small"
+                            disabled={isMutating}
+                            onClick={e => openMenu(e, product)}
+                          >
+                            {isMutating ? (
+                              <CircularProgress size={18} />
+                            ) : (
+                              <MoreVertIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {adminProducts.length === 0 && (
+          <Box sx={{ py: 8, px: 3, textAlign: 'center' }}>
+            <Box
+              aria-hidden="true"
+              sx={{
+                width: 56,
+                height: 56,
+                mx: 'auto',
+                mb: 2,
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: 3,
+                bgcolor: `${BRAND.blue}14`,
+                color: BRAND.blue,
+              }}
+            >
+              <InventoryIcon />
+            </Box>
+
+            {catalogoVacio ? (
+              <>
+                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+                  Todavía no cargaste ningún producto
+                </Typography>
+                <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
+                  Subí una foto y la IA completa la ficha por vos.
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => navigate('/admin/AddProduct')}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    borderRadius: 3,
+                    background: GRADIENT,
+                  }}
+                >
+                  Crear tu primer producto
+                </Button>
+              </>
+            ) : (
+              <>
+                <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+                  {hayFiltros
+                    ? 'No se encontraron productos con esos filtros'
+                    : 'No se encontraron productos'}
+                </Typography>
+                {hayFiltros && (
+                  <Button
+                    onClick={clearFilters}
+                    startIcon={<FilterOffIcon />}
+                    sx={{ mt: 2, textTransform: 'none', fontWeight: 700 }}
+                  >
+                    Limpiar filtros
+                  </Button>
+                )}
+              </>
             )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </Box>
+        )}
+      </Paper>
 
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
@@ -860,6 +1236,7 @@ const Productlist = () => {
             color="primary"
             showFirstButton
             showLastButton
+            getItemAriaLabel={getPaginationLabel}
           />
         </Box>
       )}
