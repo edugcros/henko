@@ -501,6 +501,49 @@
   overflow-wrap: anywhere;
 }
 
+/* Un aviso que va justo debajo del título (sin párrafo de por medio) necesita su propio aire. */
+.hk-auth-card h1 + .hk-auth-notice,
+.hk-auth-card h1 + .hk-auth-alert {
+  margin-top: 18px;
+}
+
+/* Código grande de las pantallas de error (403, 404). */
+.hk-auth-code {
+  display: block;
+  margin: 0 0 6px;
+  font-family: var(--hk-display);
+  font-size: 76px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  background: var(--hk-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Indicador de carga sobre fondo claro (el .hk-auth-spinner es blanco, para el botón). */
+.hk-auth-loader {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  vertical-align: -5px;
+  border: 3px solid var(--hk-line);
+  border-top-color: var(--hk-blue);
+  border-radius: 50%;
+  animation: hk-auth-spin 0.8s linear infinite;
+}
+
+/* El botón secundario también se usa en enlaces. */
+a.hk-auth-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+  text-decoration: none;
+}
+
 .hk-auth-ghost {
   display: block;
   width: 100%;

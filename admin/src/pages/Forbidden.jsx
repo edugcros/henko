@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import './NotFound.css'
+import AuthShell from '../components/AuthShell.js'
 
 // PrivateRoute redirige acá cuando el usuario está logueado pero le falta el
 // rol requerido por la ruta. Antes redirigía a /403 sin ruta registrada y
@@ -9,13 +9,15 @@ import './NotFound.css'
 // existía.
 const Forbidden = () => {
   return (
-    <div className="notfound-container">
-      <h1 className="notfound-title">403</h1>
-      <p className="notfound-message">Tu cuenta no tiene permisos para acceder a esta sección.</p>
-      <Link to="/admin" className="notfound-link">
-        Volver al panel principal
+    <AuthShell titleId="forbidden-title">
+      <span className="hk-auth-code">403</span>
+      <h1 id="forbidden-title">No tenés acceso a esta sección</h1>
+      <p className="hk-auth-lead">Tu cuenta no tiene permisos para acceder a esta sección.</p>
+
+      <Link className="hk-auth-submit" to="/admin">
+        <span>Volver al panel principal</span>
       </Link>
-    </div>
+    </AuthShell>
   )
 }
 
