@@ -38,6 +38,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  LinearProgress,
+  ButtonBase,
+  useMediaQuery,
 } from '@mui/material'
 import {
   Search,
@@ -57,6 +60,7 @@ import {
   DeleteForever,
   LocalShipping,
   Save,
+  FilterAltOff,
 } from '@mui/icons-material'
 import {
   getOrdersThunk,
@@ -141,16 +145,21 @@ const CONFIG = {
   DEFAULT_PAGE_SIZE: 10,
   HIGH_VALUE_THRESHOLD: 100000,
   EXPORT_FILENAME_PREFIX: 'ordenes-admin',
-  COLORS: {
-    AMAZON_ORANGE: '#FF9900',
-    AMAZON_DARK: '#131921',
-    AMAZON_RED: '#B12704',
-    AMAZON_GREEN: '#067D62',
-    AMAZON_BLUE: '#007185',
-    AMAZON_TEXT: '#0F1111',
-    AMAZON_SECONDARY: '#565959',
-  },
 }
+
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  violet: '#7a2cff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
 
 const EMPTY_CONFIRM_DIALOG = {
   open: false,
@@ -183,71 +192,48 @@ const UI_TO_LEGACY_ORDER_STATUS = {
   refunded: ORDER_STATUSES.REFUNDED,
 }
 
+// Cada estado tiene su color (ámbar: falta algo, azul: en marcha, verde: terminó bien, rojo: se cortó,
+// violeta: se devolvió). El texto va siempre escrito: el color solo no alcanza para distinguirlos.
+const TONES = {
+  neutral: { color: '#55618a', bgColor: '#f1f4fb' },
+  warning: { color: '#9a5b00', bgColor: '#fff6e0' },
+  info: { color: '#0b55cc', bgColor: '#eaf2ff' },
+  success: { color: '#047857', bgColor: '#e8f8f0' },
+  danger: { color: '#b42318', bgColor: '#fdeceb' },
+  returned: { color: '#6d28d9', bgColor: '#f3ecff' },
+}
+
 const STATUS_BADGE_CONFIGS = {
-  open: {
-    color: '#FF9900',
-    bgColor: '#FFFAF0',
-    borderColor: '#FFC107',
-    label: 'Abierta',
-  },
-  processing: {
-    color: '#007185',
-    bgColor: '#F0F9FB',
-    borderColor: '#007185',
-    label: 'Procesando',
-  },
-  shipped: {
-    color: '#007185',
-    bgColor: '#F0F9FB',
-    borderColor: '#007185',
-    label: 'Enviada',
-  },
-  delivered: {
-    color: '#067D62',
-    bgColor: '#F0F9F4',
-    borderColor: '#067D62',
-    label: 'Entregada',
-  },
-  cancelled: {
-    color: '#B12704',
-    bgColor: '#FEF2F2',
-    borderColor: '#B12704',
-    label: 'Cancelada',
-  },
-  refunded: {
-    color: '#6B21A8',
-    bgColor: '#FAF5FF',
-    borderColor: '#6B21A8',
-    label: 'Reembolsada',
-  },
+  open: { ...TONES.warning, label: 'Abierta' },
+  processing: { ...TONES.info, label: 'Procesando' },
+  shipped: { ...TONES.info, label: 'Enviada' },
+  delivered: { ...TONES.success, label: 'Entregada' },
+  cancelled: { ...TONES.danger, label: 'Cancelada' },
+  refunded: { ...TONES.returned, label: 'Reembolsada' },
 }
 
 const PAYMENT_BADGE_CONFIGS = {
-  pending: { label: 'Pendiente', color: '#FF9900', bgColor: '#FFFAF0' },
-  approved: { label: 'Aprobado', color: '#067D62', bgColor: '#F0F9F4' },
-  rejected: { label: 'Rechazado', color: '#B12704', bgColor: '#FEF2F2' },
-  cancelled: { label: 'Cancelado', color: '#B12704', bgColor: '#FEF2F2' },
-  refunded: { label: 'Reembolsado', color: '#6B21A8', bgColor: '#FAF5FF' },
+  pending: { ...TONES.warning, label: 'Pendiente' },
+  approved: { ...TONES.success, label: 'Aprobado' },
+  rejected: { ...TONES.danger, label: 'Rechazado' },
+  cancelled: { ...TONES.danger, label: 'Cancelado' },
+  refunded: { ...TONES.returned, label: 'Reembolsado' },
 }
 
 const FULFILLMENT_BADGE_CONFIGS = {
-  unfulfilled: { label: 'Sin preparar', color: '#565959', bgColor: '#F7F7F7' },
-  preparing: { label: 'Preparando', color: '#007185', bgColor: '#F0F9FB' },
-  ready_to_ship: {
-    label: 'Lista para envío',
-    color: '#007185',
-    bgColor: '#F0F9FB',
-  },
-  shipped: { label: 'En tránsito', color: '#007185', bgColor: '#F0F9FB' },
-  delivered: { label: 'Entregada', color: '#067D62', bgColor: '#F0F9F4' },
-  returned: { label: 'Devuelta', color: '#6B21A8', bgColor: '#FAF5FF' },
+  unfulfilled: { ...TONES.neutral, label: 'Sin preparar' },
+  preparing: { ...TONES.info, label: 'Preparando' },
+  ready_to_ship: { ...TONES.info, label: 'Lista para envío' },
+  shipped: { ...TONES.info, label: 'En tránsito' },
+  delivered: { ...TONES.success, label: 'Entregada' },
+  returned: { ...TONES.returned, label: 'Devuelta' },
 }
 
 // ==========================================
 // HELPERS
 // ==========================================
 
-const normalizeValue = value => {
+export const normalizeValue = value => {
   if (value === null || value === undefined) return 0
   if (typeof value === 'object' && value.$numberDecimal) return Number(value.$numberDecimal) || 0
   if (typeof value === 'object' && value.$numberInt) return Number(value.$numberInt) || 0
@@ -257,7 +243,7 @@ const normalizeValue = value => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const resolveMoneyAmount = (decimalValue, centsValue) => {
+export const resolveMoneyAmount = (decimalValue, centsValue) => {
   const decimal = normalizeValue(decimalValue)
 
   if (decimal > 0) return decimal
@@ -268,7 +254,7 @@ const resolveMoneyAmount = (decimalValue, centsValue) => {
   return 0
 }
 
-const formatCurrency = amount => {
+export const formatCurrency = amount => {
   try {
     return new Intl.NumberFormat('es-AR', {
       style: 'currency',
@@ -280,7 +266,7 @@ const formatCurrency = amount => {
   }
 }
 
-const formatDateShort = date => {
+export const formatDateShort = date => {
   if (!date) return '-'
 
   try {
@@ -295,17 +281,17 @@ const formatDateFile = () => dayjs().format('YYYY-MM-DD-HHmm')
 
 const normalizeString = value => String(value || '').trim()
 
-const normalizeOrderStatusForUI = status => {
+export const normalizeOrderStatusForUI = status => {
   const normalized = normalizeString(status).toLowerCase()
   return LEGACY_TO_UI_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
-const normalizeOrderStatusForLegacyApi = status => {
+export const normalizeOrderStatusForLegacyApi = status => {
   const normalized = normalizeString(status).toLowerCase()
   return UI_TO_LEGACY_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
-const buildApiFilters = filters => {
+export const buildApiFilters = filters => {
   const normalizedStatus = normalizeString(filters.status).toLowerCase()
 
   return {
@@ -315,10 +301,10 @@ const buildApiFilters = filters => {
   }
 }
 
-const getOrderDisplayId = order =>
+export const getOrderDisplayId = order =>
   order?.orderNumber || order?._id?.slice(-8)?.toUpperCase() || 'SIN-ID'
 
-const getOrderCustomerName = order => {
+export const getOrderCustomerName = order => {
   const firstName =
     order?.orderby?.firstName ||
     order?.orderby?.firstname ||
@@ -342,21 +328,21 @@ const getOrderCustomerName = order => {
 // el admin le puede mostrar al operador un email distinto del que el
 // cliente realmente recibió (ej. compró logueado pero puso otro email en el
 // checkout).
-const getOrderCustomerEmail = order =>
+export const getOrderCustomerEmail = order =>
   order?.shippingAddress?.email ||
   order?.customerSnapshot?.email ||
   order?.paymentIntent?.payerEmail ||
   order?.orderby?.email ||
   'Sin email'
 
-const getOrderCustomerPhone = order =>
+export const getOrderCustomerPhone = order =>
   order?.orderby?.phone ||
   order?.orderby?.mobile ||
   order?.customerSnapshot?.mobile ||
   order?.shippingAddress?.phone ||
   ''
 
-const getProductImageUrl = product => {
+export const getProductImageUrl = product => {
   if (!product) return null
 
   if (product.image && typeof product.image === 'object' && product.image.url) {
@@ -376,15 +362,15 @@ const getProductImageUrl = product => {
   return null
 }
 
-const getLineImageUrl = item => {
+export const getLineImageUrl = item => {
   return item?.imageSnapshot || item?.image || getProductImageUrl(item?.product) || null
 }
 
-const getLineTitle = item => {
+export const getLineTitle = item => {
   return item?.product?.title || item?.title || item?.titleSnapshot || 'Producto sin título'
 }
 
-const getLineSku = item => {
+export const getLineSku = item => {
   return (
     item?.product?.sku ||
     item?.sku ||
@@ -395,12 +381,12 @@ const getLineSku = item => {
   )
 }
 
-const getLineQuantity = item => {
+export const getLineQuantity = item => {
   const quantity = normalizeValue(item?.count ?? item?.quantity)
   return quantity > 0 ? quantity : 0
 }
 
-const isOrderProtectedFromDelete = order => {
+export const isOrderProtectedFromDelete = order => {
   const paymentStatus = normalizeString(order?.paymentStatus).toLowerCase()
   const orderStatus = normalizeOrderStatusForUI(order?.orderStatus)
   const fulfillmentStatus = normalizeString(order?.fulfillmentStatus).toLowerCase()
@@ -444,13 +430,13 @@ const downloadTextFile = ({ filename, content, mimeType = 'text/csv;charset=utf-
   URL.revokeObjectURL(url)
 }
 
-const escapeCsv = value => {
+export const escapeCsv = value => {
   const raw = value === null || value === undefined ? '' : String(value)
   const escaped = raw.replace(/"/g, '""')
   return `"${escaped}"`
 }
 
-const buildOrdersCsv = orders => {
+export const buildOrdersCsv = orders => {
   const headers = [
     'Pedido',
     'Fecha',
@@ -482,28 +468,34 @@ const buildOrdersCsv = orders => {
 // BADGES
 // ==========================================
 
+const Pill = ({ config, size = 'small' }) => (
+  <Box
+    component="span"
+    sx={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      px: 1.25,
+      py: 0.25,
+      borderRadius: 999,
+      fontSize: size === 'small' ? '0.75rem' : '0.875rem',
+      fontWeight: 700,
+      color: config.color,
+      bgcolor: config.bgColor,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {config.label}
+  </Box>
+)
+
 const StatusBadge = memo(({ status, size = 'small' }) => {
   const normalizedStatus = normalizeOrderStatusForUI(status)
-  const config = STATUS_BADGE_CONFIGS[normalizedStatus] || STATUS_BADGE_CONFIGS.open
 
   return (
-    <Box
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        px: 1.5,
-        py: 0.5,
-        borderRadius: 1,
-        fontSize: size === 'small' ? '0.75rem' : '0.875rem',
-        fontWeight: 600,
-        color: config.color,
-        bgcolor: config.bgColor,
-        border: `1px solid ${config.borderColor}`,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {config.label}
-    </Box>
+    <Pill
+      config={STATUS_BADGE_CONFIGS[normalizedStatus] || STATUS_BADGE_CONFIGS.open}
+      size={size}
+    />
   )
 })
 
@@ -511,30 +503,16 @@ StatusBadge.displayName = 'StatusBadge'
 
 const PaymentBadge = memo(({ paymentStatus }) => {
   const normalizedStatus = normalizeString(paymentStatus).toLowerCase()
-  const config = PAYMENT_BADGE_CONFIGS[normalizedStatus] || {
-    label: paymentStatus || 'Desconocido',
-    color: '#565959',
-    bgColor: '#F7F7F7',
-  }
 
   return (
-    <Box
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        px: 1.5,
-        py: 0.5,
-        borderRadius: 1,
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        color: config.color,
-        bgcolor: config.bgColor,
-        border: `1px solid ${config.color}20`,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {config.label}
-    </Box>
+    <Pill
+      config={
+        PAYMENT_BADGE_CONFIGS[normalizedStatus] || {
+          ...TONES.neutral,
+          label: paymentStatus || 'Desconocido',
+        }
+      }
+    />
   )
 })
 
@@ -542,30 +520,16 @@ PaymentBadge.displayName = 'PaymentBadge'
 
 const FulfillmentBadge = memo(({ fulfillmentStatus }) => {
   const normalizedStatus = normalizeString(fulfillmentStatus).toLowerCase()
-  const config = FULFILLMENT_BADGE_CONFIGS[normalizedStatus] || {
-    label: fulfillmentStatus || 'Desconocido',
-    color: '#565959',
-    bgColor: '#F7F7F7',
-  }
 
   return (
-    <Box
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        px: 1.5,
-        py: 0.5,
-        borderRadius: 1,
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        color: config.color,
-        bgcolor: config.bgColor,
-        border: `1px solid ${config.color}20`,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {config.label}
-    </Box>
+    <Pill
+      config={
+        FULFILLMENT_BADGE_CONFIGS[normalizedStatus] || {
+          ...TONES.neutral,
+          label: fulfillmentStatus || 'Desconocido',
+        }
+      }
+    />
   )
 })
 
@@ -588,11 +552,12 @@ const ProductItem = memo(({ item }) => {
       sx={{
         display: 'flex',
         alignItems: 'flex-start',
+        flexWrap: { xs: 'wrap', sm: 'nowrap' },
         gap: 2,
         p: 2,
         mb: 1.5,
-        borderRadius: 1,
-        border: '1px solid #D5D9D9',
+        borderRadius: 3,
+        border: `1px solid ${BRAND.line}`,
         bgcolor: 'white',
       }}
     >
@@ -603,43 +568,40 @@ const ProductItem = memo(({ item }) => {
           sx={{
             width: 80,
             height: 80,
-            bgcolor: '#F7F7F7',
-            border: '1px solid #D5D9D9',
+            bgcolor: BRAND.paper,
+            border: `1px solid ${BRAND.line}`,
           }}
         >
           {!imageUrl && <ShoppingBag />}
         </Avatar>
       </Badge>
 
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ flex: '1 1 140px', minWidth: 0 }}>
         <Typography
           variant="body1"
 
-          sx={{ fontWeight: 500, color: CONFIG.COLORS.AMAZON_TEXT, mb: 0.5, lineHeight: 1.4 }}
+          sx={{ fontWeight: 500, color: BRAND.ink, mb: 0.5, lineHeight: 1.4 }}
         >
           {title}
         </Typography>
 
         {sku && (
-          <Typography
-            variant="caption"
-            sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY, display: 'block' }}
-          >
+          <Typography variant="caption" sx={{ color: BRAND.muted, display: 'block' }}>
             SKU: {sku}
           </Typography>
         )}
       </Box>
 
-      <Box sx={{ textAlign: 'right', minWidth: 110 }}>
+      <Box sx={{ textAlign: 'right', minWidth: 110, ml: 'auto' }}>
         <Typography
           variant="body1"
 
-          sx={{ fontWeight: 700, color: CONFIG.COLORS.AMAZON_RED, fontSize: '1.1rem' }}
+          sx={{ fontWeight: 700, color: BRAND.ink, fontSize: '1.1rem' }}
         >
           {formatCurrency(subtotal)}
         </Typography>
 
-        <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+        <Typography variant="caption" sx={{ color: BRAND.muted }}>
           {quantity} × {formatCurrency(price)}
         </Typography>
       </Box>
@@ -657,8 +619,8 @@ const ShippingCard = memo(({ address }) => {
       sx={{
         mt: 2,
         p: 3,
-        borderRadius: 1,
-        border: '1px solid #D5D9D9',
+        borderRadius: 3,
+        border: `1px solid ${BRAND.line}`,
         bgcolor: 'white',
       }}
     >
@@ -668,14 +630,14 @@ const ShippingCard = memo(({ address }) => {
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          color: CONFIG.COLORS.AMAZON_TEXT,
+          color: BRAND.ink,
           fontWeight: 700,
           fontSize: '0.9rem',
           mb: 2,
           textTransform: 'uppercase',
         }}
       >
-        <LocationOn fontSize="small" sx={{ color: CONFIG.COLORS.AMAZON_BLUE }} />
+        <LocationOn fontSize="small" sx={{ color: BRAND.blue }} />
         Dirección de envío
       </Typography>
 
@@ -683,11 +645,11 @@ const ShippingCard = memo(({ address }) => {
         {address.firstName || '-'} {address.lastName || ''}
       </Typography>
 
-      <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY, mt: 0.5 }}>
+      <Typography variant="body2" sx={{ color: BRAND.muted, mt: 0.5 }}>
         {address.address || 'Sin dirección'}
       </Typography>
 
-      <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+      <Typography variant="body2" sx={{ color: BRAND.muted }}>
         {address.city || 'Sin ciudad'}
         {address.zipCode && `, CP: ${address.zipCode}`}
         {address.country && `, ${address.country}`}
@@ -755,8 +717,8 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
       sx={{
         mt: 2,
         p: 3,
-        borderRadius: 1,
-        border: '1px solid #D5D9D9',
+        borderRadius: 3,
+        border: `1px solid ${BRAND.line}`,
         bgcolor: 'white',
       }}
     >
@@ -766,14 +728,14 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          color: CONFIG.COLORS.AMAZON_TEXT,
+          color: BRAND.ink,
           fontWeight: 700,
           fontSize: '0.9rem',
           mb: 2,
           textTransform: 'uppercase',
         }}
       >
-        <LocalShipping fontSize="small" sx={{ color: CONFIG.COLORS.AMAZON_BLUE }} />
+        <LocalShipping fontSize="small" sx={{ color: BRAND.blue }} />
         Datos de envío
       </Typography>
 
@@ -837,27 +799,27 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
       sx={{
         mt: 2,
         p: 3,
-        borderRadius: 1,
-        border: '1px solid #D5D9D9',
-        bgcolor: '#F7F7F7',
+        borderRadius: 3,
+        border: `1px solid ${BRAND.line}`,
+        bgcolor: BRAND.paper,
       }}
     >
       <Typography
         variant="h6"
         sx={{
-          color: CONFIG.COLORS.AMAZON_TEXT,
+          color: BRAND.ink,
           fontWeight: 700,
           fontSize: '1rem',
           mb: 2,
           pb: 1,
-          borderBottom: '1px solid #D5D9D9',
+          borderBottom: `1px solid ${BRAND.line}`,
         }}
       >
         Resumen del pedido
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+        <Typography variant="body2" sx={{ color: BRAND.muted }}>
           Subtotal
         </Typography>
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -866,7 +828,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
       </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="body2" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+        <Typography variant="body2" sx={{ color: BRAND.muted }}>
           Descuento
         </Typography>
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -880,7 +842,7 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         <Typography
           variant="h6"
           sx={{
-            color: CONFIG.COLORS.AMAZON_RED,
+            color: BRAND.ink,
             fontWeight: 700,
             fontSize: '1.1rem',
           }}
@@ -891,8 +853,9 @@ const OrderSummary = memo(({ totals, paymentStatus, fulfillmentStatus }) => {
         <Typography
           variant="h5"
           sx={{
-            color: CONFIG.COLORS.AMAZON_RED,
-            fontWeight: 700,
+            color: BRAND.ink,
+            fontFamily: DISPLAY_FONT,
+            fontWeight: 800,
             fontSize: '1.5rem',
           }}
         >
@@ -941,15 +904,15 @@ const OrderControlPanel = memo(
         sx={{
           mt: 2,
           p: 3,
-          borderRadius: 1,
-          border: `2px solid ${CONFIG.COLORS.AMAZON_DARK}`,
+          borderRadius: 3,
+          border: `1px solid ${BRAND.line}`,
           bgcolor: 'white',
         }}
       >
         <Typography
           variant="subtitle1"
           sx={{
-            color: CONFIG.COLORS.AMAZON_TEXT,
+            color: BRAND.ink,
             fontWeight: 700,
             fontSize: '0.9rem',
             mb: 2,
@@ -974,8 +937,9 @@ const OrderControlPanel = memo(
         </Box>
 
         <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>Estado del Pago</InputLabel>
+          <InputLabel id={`pago-label-${order._id}`}>Estado del Pago</InputLabel>
           <Select
+            labelId={`pago-label-${order._id}`}
             value={order.paymentStatus || PAYMENT_STATUSES.PENDING}
             label="Estado del Pago"
             onChange={e => onPaymentStatusChange(order._id, e.target.value, orderTotal)}
@@ -985,22 +949,22 @@ const OrderControlPanel = memo(
               <MenuItem value="pending">Pendiente</MenuItem>
             )}
             {allowedPaymentStatuses.includes('approved') && (
-              <MenuItem value="approved" sx={{ color: '#067D62' }}>
+              <MenuItem value="approved" sx={{ color: '#047857' }}>
                 Aprobado
               </MenuItem>
             )}
             {allowedPaymentStatuses.includes('rejected') && (
-              <MenuItem value="rejected" sx={{ color: '#B12704' }}>
+              <MenuItem value="rejected" sx={{ color: '#b42318' }}>
                 Rechazado
               </MenuItem>
             )}
             {allowedPaymentStatuses.includes('cancelled') && (
-              <MenuItem value="cancelled" sx={{ color: '#B12704' }}>
+              <MenuItem value="cancelled" sx={{ color: '#b42318' }}>
                 Cancelado
               </MenuItem>
             )}
             {allowedPaymentStatuses.includes('refunded') && (
-              <MenuItem value="refunded" sx={{ color: '#6B21A8' }}>
+              <MenuItem value="refunded" sx={{ color: '#7a2cff' }}>
                 Reembolsado
               </MenuItem>
             )}
@@ -1008,8 +972,9 @@ const OrderControlPanel = memo(
         </FormControl>
 
         <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>Estado Logístico</InputLabel>
+          <InputLabel id={`logistica-label-${order._id}`}>Estado Logístico</InputLabel>
           <Select
+            labelId={`logistica-label-${order._id}`}
             value={order.fulfillmentStatus || FULFILLMENT_STATUSES.UNFULFILLED}
             label="Estado Logístico"
             onChange={e => onFulfillmentStatusChange(order._id, e.target.value)}
@@ -1118,42 +1083,48 @@ const OrderRow = memo(
           onClick={handleToggle}
           sx={{
             cursor: 'pointer',
-            bgcolor: expanded ? '#F0F9FB' : 'inherit',
+            bgcolor: expanded ? '#f4f8ff' : 'inherit',
             '& > td': { borderBottom: expanded ? 'none' : undefined },
           }}
         >
           <TableCell padding="checkbox">
-            <IconButton size="small" onClick={handleToggle} disabled={disabled}>
+            <IconButton
+              size="small"
+              onClick={handleToggle}
+              disabled={disabled}
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Ocultar el detalle del pedido' : 'Ver el detalle del pedido'}
+            >
               {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
           </TableCell>
 
           <TableCell>
-            <Typography variant="body2" sx={{ fontWeight: 600, color: CONFIG.COLORS.AMAZON_BLUE }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.blue }}>
               #{getOrderDisplayId(order)}
             </Typography>
-            <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+            <Typography variant="caption" sx={{ color: BRAND.muted }}>
               {formatDateShort(order.createdAt)}
             </Typography>
           </TableCell>
 
           <TableCell>
-            <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+            <Typography variant="body2" noWrap sx={{ maxWidth: 260 }}>
               {customerEmail}
             </Typography>
 
             {customerName && (
-              <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+              <Typography variant="caption" sx={{ color: BRAND.muted }}>
                 {customerName}
               </Typography>
             )}
           </TableCell>
 
           <TableCell align="right">
-            <Typography variant="body2" sx={{ fontWeight: 700, color: CONFIG.COLORS.AMAZON_RED }}>
+            <Typography variant="body2" sx={{ fontWeight: 700, color: BRAND.ink }}>
               {formatCurrency(order.totals?.total)}
             </Typography>
-            <Typography variant="caption" sx={{ color: CONFIG.COLORS.AMAZON_SECONDARY }}>
+            <Typography variant="caption" sx={{ color: BRAND.muted }}>
               {order.products?.length || 0} items
             </Typography>
           </TableCell>
@@ -1176,6 +1147,7 @@ const OrderRow = memo(
                 <IconButton
                   size="small"
                   disabled={disabled}
+                  aria-label="Ver detalle"
                   onClick={e => {
                     e.stopPropagation()
                     onViewDetail(order)
@@ -1192,6 +1164,7 @@ const OrderRow = memo(
                   size="small"
                   color="error"
                   disabled={disabled}
+                  aria-label="Eliminar orden"
                   onClick={e => {
                     e.stopPropagation()
                     onDelete(order)
@@ -1206,14 +1179,14 @@ const OrderRow = memo(
 
         {expanded && (
           <TableRow>
-            <TableCell colSpan={8} sx={{ p: 0, bgcolor: '#FAFAFA' }}>
+            <TableCell colSpan={8} sx={{ p: 0, bgcolor: '#fbfcff' }}>
               <Box sx={{ p: 3 }}>
                 <Grid container spacing={3}>
                   <Grid size={{ xs: 12, lg: 8 }}>
                     <Typography
                       variant="h6"
                       sx={{
-                        color: CONFIG.COLORS.AMAZON_TEXT,
+                        color: BRAND.ink,
                         fontWeight: 700,
                         fontSize: '1rem',
                         mb: 2,
@@ -1297,15 +1270,15 @@ const ConfirmDialog = memo(
         <DialogTitle
           id="admin-order-confirm-title"
           sx={{
-            bgcolor: CONFIG.COLORS.AMAZON_DARK,
-            color: 'white',
-            fontSize: '1.1rem',
-            fontWeight: 700,
+            fontFamily: DISPLAY_FONT,
+            color: BRAND.ink,
+            fontSize: '1.15rem',
+            fontWeight: 800,
             display: 'flex',
             alignItems: 'center',
           }}
         >
-          {isHighValue && <Warning sx={{ mr: 1, color: '#FF9900' }} />}
+          {isHighValue && <Warning sx={{ mr: 1, color: '#f59e0b' }} />}
           {title}
         </DialogTitle>
 
@@ -1361,6 +1334,9 @@ const OrderDetailDialog = memo(
     onDelete,
     disabled = false,
   }) => {
+    // En un celular la ventana ocupa toda la pantalla: en una chica los tres paneles no entraban.
+    const isNarrow = useMediaQuery('(max-width:600px)')
+
     if (!order) return null
 
     const customerName = getOrderCustomerName(order)
@@ -1373,33 +1349,51 @@ const OrderDetailDialog = memo(
         onClose={disabled ? undefined : onClose}
         maxWidth="lg"
         fullWidth
+        fullScreen={isNarrow}
         scroll="paper"
         disableRestoreFocus
         aria-labelledby="admin-order-detail-title"
       >
         <DialogTitle
           sx={{
-            bgcolor: CONFIG.COLORS.AMAZON_DARK,
-            color: 'white',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            gap: 2,
           }}
         >
-          <Typography id="admin-order-detail-title" variant="h6" sx={{ fontWeight: 700 }}>
-            Pedido #{getOrderDisplayId(order)}
-          </Typography>
+          <Box>
+            <Typography
+              variant="overline"
+              sx={{ color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em', lineHeight: 1.4 }}
+            >
+              PEDIDO
+            </Typography>
+            <Typography
+              id="admin-order-detail-title"
+              component="h2"
+              sx={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 800,
+                fontSize: '1.35rem',
+                letterSpacing: '-0.01em',
+                color: BRAND.ink,
+              }}
+            >
+              Pedido #{getOrderDisplayId(order)}
+            </Typography>
+          </Box>
 
-          <IconButton onClick={onClose} sx={{ color: 'white' }} disabled={disabled}>
+          <IconButton onClick={onClose} disabled={disabled} aria-label="Cerrar el detalle">
             <Close />
           </IconButton>
         </DialogTitle>
 
-        <DialogContent dividers sx={{ bgcolor: '#F7F7F7', p: 0 }}>
+        <DialogContent dividers sx={{ bgcolor: BRAND.paper, p: 0, borderColor: BRAND.line }}>
           <Box sx={{ p: 3 }}>
             <Grid container spacing={3}>
               <Grid size={{ xs: 12, md: 8 }}>
-                <Paper sx={{ p: 3, borderRadius: 1, border: '1px solid #D5D9D9' }}>
+                <Paper variant="outlined" sx={{ ...PANEL_SX, p: 3 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Productos ({order.products?.length || 0})
                   </Typography>
@@ -1411,14 +1405,7 @@ const OrderDetailDialog = memo(
               </Grid>
 
               <Grid size={{ xs: 12, md: 4 }}>
-                <Paper
-                  sx={{
-                    p: 3,
-                    borderRadius: 1,
-                    border: '1px solid #D5D9D9',
-                    mb: 2,
-                  }}
-                >
+                <Paper variant="outlined" sx={{ ...PANEL_SX, p: 3, mb: 2 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1rem', mb: 2 }}>
                     Cliente
                   </Typography>
@@ -1488,6 +1475,148 @@ const OrderDetailDialog = memo(
 
 OrderDetailDialog.displayName = 'OrderDetailDialog'
 
+const HEAD_CELL_SX = {
+  fontWeight: 700,
+  color: BRAND.muted,
+  fontSize: '0.75rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bgcolor: BRAND.paper,
+  borderColor: BRAND.line,
+}
+
+// Cada cifra del resumen es también un filtro rápido: se toca para ver solo esos pedidos.
+const SummaryTile = ({
+  title,
+  value,
+  color,
+  onClick,
+  active = false,
+  compact = false,
+  span = { xs: 'span 2', md: 'span 1' },
+}) => {
+  const content = (
+    <>
+      <Typography
+        variant="caption"
+        sx={{ color: BRAND.muted, fontWeight: 700, letterSpacing: '0.04em' }}
+      >
+        {title}
+      </Typography>
+      <Typography
+        component="div"
+        sx={{
+          fontFamily: DISPLAY_FONT,
+          fontWeight: 800,
+          fontSize: compact ? { xs: 16, md: 24 } : 28,
+          lineHeight: 1.2,
+          color,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </Typography>
+    </>
+  )
+
+  const sx = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 0.25,
+    width: '100%',
+    height: '100%',
+    p: 2,
+    textAlign: 'left',
+    gridColumn: span,
+    borderBottom: active ? `3px solid ${color}` : '3px solid transparent',
+    bgcolor: active ? BRAND.paper : 'transparent',
+  }
+
+  if (!onClick) {
+    return <Box sx={sx}>{content}</Box>
+  }
+
+  return (
+    <ButtonBase
+      onClick={onClick}
+      aria-pressed={active}
+      sx={{ ...sx, '&:hover': { bgcolor: BRAND.paper } }}
+    >
+      {content}
+    </ButtonBase>
+  )
+}
+
+const OrderCard = memo(({ order, onViewDetail, onDelete, disabled = false }) => {
+  const customerName = getOrderCustomerName(order)
+
+  return (
+    <Paper component="article" variant="outlined" sx={{ ...PANEL_SX, p: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 700, color: BRAND.blue }}>
+            #{getOrderDisplayId(order)}
+          </Typography>
+          <Typography variant="caption" sx={{ color: BRAND.muted }}>
+            {formatDateShort(order.createdAt)} · {order.products?.length || 0} items
+          </Typography>
+        </Box>
+
+        <Typography
+          sx={{
+            fontFamily: DISPLAY_FONT,
+            fontWeight: 800,
+            color: BRAND.ink,
+            fontVariantNumeric: 'tabular-nums',
+            flexShrink: 0,
+          }}
+        >
+          {formatCurrency(order.totals?.total)}
+        </Typography>
+      </Box>
+
+      <Typography variant="body2" sx={{ mt: 1.5, overflowWrap: 'anywhere' }}>
+        {getOrderCustomerEmail(order)}
+      </Typography>
+      {customerName && (
+        <Typography variant="caption" sx={{ color: BRAND.muted }}>
+          {customerName}
+        </Typography>
+      )}
+
+      <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap' }} useFlexGap>
+        <StatusBadge status={order.orderStatus} />
+        <PaymentBadge paymentStatus={order.paymentStatus} />
+        <FulfillmentBadge fulfillmentStatus={order.fulfillmentStatus} />
+      </Stack>
+
+      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<Visibility />}
+          disabled={disabled}
+          onClick={() => onViewDetail(order)}
+          sx={{ flex: 1, textTransform: 'none', fontWeight: 700, borderRadius: 3 }}
+        >
+          Ver detalle
+        </Button>
+
+        <IconButton
+          color="error"
+          disabled={disabled}
+          aria-label="Eliminar orden"
+          onClick={() => onDelete(order)}
+        >
+          <DeleteForever />
+        </IconButton>
+      </Box>
+    </Paper>
+  )
+})
+
+OrderCard.displayName = 'OrderCard'
+
 // ==========================================
 // MAIN
 // ==========================================
@@ -1513,6 +1642,9 @@ const AdminOrdersPage = () => {
   // "250 pedidos • $12.340 en ventas", con los $12.340 correspondiendo solo a
   // la página que estabas mirando. Y cambiaban al pasar de página.
   const summary = responseData?.summary || null
+
+  // En un celular la tabla obligaba a deslizar de costado: ahí cada pedido es una tarjeta.
+  const isNarrow = useMediaQuery('(max-width:600px)')
 
   const [expandedOrder, setExpandedOrder] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -1595,6 +1727,19 @@ const AdminOrdersPage = () => {
     debouncedSearch.cancel()
     setSearchTerm('')
     setFilters(prev => ({ ...prev, q: '', page: 1 }))
+  }, [debouncedSearch])
+
+  const handleClearFilters = useCallback(() => {
+    debouncedSearch.cancel()
+    setSearchTerm('')
+    setFilters(prev => ({
+      ...prev,
+      status: '',
+      paymentStatus: '',
+      fulfillmentStatus: '',
+      q: '',
+      page: 1,
+    }))
   }, [debouncedSearch])
 
   const handleFilterChange = useCallback((field, value) => {
@@ -2059,212 +2204,336 @@ const AdminOrdersPage = () => {
     return 'primary'
   }, [confirmDialog.action])
 
+  const hayFiltros = Boolean(
+    filters.status || filters.paymentStatus || filters.fulfillmentStatus || filters.q || searchTerm,
+  )
+
+  const toggleStatusFilter = status =>
+    handleFilterChange('status', filters.status === status ? '' : status)
+
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F3F3F3' }}>
-      <Box
-        sx={{
-          bgcolor: CONFIG.COLORS.AMAZON_DARK,
-          color: 'white',
-          py: 2.5,
-          px: 3,
-          borderBottom: `3px solid ${CONFIG.COLORS.AMAZON_ORANGE}`,
-        }}
-      >
-        <Container maxWidth="xl">
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-            Gestión de Pedidos
-          </Typography>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-            <Typography variant="body2">
-              {stats.total} pedidos • {formatCurrency(stats.totalRevenue)} en ventas
+    <Box sx={{ minHeight: '100vh', bgcolor: BRAND.paper }}>
+      <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto' }}>
+        <Box
+          component="header"
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'flex-end' },
+            gap: 2,
+            mb: 4,
+          }}
+        >
+          <Box>
+            <Typography
+              variant="overline"
+              sx={{ color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+            >
+              VENTAS
             </Typography>
+            <Typography
+              component="h1"
+              sx={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 800,
+                fontSize: { xs: 26, md: 34 },
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+              }}
+            >
+              Pedidos
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+              {stats.total} {stats.total === 1 ? 'pedido' : 'pedidos'}
+            </Typography>
+          </Box>
 
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Chip label={`${stats.open} abiertas`} size="small" />
-              <Chip label={`${stats.processing} procesando`} size="small" />
-              <Chip label={`${stats.delivered} entregadas`} size="small" />
-            </Box>
+          <Stack direction="row" spacing={1.5}>
+            <Button
+              variant="outlined"
+              startIcon={<Download />}
+              onClick={handleExport}
+              disabled={isLoading || isUpdating || orders.length === 0}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 3,
+                flex: { xs: 1, sm: 'none' },
+              }}
+            >
+              Exportar
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : <Refresh />}
+              onClick={loadOrders}
+              disabled={isLoading || isUpdating}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                borderRadius: 3,
+                px: 3,
+                background: GRADIENT,
+                flex: { xs: 1, sm: 'none' },
+              }}
+            >
+              {isLoading ? 'Cargando...' : 'Actualizar'}
+            </Button>
           </Stack>
-        </Container>
-      </Box>
+        </Box>
 
-      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Paper
+          component="section"
+          aria-label="Resumen de pedidos"
+          variant="outlined"
+          sx={{ ...PANEL_SX, mb: 3, overflow: 'hidden' }}
+        >
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(6, 1fr)', md: 'repeat(5, 1fr)' },
+            }}
+          >
+            <SummaryTile
+              title="Pedidos"
+              value={stats.total}
+              color={BRAND.blue}
+              onClick={handleClearFilters}
+              active={!hayFiltros}
+              span={{ xs: 'span 3', md: 'span 1' }}
+            />
+            <SummaryTile
+              title="Ventas"
+              value={formatCurrency(stats.totalRevenue)}
+              color={BRAND.ink}
+              compact
+              span={{ xs: 'span 3', md: 'span 1' }}
+            />
+            <SummaryTile
+              title="Abiertas"
+              value={stats.open}
+              color={STATUS_BADGE_CONFIGS.open.color}
+              onClick={() => toggleStatusFilter('open')}
+              active={filters.status === 'open'}
+            />
+            <SummaryTile
+              title="Procesando"
+              value={stats.processing}
+              color={STATUS_BADGE_CONFIGS.processing.color}
+              onClick={() => toggleStatusFilter('processing')}
+              active={filters.status === 'processing'}
+            />
+            <SummaryTile
+              title="Entregadas"
+              value={stats.delivered}
+              color={STATUS_BADGE_CONFIGS.delivered.color}
+              onClick={() => toggleStatusFilter('delivered')}
+              active={filters.status === 'delivered'}
+            />
+          </Box>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ ...PANEL_SX, mb: 3, p: 2 }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            sx={{ alignItems: { md: 'center' } }}
+          >
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Buscar por ID, email, nombre..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              disabled={isUpdating}
+              sx={{ maxWidth: { md: 420 } }}
+              slotProps={{
+                htmlInput: { maxLength: CONFIG.MAX_SEARCH_LENGTH, 'aria-label': 'Buscar pedidos' },
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchTerm && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={handleResetSearch}
+                        disabled={isUpdating}
+                        aria-label="Borrar la búsqueda"
+                      >
+                        <Close fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel id="filtro-estado-orden-label">Estado orden</InputLabel>
+              <Select
+                labelId="filtro-estado-orden-label"
+                value={filters.status}
+                label="Estado orden"
+                disabled={isUpdating}
+                onChange={event => handleFilterChange('status', event.target.value)}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="open">Abierta</MenuItem>
+                <MenuItem value="processing">Procesando</MenuItem>
+                <MenuItem value="shipped">Enviada</MenuItem>
+                <MenuItem value="delivered">Entregada</MenuItem>
+                <MenuItem value="cancelled">Cancelada</MenuItem>
+                <MenuItem value="refunded">Reembolsada</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel id="filtro-pago-label">Pago</InputLabel>
+              <Select
+                labelId="filtro-pago-label"
+                value={filters.paymentStatus}
+                label="Pago"
+                disabled={isUpdating}
+                onChange={event => handleFilterChange('paymentStatus', event.target.value)}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="pending">Pendiente</MenuItem>
+                <MenuItem value="approved">Aprobado</MenuItem>
+                <MenuItem value="rejected">Rechazado</MenuItem>
+                <MenuItem value="cancelled">Cancelado</MenuItem>
+                <MenuItem value="refunded">Reembolsado</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel id="filtro-logistica-label">Logística</InputLabel>
+              <Select
+                labelId="filtro-logistica-label"
+                value={filters.fulfillmentStatus}
+                label="Logística"
+                disabled={isUpdating}
+                onChange={event => handleFilterChange('fulfillmentStatus', event.target.value)}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="unfulfilled">Sin preparar</MenuItem>
+                <MenuItem value="preparing">Preparando</MenuItem>
+                <MenuItem value="ready_to_ship">Lista para envío</MenuItem>
+                <MenuItem value="shipped">En tránsito</MenuItem>
+                <MenuItem value="delivered">Entregada</MenuItem>
+                <MenuItem value="returned">Devuelta</MenuItem>
+              </Select>
+            </FormControl>
+
+            {hayFiltros && (
+              <Button
+                onClick={handleClearFilters}
+                startIcon={<FilterAltOff />}
+                disabled={isUpdating}
+                sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </Stack>
+        </Paper>
+
+        {isLoading && orders.length > 0 && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+
         {isError && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {message || 'Error al cargar órdenes'}
           </Alert>
         )}
 
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Buscar por ID, email, nombre..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                disabled={isUpdating}
-                inputProps={{
-                  maxLength: CONFIG.MAX_SEARCH_LENGTH,
-                }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search fontSize="small" />
-                      </InputAdornment>
-                    ),
-                    endAdornment: searchTerm && (
-                      <InputAdornment position="end">
-                        <IconButton size="small" onClick={handleResetSearch} disabled={isUpdating}>
-                          <Close fontSize="small" />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Estado orden</InputLabel>
-                <Select
-                  value={filters.status}
-                  label="Estado orden"
-                  disabled={isUpdating}
-                  onChange={event => handleFilterChange('status', event.target.value)}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="open">Abierta</MenuItem>
-                  <MenuItem value="processing">Procesando</MenuItem>
-                  <MenuItem value="shipped">Enviada</MenuItem>
-                  <MenuItem value="delivered">Entregada</MenuItem>
-                  <MenuItem value="cancelled">Cancelada</MenuItem>
-                  <MenuItem value="refunded">Reembolsada</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Pago</InputLabel>
-                <Select
-                  value={filters.paymentStatus}
-                  label="Pago"
-                  disabled={isUpdating}
-                  onChange={event => handleFilterChange('paymentStatus', event.target.value)}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="pending">Pendiente</MenuItem>
-                  <MenuItem value="approved">Aprobado</MenuItem>
-                  <MenuItem value="rejected">Rechazado</MenuItem>
-                  <MenuItem value="cancelled">Cancelado</MenuItem>
-                  <MenuItem value="refunded">Reembolsado</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Logística</InputLabel>
-                <Select
-                  value={filters.fulfillmentStatus}
-                  label="Logística"
-                  disabled={isUpdating}
-                  onChange={event => handleFilterChange('fulfillmentStatus', event.target.value)}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="unfulfilled">Sin preparar</MenuItem>
-                  <MenuItem value="preparing">Preparando</MenuItem>
-                  <MenuItem value="ready_to_ship">Lista para envío</MenuItem>
-                  <MenuItem value="shipped">En tránsito</MenuItem>
-                  <MenuItem value="delivered">Entregada</MenuItem>
-                  <MenuItem value="returned">Devuelta</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<Download />}
-                  onClick={handleExport}
-                  disabled={isLoading || isUpdating || orders.length === 0}
-                  sx={{ textTransform: 'none' }}
-                >
-                  Exportar
-                </Button>
-
-                <Button
-                  variant="contained"
-                  startIcon={
-                    isLoading ? <CircularProgress size={16} color="inherit" /> : <Refresh />
-                  }
-                  onClick={loadOrders}
-                  disabled={isLoading || isUpdating}
-                  sx={{ textTransform: 'none' }}
-                >
-                  {isLoading ? 'Cargando...' : 'Actualizar'}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </Paper>
-
         {isLoading && orders.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Paper variant="outlined" sx={{ ...PANEL_SX, p: 4, textAlign: 'center' }}>
             <CircularProgress size={48} />
             <Typography sx={{ mt: 2 }}>Cargando pedidos...</Typography>
           </Paper>
         ) : orders.length === 0 ? (
-          <Paper sx={{ p: 6, textAlign: 'center' }}>
-            <Inventory sx={{ fontSize: 64, color: '#D5D9D9', mb: 2 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ ...PANEL_SX, p: 6, textAlign: 'center' }}>
+            <Inventory sx={{ fontSize: 56, color: BRAND.blue, opacity: 0.35, mb: 2 }} />
+            <Typography
+              component="h2"
+              sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, mb: 0.5 }}
+            >
               No se encontraron pedidos
+            </Typography>
+            <Typography color="text.secondary">
+              {hayFiltros
+                ? 'Probá con otra búsqueda o limpiá los filtros.'
+                : 'Cuando entre una compra en tu tienda, la vas a ver acá.'}
             </Typography>
           </Paper>
         ) : (
           <>
-            <TableContainer component={Paper}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox" />
-                    <TableCell>Pedido</TableCell>
-                    <TableCell>Cliente</TableCell>
-                    <TableCell align="right">Total</TableCell>
-                    <TableCell align="center">Orden</TableCell>
-                    <TableCell align="center">Pago</TableCell>
-                    <TableCell align="center">Logística</TableCell>
-                    <TableCell align="right" />
-                  </TableRow>
-                </TableHead>
+            {isNarrow ? (
+              <Stack spacing={1.5}>
+                {orders.map(order => (
+                  <OrderCard
+                    key={order._id}
+                    order={order}
+                    onViewDetail={handleViewDetail}
+                    onDelete={handleDelete}
+                    disabled={isUpdating}
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <TableContainer
+                component={Paper}
+                variant="outlined"
+                sx={{ ...PANEL_SX, overflow: 'hidden' }}
+              >
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox" sx={HEAD_CELL_SX} />
+                      <TableCell sx={HEAD_CELL_SX}>Pedido</TableCell>
+                      <TableCell sx={HEAD_CELL_SX}>Cliente</TableCell>
+                      <TableCell align="right" sx={HEAD_CELL_SX}>
+                        Total
+                      </TableCell>
+                      <TableCell align="center" sx={HEAD_CELL_SX}>
+                        Orden
+                      </TableCell>
+                      <TableCell align="center" sx={HEAD_CELL_SX}>
+                        Pago
+                      </TableCell>
+                      <TableCell align="center" sx={HEAD_CELL_SX}>
+                        Logística
+                      </TableCell>
+                      <TableCell align="right" sx={HEAD_CELL_SX} />
+                    </TableRow>
+                  </TableHead>
 
-                <TableBody>
-                  {orders.map(order => (
-                    <OrderRow
-                      key={order._id}
-                      order={order}
-                      expanded={expandedOrder === order._id}
-                      onToggle={handleExpandOrder}
-                      onLegacyStatusChange={handleLegacyStatusChange}
-                      onPaymentStatusChange={handlePaymentStatusChange}
-                      onFulfillmentStatusChange={handleFulfillmentStatusChange}
-                      onSaveShipment={handleSaveShipment}
-                      onCancel={handleCancel}
-                      onRefund={handleRefund}
-                      onDelete={handleDelete}
-                      onViewDetail={handleViewDetail}
-                      disabled={isUpdating}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  <TableBody>
+                    {orders.map(order => (
+                      <OrderRow
+                        key={order._id}
+                        order={order}
+                        expanded={expandedOrder === order._id}
+                        onToggle={handleExpandOrder}
+                        onLegacyStatusChange={handleLegacyStatusChange}
+                        onPaymentStatusChange={handlePaymentStatusChange}
+                        onFulfillmentStatusChange={handleFulfillmentStatusChange}
+                        onSaveShipment={handleSaveShipment}
+                        onCancel={handleCancel}
+                        onRefund={handleRefund}
+                        onDelete={handleDelete}
+                        onViewDetail={handleViewDetail}
+                        disabled={isUpdating}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
 
             {pagination.pages > 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
@@ -2274,16 +2543,29 @@ const AdminOrdersPage = () => {
                   onChange={(event, value) => {
                     setFilters(prev => ({ ...prev, page: value }))
                   }}
-                  size="large"
+                  size={isNarrow ? 'medium' : 'large'}
                   showFirstButton
                   showLastButton
                   disabled={isUpdating}
+                  siblingCount={isNarrow ? 0 : 1}
+                  getItemAriaLabel={(type, page, selected) => {
+                    if (type === 'page') {
+                      return selected ? `Página ${page}, actual` : `Ir a la página ${page}`
+                    }
+
+                    return {
+                      first: 'Ir a la primera página',
+                      last: 'Ir a la última página',
+                      next: 'Ir a la página siguiente',
+                      previous: 'Ir a la página anterior',
+                    }[type]
+                  }}
                 />
               </Box>
             )}
           </>
         )}
-      </Container>
+      </Box>
 
       <ConfirmDialog
         open={confirmDialog.open}
@@ -2324,13 +2606,14 @@ const AdminOrdersPage = () => {
 
       {isUpdating && (
         <Box
+          role="status"
           sx={{
             position: 'fixed',
             right: 24,
             bottom: 24,
             bgcolor: 'white',
-            border: '1px solid #D5D9D9',
-            borderRadius: 2,
+            border: `1px solid ${BRAND.line}`,
+            borderRadius: 3,
             px: 2,
             py: 1,
             boxShadow: 3,
