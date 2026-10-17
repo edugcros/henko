@@ -3,17 +3,9 @@ import React, { useState } from 'react'
 import { useFormik } from 'formik'
 import { Link } from 'react-router-dom'
 import * as yup from 'yup'
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Card,
-  CardContent,
-  CircularProgress,
-} from '@mui/material'
+import { MailOutlined } from '@ant-design/icons'
 import authService from '@features/auth/authServices'
-import { Newprimary } from '../theme/colors'
+import AuthShell from '../components/AuthShell.js'
 
 const validationSchema = yup.object({
   email: yup.string().email('Debe ser un correo válido').required('El correo es obligatorio'),
@@ -48,101 +40,81 @@ const Forgotpassword = () => {
     },
   })
 
+  const errorEmail = formik.touched.email && formik.errors.email
+
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        background: 'linear-gradient(to bottom, #f5f5f5, #b0b0b0)',
-      }}
-    >
-      <Card
-        sx={{
-          width: 380,
-          borderRadius: 4,
-          boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
-        }}
-      >
-        <CardContent sx={{ p: 4 }}>
-          <Typography
-            variant="h5"
-            align="center"
-            sx={{ fontWeight: 600, mb: 1, color: Newprimary.darkCyan }}
+    <AuthShell titleId="forgot-title">
+      <h1 id="forgot-title">Recuperá tu contraseña</h1>
+      <p className="hk-auth-lead">
+        Ingresá el correo de tu cuenta y te enviamos un enlace para restablecerla.
+      </p>
+
+      {result.sent ? (
+        <>
+          <div className="hk-auth-notice" role="status">
+            <span className="hk-auth-notice-icon" aria-hidden="true">
+              <MailOutlined />
+            </span>
+            <div>
+              <b>Revisá tu correo</b>
+              <p>
+                Si el correo existe en nuestro sistema, vas a recibir un enlace para restablecer tu
+                contraseña en unos minutos.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="hk-auth-ghost"
+            onClick={() => setResult({ sent: false, error: '' })}
           >
-            Recuperar contraseña
-          </Typography>
-          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
-            Ingresá el correo de tu cuenta y te enviamos un enlace para restablecerla.
-          </Typography>
+            Usar otro correo
+          </button>
+        </>
+      ) : (
+        <form onSubmit={formik.handleSubmit} noValidate>
+          <div className="hk-auth-field">
+            <label htmlFor="email">Correo electrónico</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck="false"
+              aria-invalid={Boolean(errorEmail)}
+              aria-describedby={errorEmail ? 'email-error' : undefined}
+              {...formik.getFieldProps('email')}
+            />
+            {errorEmail && (
+              <p className="hk-auth-field-error" id="email-error">
+                {formik.errors.email}
+              </p>
+            )}
+          </div>
 
-          {result.sent ? (
-            <Typography align="center" color="success.main" sx={{ fontSize: '0.9rem' }}>
-              Si el correo existe en nuestro sistema, vas a recibir un enlace para restablecer tu
-              contraseña en unos minutos.
-            </Typography>
-          ) : (
-            <form onSubmit={formik.handleSubmit} noValidate>
-              <TextField
-                fullWidth
-                id="email"
-                name="email"
-                label="Correo electrónico"
-                type="email"
-                variant="outlined"
-                margin="normal"
-                {...formik.getFieldProps('email')}
-                error={formik.touched.email && Boolean(formik.errors.email)}
-                helperText={formik.touched.email && formik.errors.email}
-              />
+          <button type="submit" className="hk-auth-submit" disabled={isSubmitting}>
+            {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+            {isSubmitting && <span className="hk-auth-spinner" aria-hidden="true" />}
+            <span>{isSubmitting ? 'Enviando' : 'Enviar enlace'}</span>
+          </button>
 
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{
-                  backgroundColor: Newprimary.darkCyan,
-                  color: '#fff',
-                  fontWeight: 600,
-                  py: 1.2,
-                  borderRadius: 2,
-                  mt: 2,
-                  '&:hover': { backgroundColor: '#056178' },
-                }}
-                disabled={isSubmitting}
-              >
-                {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  <span>Enviar enlace</span>
-                )}
-              </Button>
-
-              {result.error && (
-                <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
-                  {result.error}
-                </Typography>
-              )}
-            </form>
+          {result.error && (
+            <p className="hk-auth-alert" role="alert">
+              {result.error}
+            </p>
           )}
+        </form>
+      )}
 
-          <Typography align="center" variant="body2" sx={{ mt: 3 }}>
-            <Link
-              to="/login"
-              style={{
-                textDecoration: 'none',
-                color: Newprimary.darkCyan,
-                fontWeight: 600,
-              }}
-            >
-              Volver a iniciar sesión
-            </Link>
-          </Typography>
-        </CardContent>
-      </Card>
-    </Box>
+      <p className="hk-auth-foot">
+        <Link className="hk-auth-link is-strong" to="/login">
+          Volver a iniciar sesión
+        </Link>
+      </p>
+    </AuthShell>
   )
 }
 

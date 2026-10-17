@@ -1,44 +1,17 @@
 // 📁 AdminRegister.js
 import React, { useMemo, useRef, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useFormik } from 'formik'
 import { useDispatch, useSelector } from 'react-redux'
 import * as yup from 'yup'
 
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  TextField,
-  Typography,
-  Paper,
-  Stack,
-  Grid,
-  Alert,
-  AlertTitle,
-  InputAdornment,
-  Fade,
-  Chip,
-  alpha,
-} from '@mui/material'
-
-import {
-  Storefront,
-  AdminPanelSettings,
-  Email,
-  Phone,
-  Lock,
-  RocketLaunch,
-  Terminal,
-  ArrowForward,
-  Badge,
-} from '@mui/icons-material'
+import { ArrowRightOutlined, EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 
 import { createUserAdmin } from '@features/auth/authSlice'
+import AuthShell from '../components/AuthShell.js'
 import TurnstileWidget from '../components/TurnstileWidget'
 import { env } from '../config/env'
-import { SELLABLE_PLANS } from '../constants/plans.js'
+import { PLAN_PRESENTATION, SELLABLE_PLANS } from '../constants/plans.js'
 
 // =====================================================
 // Helpers
@@ -328,6 +301,7 @@ const AdminRegister = () => {
   const isLoading = loading.createAdmin === true
   const [turnstileToken, setTurnstileToken] = useState('')
   const [captchaError, setCaptchaError] = useState('')
+  const [verPassword, setVerPassword] = useState(false)
 
   // Pendiente solo mientras el desafío TODAVÍA puede resolverse. Si falló, el
   // botón deja de estar bloqueado por él: el visitante no puede hacer nada
@@ -457,369 +431,278 @@ const AdminRegister = () => {
     formik.handleBlur(event)
   }
 
+  const planElegido = PLAN_PRESENTATION[formik.values.plan]
+
+  // Cada campo dice por qué está mal o, si está bien, qué se espera de él. El error y la ayuda
+  // nunca están a la vez, y el campo apunta al que se vea (aria-describedby).
+  const campo = (name, hint) => {
+    const error = formik.touched[name] && formik.errors[name]
+    const id = `${name}-${error ? 'error' : 'hint'}`
+
+    return {
+      error,
+      hint,
+      describedBy: error || hint ? id : undefined,
+      invalid: Boolean(error),
+      nota: error ? (
+        <p className="hk-auth-field-error" id={id}>
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="hk-auth-hint" id={id}>
+          {hint}
+        </p>
+      ) : null,
+    }
+  }
+
+  const f = {
+    firstname: campo('firstname'),
+    lastname: campo('lastname'),
+    email: campo('email'),
+    mobile: campo('mobile', 'Sin 0 y sin 15. Ej: 3585132769'),
+    storeName: campo('storeName'),
+    storeSlug: campo('storeSlug', 'Se usará para crear la dirección de tu tienda.'),
+    password: campo('password', 'Mínimo 8 caracteres.'),
+  }
+
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-        position: 'relative',
-        overflow: 'hidden',
-        py: 6,
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: -100,
-          right: -100,
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          background: theme => alpha(theme.palette.primary.main, 0.05),
-        },
-      }}
-    >
-      <Container maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
-        <Fade in timeout={800}>
-          <Paper
-            elevation={0}
-            sx={{
-              p: { xs: 4, md: 6 },
-              borderRadius: 8,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 40px 80px -20px rgba(0,0,0,0.08)',
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-            }}
-          >
-            <Box sx={{ textAlign: 'center', mb: 5 }}>
-              <Typography
-                variant="h3"
+    <AuthShell variant="alta" wide titleId="register-title">
+      {isSuccess && user ? (
+        <>
+          <h1 id="register-title">¡Tienda creada!</h1>
+          <p className="hk-auth-lead" role="status">
+            La tienda <strong>{tenantData?.name || formik.values.storeName}</strong> fue creada
+            correctamente.
+          </p>
 
-                color="primary"
-                sx={{ fontWeight: 900, letterSpacing: '-2px', mb: 1 }}
-              >
-                henko
-              </Typography>
+          <dl className="hk-auth-addresses">
+            <div>
+              <dt>Tu tienda</dt>
+              <dd>{getHostnameFromUrl(shopUrl)}</dd>
+            </div>
+            <div>
+              <dt>Tu panel</dt>
+              <dd>{getHostnameFromUrl(adminUrl)}</dd>
+            </div>
+          </dl>
 
-              <Typography
-                variant="h6"
-                color="text.secondary"
+          {!isProduction && (
+            <p className="hk-auth-alert is-info">
+              En desarrollo agregá estos dominios al archivo hosts de Windows.
+            </p>
+          )}
 
-                sx={{ fontWeight: 500, opacity: 0.8 }}
-              >
-                Creá tu tienda online
-              </Typography>
+          <button type="button" className="hk-auth-submit" onClick={handleGoToAdmin}>
+            <span>Abrir panel de control</span>
+            <ArrowRightOutlined aria-hidden="true" />
+          </button>
+        </>
+      ) : (
+        <>
+          <h1 id="register-title">Creá tu tienda online</h1>
+          <p className="hk-auth-lead">
+            Completá tus datos y tu tienda queda lista con su dirección y su panel de control.
+          </p>
 
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Tu tienda queda lista con storefront, panel admin y dominio interno.
-              </Typography>
-            </Box>
+          {planElegido && (
+            <p className="hk-auth-plan">
+              <span>
+                Plan elegido: <b>{planElegido.name}</b>
+              </span>
+              <Link className="hk-auth-link is-strong" to="/subscripcion">
+                Cambiar
+              </Link>
+            </p>
+          )}
 
-            {isSuccess && user ? (
-              <Stack spacing={4}>
-                <Alert
-                  severity="success"
-                  icon={<RocketLaunch />}
-                  sx={{
-                    borderRadius: 4,
-                    fontSize: '1rem',
-                    '& .MuiAlert-icon': { fontSize: 30 },
-                  }}
+          <form onSubmit={formik.handleSubmit} noValidate>
+            <div className="hk-auth-row">
+              <div className="hk-auth-field">
+                <label htmlFor="firstname">Nombre</label>
+                <input
+                  id="firstname"
+                  type="text"
+                  autoComplete="given-name"
+                  placeholder="Ej. Juan"
+                  aria-invalid={f.firstname.invalid}
+                  aria-describedby={f.firstname.describedBy}
+                  {...formik.getFieldProps('firstname')}
+                />
+                {f.firstname.nota}
+              </div>
+
+              <div className="hk-auth-field">
+                <label htmlFor="lastname">Apellido</label>
+                <input
+                  id="lastname"
+                  type="text"
+                  autoComplete="family-name"
+                  placeholder="Ej. Pérez"
+                  aria-invalid={f.lastname.invalid}
+                  aria-describedby={f.lastname.describedBy}
+                  {...formik.getFieldProps('lastname')}
+                />
+                {f.lastname.nota}
+              </div>
+            </div>
+
+            <div className="hk-auth-field">
+              <label htmlFor="email">Correo</label>
+              <input
+                id="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck="false"
+                aria-invalid={f.email.invalid}
+                aria-describedby={f.email.describedBy}
+                {...formik.getFieldProps('email')}
+              />
+              {f.email.nota}
+            </div>
+
+            <div className="hk-auth-field">
+              <label htmlFor="mobile">Celular</label>
+              <input
+                id="mobile"
+                name="mobile"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                placeholder="3585132769"
+                value={formik.values.mobile}
+                onChange={event => {
+                  const val = event.target.value.replace(/\D/g, '')
+                  const cleanedVal = val.startsWith('0') ? val.substring(1) : val
+                  formik.setFieldValue('mobile', cleanedVal)
+                }}
+                onBlur={formik.handleBlur}
+                aria-invalid={f.mobile.invalid}
+                aria-describedby={f.mobile.describedBy}
+              />
+              {f.mobile.nota}
+            </div>
+
+            <div className="hk-auth-field">
+              <label htmlFor="storeName">Nombre de la tienda</label>
+              <input
+                id="storeName"
+                name="storeName"
+                type="text"
+                autoComplete="organization"
+                placeholder="Ej. Repuestos BMW Córdoba"
+                value={formik.values.storeName}
+                onChange={handleStoreNameChange}
+                onBlur={formik.handleBlur}
+                aria-invalid={f.storeName.invalid}
+                aria-describedby={f.storeName.describedBy}
+              />
+              {f.storeName.nota}
+            </div>
+
+            <div className="hk-auth-field">
+              <label htmlFor="storeSlug">Identificador de tienda</label>
+              <input
+                id="storeSlug"
+                name="storeSlug"
+                type="text"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck="false"
+                placeholder="mi-tienda"
+                value={formik.values.storeSlug}
+                onChange={handleStoreSlugChange}
+                onBlur={handleStoreSlugBlur}
+                aria-invalid={f.storeSlug.invalid}
+                aria-describedby={f.storeSlug.describedBy}
+              />
+              {f.storeSlug.nota}
+
+              {storefrontPreview && !formik.errors.storeSlug && (
+                <div className="hk-auth-preview">
+                  <p>
+                    Tienda: <b>{storefrontPreview}</b>
+                  </p>
+                  {adminPreview && (
+                    <p>
+                      Panel: <b>{adminPreview}</b>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="hk-auth-field">
+              <label htmlFor="password">Contraseña</label>
+              <div className="hk-auth-password">
+                <input
+                  id="password"
+                  type={verPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  aria-invalid={f.password.invalid}
+                  aria-describedby={f.password.describedBy}
+                  {...formik.getFieldProps('password')}
+                />
+                <button
+                  type="button"
+                  className="hk-auth-eye"
+                  onClick={() => setVerPassword(v => !v)}
+                  aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={verPassword}
                 >
-                  <AlertTitle sx={{ fontWeight: 800, fontSize: '1.1rem' }}>
-                    ¡Tienda creada!
-                  </AlertTitle>
-                  La tienda <strong>{tenantData?.name || formik.values.storeName}</strong> fue
-                  creada correctamente.
-                </Alert>
+                  {verPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+                </button>
+              </div>
+              {f.password.nota}
+            </div>
 
-                <Box
-                  sx={{
-                    p: 3,
-                    bgcolor: '#0f172a',
-                    borderRadius: 4,
-                    border: '1px solid #334155',
+            {env.turnstileSiteKey && (
+              <div className="hk-auth-captcha">
+                <TurnstileWidget
+                  siteKey={env.turnstileSiteKey}
+                  onVerify={token => {
+                    setCaptchaToken(token)
                   }}
-                >
-                  <Stack direction="row" spacing={1} sx={{ mb: 2, color: '#94a3b8' }}>
-                    <Terminal sx={{ fontSize: 20 }} />
-                    <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 1 }}>
-                      DOMINIOS CREADOS
-                    </Typography>
-                  </Stack>
-
-                  <Box
-                    component="code"
-                    sx={{
-                      color: '#38bdf8',
-                      fontSize: '0.9rem',
-                      fontFamily: "'JetBrains Mono', monospace",
-                      lineHeight: 1.8,
-                    }}
-                  >
-                    Storefront: {getHostnameFromUrl(shopUrl)}
-                    <br />
-                    Admin: {getHostnameFromUrl(adminUrl)}
-                  </Box>
-
-                  {!isProduction && (
-                    <Alert severity="info" sx={{ mt: 2, borderRadius: 3 }}>
-                      En desarrollo agregá estos dominios al archivo hosts de Windows.
-                    </Alert>
-                  )}
-                </Box>
-
-                <Button
-                  variant="contained"
-                  size="large"
-                  onClick={handleGoToAdmin}
-                  fullWidth
-                  endIcon={<ArrowForward />}
-                  sx={{
-                    py: 2.5,
-                    borderRadius: 4,
-                    fontWeight: 800,
-                    textTransform: 'none',
-                    fontSize: '1.1rem',
-                    boxShadow: theme => `0 10px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
-                  }}
-                >
-                  Abrir Panel de Control
-                </Button>
-              </Stack>
-            ) : (
-              <form onSubmit={formik.handleSubmit}>
-                <Stack spacing={3}>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <TextField
-                        fullWidth
-                        label="Nombre"
-                        placeholder="Ej. Juan"
-                        {...formik.getFieldProps('firstname')}
-                        error={formik.touched.firstname && Boolean(formik.errors.firstname)}
-                        helperText={formik.touched.firstname && formik.errors.firstname}
-                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <TextField
-                        fullWidth
-                        label="Apellido"
-                        placeholder="Ej. Pérez"
-                        {...formik.getFieldProps('lastname')}
-                        error={formik.touched.lastname && Boolean(formik.errors.lastname)}
-                        helperText={formik.touched.lastname && formik.errors.lastname}
-                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 3 } }}
-                      />
-                    </Grid>
-                  </Grid>
-
-                  <TextField
-                    fullWidth
-                    label="Correo"
-                    {...formik.getFieldProps('email')}
-                    error={formik.touched.email && Boolean(formik.errors.email)}
-                    helperText={formik.touched.email && formik.errors.email}
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Email color="action" />
-                          </InputAdornment>
-                        ),
-                        sx: { borderRadius: 3 },
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    fullWidth
-                    id="mobile"
-                    name="mobile"
-                    label="Celular"
-                    placeholder="3585132769"
-                    value={formik.values.mobile}
-                    onChange={event => {
-                      const val = event.target.value.replace(/\D/g, '')
-                      const cleanedVal = val.startsWith('0') ? val.substring(1) : val
-                      formik.setFieldValue('mobile', cleanedVal)
-                    }}
-                    onBlur={formik.handleBlur}
-                    error={formik.touched.mobile && Boolean(formik.errors.mobile)}
-                    helperText={
-                      (formik.touched.mobile && formik.errors.mobile) ||
-                      'Sin 0 y sin 15. Ej: 3585132769'
-                    }
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Phone color="action" />
-                          </InputAdornment>
-                        ),
-                        sx: { borderRadius: 3 },
-                      },
-                    }}
-                  />
-
-                  <TextField
-                    fullWidth
-                    label="Nombre de la tienda"
-                    placeholder="Ej. Repuestos BMW Córdoba"
-                    value={formik.values.storeName}
-                    onChange={handleStoreNameChange}
-                    onBlur={formik.handleBlur}
-                    name="storeName"
-                    error={formik.touched.storeName && Boolean(formik.errors.storeName)}
-                    helperText={formik.touched.storeName && formik.errors.storeName}
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Storefront color="action" />
-                          </InputAdornment>
-                        ),
-                        sx: { borderRadius: 3 },
-                      },
-                    }}
-                  />
-
-                  <Box>
-                    <TextField
-                      fullWidth
-                      label="Identificador de tienda"
-                      placeholder="mi-tienda"
-                      value={formik.values.storeSlug}
-                      onChange={handleStoreSlugChange}
-                      onBlur={handleStoreSlugBlur}
-                      name="storeSlug"
-                      error={formik.touched.storeSlug && Boolean(formik.errors.storeSlug)}
-                      helperText={
-                        (formik.touched.storeSlug && formik.errors.storeSlug) ||
-                        'Se usará para crear tu subdominio interno.'
-                      }
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Badge color="action" />
-                            </InputAdornment>
-                          ),
-                          sx: { borderRadius: 3 },
-                        },
-                      }}
-                    />
-
-                    {storefrontPreview && !formik.errors.storeSlug && (
-                      <Fade in>
-                        <Stack spacing={1} sx={{ mt: 1.5 }}>
-                          <Chip
-                            icon={<Storefront />}
-                            label={`Tienda: ${storefrontPreview}`}
-                            color="primary"
-                            variant="outlined"
-                            sx={{
-                              justifyContent: 'flex-start',
-                              fontWeight: 700,
-                            }}
-                          />
-
-                          <Chip
-                            icon={<AdminPanelSettings />}
-                            label={`Admin: ${adminPreview}`}
-                            color="secondary"
-                            variant="outlined"
-                            sx={{
-                              justifyContent: 'flex-start',
-                              fontWeight: 700,
-                            }}
-                          />
-                        </Stack>
-                      </Fade>
-                    )}
-                  </Box>
-
-                  <TextField
-                    fullWidth
-                    type="password"
-                    label="Contraseña"
-                    {...formik.getFieldProps('password')}
-                    error={formik.touched.password && Boolean(formik.errors.password)}
-                    helperText={formik.touched.password && formik.errors.password}
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Lock color="action" />
-                          </InputAdornment>
-                        ),
-                        sx: { borderRadius: 3 },
-                      },
-                    }}
-                  />
-
-                  {env.turnstileSiteKey && (
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                      <TurnstileWidget
-                        siteKey={env.turnstileSiteKey}
-                        onVerify={token => {
-                          setCaptchaToken(token)
-                        }}
-                        onExpire={() => setTurnstileToken('')}
-                        onError={setCaptchaError}
-                      />
-                    </Box>
-                  )}
-
-                  {captchaError && (
-                    <Alert severity="warning" variant="outlined" sx={{ borderRadius: 3 }}>
-                      No pudimos verificar que no seas un robot. Podés intentar crear la tienda
-                      igual; si no funciona, recargá la página o probá desde otra red.
-                    </Alert>
-                  )}
-
-                  {isError && (
-                    <Alert severity="error" variant="filled" sx={{ borderRadius: 3 }}>
-                      {message || 'Error creando la tienda'}
-                    </Alert>
-                  )}
-
-                  <Button
-                    type="submit"
-                    fullWidth
-                    variant="contained"
-                    disabled={isLoading || captchaPending}
-                    sx={{
-                      py: 2.2,
-                      borderRadius: 4,
-                      fontWeight: 800,
-                      fontSize: '1rem',
-                      textTransform: 'none',
-                      mt: 2,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    }}
-                  >
-                    {/*
-                      Texto envuelto, no desnudo: ver website/src/Pages/Login.js.
-                      Acá el costo es un comercio que no llega a darse de alta.
-                    */}
-                    {isLoading ? (
-                      <CircularProgress size={26} color="inherit" />
-                    ) : (
-                      <span>Crear tienda</span>
-                    )}
-                  </Button>
-                </Stack>
-              </form>
+                  onExpire={() => setTurnstileToken('')}
+                  onError={setCaptchaError}
+                />
+              </div>
             )}
-          </Paper>
-        </Fade>
-      </Container>
-    </Box>
+
+            {captchaError && (
+              <p className="hk-auth-alert is-info" role="alert">
+                No pudimos verificar que no seas un robot. Podés intentar crear la tienda igual; si
+                no funciona, recargá la página o probá desde otra red.
+              </p>
+            )}
+
+            <button type="submit" className="hk-auth-submit" disabled={isLoading || captchaPending}>
+              {/*
+                Texto envuelto, no desnudo: ver website/src/Pages/Login.js.
+                Acá el costo es un comercio que no llega a darse de alta.
+              */}
+              {isLoading && <span className="hk-auth-spinner" aria-hidden="true" />}
+              <span>{isLoading ? 'Creando tienda' : 'Crear tienda'}</span>
+            </button>
+
+            {isError && (
+              <p className="hk-auth-alert" role="alert">
+                {message || 'Error creando la tienda'}
+              </p>
+            )}
+          </form>
+
+          <p className="hk-auth-foot">
+            ¿Ya tenés una cuenta?{' '}
+            <Link className="hk-auth-link is-strong" to="/login">
+              Ingresá
+            </Link>
+          </p>
+        </>
+      )}
+    </AuthShell>
   )
 }
 

@@ -1,4 +1,5 @@
-/* Login del panel. Todo cuelga de .hk-auth: no toca el resto del admin.
+/* Marco de las pantallas de acceso (ingresar, recuperar contraseña, crear tienda).
+   Todo cuelga de .hk-auth: no toca el resto del admin.
    Mismos tokens que SubscriptionPage.css (la paleta sale del logo). Nativos y no MUI/Ant:
    Ant Design v6 inyecta su CSS en runtime y pisa las clases propias. */
 
@@ -66,7 +67,11 @@
 }
 
 .hk-auth-brand-inner {
-  position: relative;
+  /* Pegado a la ventana: en un formulario largo (crear tienda) la página crece y, sin esto, el
+     texto de marca quedaba al fondo, fuera de la vista. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -369,6 +374,150 @@
   margin: 0 10px;
 }
 
+/* ───────────── Formularios largos (crear tienda) ───────────── */
+
+.hk-auth-card.is-wide {
+  max-width: 520px;
+}
+
+.hk-auth-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 14px;
+}
+
+.hk-auth-hint {
+  margin: 7px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--hk-muted);
+}
+
+/* El plan que se eligió en la pantalla de planes: sin esto el formulario lo mandaba sin decirlo. */
+.hk-auth-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  font-size: 14px;
+  background: #fff;
+  border: 1.5px solid var(--hk-line);
+  border-radius: 12px;
+}
+.hk-auth-plan span {
+  color: var(--hk-muted);
+}
+.hk-auth-plan b {
+  color: var(--hk-ink);
+}
+
+/* Dónde va a quedar la tienda, antes de crearla. */
+.hk-auth-preview {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  background: #eef4ff;
+  border: 1px solid #cfe0ff;
+  border-radius: 12px;
+}
+.hk-auth-preview p {
+  margin: 0;
+  color: var(--hk-muted);
+  overflow-wrap: anywhere;
+}
+.hk-auth-preview b {
+  color: var(--hk-ink);
+  font-weight: 700;
+}
+
+.hk-auth-captcha {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 18px;
+}
+
+/* ───────────── Resultado (mensaje enviado, tienda creada) ───────────── */
+
+.hk-auth-notice {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 4px 0 0;
+  padding: 16px;
+  color: var(--hk-ink);
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  border-radius: 14px;
+}
+.hk-auth-notice-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  color: var(--hk-ok);
+  background: #fff;
+  border-radius: 12px;
+}
+.hk-auth-notice b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+.hk-auth-notice p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.hk-auth-addresses {
+  display: grid;
+  gap: 10px;
+  margin: 22px 0;
+}
+.hk-auth-addresses div {
+  padding: 12px 14px;
+  background: #fff;
+  border: 1.5px solid var(--hk-line);
+  border-radius: 12px;
+}
+.hk-auth-addresses dt {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hk-muted);
+}
+.hk-auth-addresses dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.hk-auth-ghost {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hk-muted);
+  text-align: center;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.hk-auth-ghost:hover {
+  color: var(--hk-blue);
+}
+
 /* ───────────── Responsive ───────────── */
 
 @media (max-width: 920px) {
@@ -378,6 +527,8 @@
   }
   /* En el celular el panel de marca queda como franja con el logo: lo que importa es el formulario. */
   .hk-auth-brand-inner {
+    position: static;
+    height: auto;
     gap: 0;
     max-width: none;
     padding: 20px 24px;
@@ -392,6 +543,9 @@
 }
 
 @media (max-width: 480px) {
+  .hk-auth-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .hk-auth-main {
     padding: 28px 16px 40px;
   }
