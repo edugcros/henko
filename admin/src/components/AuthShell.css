@@ -276,6 +276,8 @@
 }
 
 .hk-auth-submit {
+  /* También se usa en enlaces (<a>) que se ven como el botón principal. */
+  text-decoration: none;
   display: flex;
   align-items: center;
   justify-content: center;
