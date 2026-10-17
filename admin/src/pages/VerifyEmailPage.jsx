@@ -12,8 +12,9 @@
 // justamente porque su cuenta no está verificada.
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Alert, Box, Button, CircularProgress, Container, Paper, Typography } from '@mui/material'
+import { CheckOutlined } from '@ant-design/icons'
 import api from '@utils/axiosConfig'
+import AuthShell from '../components/AuthShell.js'
 
 const VerifyEmailPage = () => {
   const [searchParams] = useSearchParams()
@@ -30,8 +31,14 @@ const VerifyEmailPage = () => {
   // realidad salió bien.
   const requestedTokenRef = useRef(null)
 
+  // La marca de montaje es de la PANTALLA y no de cada corrida del efecto. En StrictMode el efecto
+  // corre, se limpia y corre de nuevo: la segunda corrida corta porque el token ya se pidió, y si la
+  // marca fuera local, la primera —que sí hizo el pedido— quedaría «desmontada» y nadie actualizaría
+  // la pantalla: se quedaba en «Verificando tu correo...» para siempre.
+  const mountedRef = useRef(false)
+
   useEffect(() => {
-    let isMounted = true
+    mountedRef.current = true
 
     if (!token) {
       setStatus('error')
@@ -53,12 +60,12 @@ const VerifyEmailPage = () => {
           throw new Error(data?.message || 'No se pudo verificar el correo.')
         }
 
-        if (!isMounted) return
+        if (!mountedRef.current) return
 
         setStatus('success')
         setMessage(data.message || 'Correo verificado correctamente.')
       } catch (error) {
-        if (!isMounted) return
+        if (!mountedRef.current) return
 
         setStatus('error')
         setMessage(
@@ -72,68 +79,62 @@ const VerifyEmailPage = () => {
     run()
 
     return () => {
-      isMounted = false
+      mountedRef.current = false
     }
   }, [token])
 
+  const titulo =
+    status === 'success'
+      ? '¡Correo verificado!'
+      : status === 'error'
+        ? 'No pudimos verificar tu correo'
+        : 'Verificando tu correo'
+
   return (
-    <Container maxWidth="sm" sx={{ py: 10 }}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: { xs: 3, md: 5 },
-          borderRadius: 4,
-          textAlign: 'center',
-          border: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Typography variant="overline" color="text.secondary">
-          Panel de administración
-        </Typography>
+    <AuthShell titleId="verify-title">
+      <h1 id="verify-title">{titulo}</h1>
 
-        {status === 'loading' && (
-          <Box sx={{ mt: 2 }}>
-            <CircularProgress />
-            <Typography variant="h6" sx={{ mt: 3 }}>
-              {message}
-            </Typography>
-          </Box>
-        )}
+      {status === 'loading' && (
+        <p className="hk-auth-lead" role="status">
+          <span className="hk-auth-loader" aria-hidden="true" />
+          {message}
+        </p>
+      )}
 
-        {status === 'success' && (
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="success" sx={{ mb: 3, textAlign: 'left' }}>
-              {message}
-            </Alert>
+      {status === 'success' && (
+        <>
+          <div className="hk-auth-notice" role="status">
+            <span className="hk-auth-notice-icon" aria-hidden="true">
+              <CheckOutlined />
+            </span>
+            <div>
+              <b>{message}</b>
+              <p>Tu cuenta de comercio ya está activa.</p>
+            </div>
+          </div>
 
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Tu cuenta de comercio ya está activa.
-            </Typography>
+          <Link className="hk-auth-submit" to="/login" style={{ marginTop: 22 }}>
+            <span>Entrar al panel</span>
+          </Link>
+        </>
+      )}
 
-            <Button component={Link} to="/login" variant="contained" size="large">
-              Entrar al panel
-            </Button>
-          </Box>
-        )}
+      {status === 'error' && (
+        <>
+          <p className="hk-auth-alert" role="alert">
+            {message}
+          </p>
 
-        {status === 'error' && (
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>
-              {message}
-            </Alert>
+          <p className="hk-auth-lead" style={{ marginTop: 18 }}>
+            Si el enlace expiró, volvé a registrarte o pedí uno nuevo desde el inicio de sesión.
+          </p>
 
-            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Si el enlace expiró, volvé a registrarte o pedí uno nuevo desde el inicio de sesión.
-            </Typography>
-
-            <Button component={Link} to="/login" variant="outlined" size="large">
-              Ir al inicio de sesión
-            </Button>
-          </Box>
-        )}
-      </Paper>
-    </Container>
+          <Link className="hk-auth-secondary" to="/login">
+            Ir al inicio de sesión
+          </Link>
+        </>
+      )}
+    </AuthShell>
   )
 }
 
