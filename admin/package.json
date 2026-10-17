@@ -37,7 +37,7 @@
     "@hookform/resolvers": "^5.9.1",
     "@mercadopago/sdk-react": "^1.0.7",
     "@mui/icons-material": "^9.4.0",
-    "@mui/lab": "^9.0.0-beta.9",
+    "@mui/lab": "^9.0.0-beta.10",
     "@mui/material": "^9.4.0",
     "@mui/x-data-grid": "^9.15.0",
     "@mui/x-date-pickers": "^9.15.0",
