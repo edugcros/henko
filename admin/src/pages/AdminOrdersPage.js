@@ -247,7 +247,7 @@ const FULFILLMENT_BADGE_CONFIGS = {
 // HELPERS
 // ==========================================
 
-const normalizeValue = value => {
+export const normalizeValue = value => {
   if (value === null || value === undefined) return 0
   if (typeof value === 'object' && value.$numberDecimal) return Number(value.$numberDecimal) || 0
   if (typeof value === 'object' && value.$numberInt) return Number(value.$numberInt) || 0
@@ -257,7 +257,7 @@ const normalizeValue = value => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const resolveMoneyAmount = (decimalValue, centsValue) => {
+export const resolveMoneyAmount = (decimalValue, centsValue) => {
   const decimal = normalizeValue(decimalValue)
 
   if (decimal > 0) return decimal
@@ -268,7 +268,7 @@ const resolveMoneyAmount = (decimalValue, centsValue) => {
   return 0
 }
 
-const formatCurrency = amount => {
+export const formatCurrency = amount => {
   try {
     return new Intl.NumberFormat('es-AR', {
       style: 'currency',
@@ -280,7 +280,7 @@ const formatCurrency = amount => {
   }
 }
 
-const formatDateShort = date => {
+export const formatDateShort = date => {
   if (!date) return '-'
 
   try {
@@ -295,17 +295,17 @@ const formatDateFile = () => dayjs().format('YYYY-MM-DD-HHmm')
 
 const normalizeString = value => String(value || '').trim()
 
-const normalizeOrderStatusForUI = status => {
+export const normalizeOrderStatusForUI = status => {
   const normalized = normalizeString(status).toLowerCase()
   return LEGACY_TO_UI_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
-const normalizeOrderStatusForLegacyApi = status => {
+export const normalizeOrderStatusForLegacyApi = status => {
   const normalized = normalizeString(status).toLowerCase()
   return UI_TO_LEGACY_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
-const buildApiFilters = filters => {
+export const buildApiFilters = filters => {
   const normalizedStatus = normalizeString(filters.status).toLowerCase()
 
   return {
@@ -315,10 +315,10 @@ const buildApiFilters = filters => {
   }
 }
 
-const getOrderDisplayId = order =>
+export const getOrderDisplayId = order =>
   order?.orderNumber || order?._id?.slice(-8)?.toUpperCase() || 'SIN-ID'
 
-const getOrderCustomerName = order => {
+export const getOrderCustomerName = order => {
   const firstName =
     order?.orderby?.firstName ||
     order?.orderby?.firstname ||
@@ -342,21 +342,21 @@ const getOrderCustomerName = order => {
 // el admin le puede mostrar al operador un email distinto del que el
 // cliente realmente recibió (ej. compró logueado pero puso otro email en el
 // checkout).
-const getOrderCustomerEmail = order =>
+export const getOrderCustomerEmail = order =>
   order?.shippingAddress?.email ||
   order?.customerSnapshot?.email ||
   order?.paymentIntent?.payerEmail ||
   order?.orderby?.email ||
   'Sin email'
 
-const getOrderCustomerPhone = order =>
+export const getOrderCustomerPhone = order =>
   order?.orderby?.phone ||
   order?.orderby?.mobile ||
   order?.customerSnapshot?.mobile ||
   order?.shippingAddress?.phone ||
   ''
 
-const getProductImageUrl = product => {
+export const getProductImageUrl = product => {
   if (!product) return null
 
   if (product.image && typeof product.image === 'object' && product.image.url) {
@@ -376,15 +376,15 @@ const getProductImageUrl = product => {
   return null
 }
 
-const getLineImageUrl = item => {
+export const getLineImageUrl = item => {
   return item?.imageSnapshot || item?.image || getProductImageUrl(item?.product) || null
 }
 
-const getLineTitle = item => {
+export const getLineTitle = item => {
   return item?.product?.title || item?.title || item?.titleSnapshot || 'Producto sin título'
 }
 
-const getLineSku = item => {
+export const getLineSku = item => {
   return (
     item?.product?.sku ||
     item?.sku ||
@@ -395,12 +395,12 @@ const getLineSku = item => {
   )
 }
 
-const getLineQuantity = item => {
+export const getLineQuantity = item => {
   const quantity = normalizeValue(item?.count ?? item?.quantity)
   return quantity > 0 ? quantity : 0
 }
 
-const isOrderProtectedFromDelete = order => {
+export const isOrderProtectedFromDelete = order => {
   const paymentStatus = normalizeString(order?.paymentStatus).toLowerCase()
   const orderStatus = normalizeOrderStatusForUI(order?.orderStatus)
   const fulfillmentStatus = normalizeString(order?.fulfillmentStatus).toLowerCase()
@@ -444,13 +444,13 @@ const downloadTextFile = ({ filename, content, mimeType = 'text/csv;charset=utf-
   URL.revokeObjectURL(url)
 }
 
-const escapeCsv = value => {
+export const escapeCsv = value => {
   const raw = value === null || value === undefined ? '' : String(value)
   const escaped = raw.replace(/"/g, '""')
   return `"${escaped}"`
 }
 
-const buildOrdersCsv = orders => {
+export const buildOrdersCsv = orders => {
   const headers = [
     'Pedido',
     'Fecha',
