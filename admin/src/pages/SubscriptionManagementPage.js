@@ -1,31 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Alert, Button, Empty, Modal, Spin, Table, message } from 'antd'
 import {
-  Button,
-  Card,
-  Col,
-  Divider,
-  Empty,
-  Flex,
-  Modal,
-  Row,
-  Space,
-  Spin,
-  Statistic,
-  Table,
-  Tag,
-  Typography,
-  Alert,
-  message,
-  theme,
-} from 'antd'
-import {
-  CrownOutlined,
-  RocketOutlined,
   CheckCircleOutlined,
+  CheckOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
-  DeleteOutlined,
   SwapOutlined,
 } from '@ant-design/icons'
 import api from '@utils/axiosConfig'
@@ -33,42 +13,44 @@ import {
   PLAN_PRESENTATION,
   SELLABLE_PLANS,
   formatArs,
+  formatCount,
+  getPlanQuotaLines,
   isPlanContratable,
 } from '../constants/plans.js'
-
-const { Paragraph, Text, Title } = Typography
-const { useToken } = theme
+import './SubscriptionManagementPage.css'
 
 // PLAN_DETAILS vivía acá con los precios adentro: 26,14 USD el starter y 99 USD
 // el pro. Ese 26,14 era el resultado congelado de dividir 40.000 pesos por el
 // dólar del 24/08/2026 — o sea que esta pantalla mostraba un número y el cobro
 // salía de otro. El nombre y el ícono se mudaron a constants/plans.js y el
-// precio lo trae el backend, que es quien cobra.
+// precio lo trae el backend, que es quien cobra. Los cupos de IA vienen del mismo
+// catálogo.
 
+// `tone` elige el color de la etiqueta de estado (ver .hk-sus-pill en el CSS).
 const STATUS_CONFIG = {
   active: {
     label: 'Activa',
-    color: 'success',
+    tone: 'ok',
     icon: CheckCircleOutlined,
   },
   trialing: {
     label: 'En prueba',
-    color: 'processing',
+    tone: 'info',
     icon: ClockCircleOutlined,
   },
   past_due: {
     label: 'Pendiente de pago',
-    color: 'warning',
+    tone: 'warn',
     icon: ExclamationCircleOutlined,
   },
   cancelled: {
     label: 'Cancelada',
-    color: 'error',
+    tone: 'bad',
     icon: ExclamationCircleOutlined,
   },
   expired: {
     label: 'Expirada',
-    color: 'default',
+    tone: 'muted',
     icon: ExclamationCircleOutlined,
   },
 }
@@ -90,52 +72,62 @@ const formatCurrency = (amount, currency = 'ARS') =>
     maximumFractionDigits: 2,
   }).format(amount)
 
-const PlanCard = ({ plan, priceArs, current, onSelectPlan }) => {
-  const { token } = useToken()
+const PlanCard = ({ plan, priceArs, limits, current, onSelectPlan }) => {
   const PlanDetail = PLAN_PRESENTATION[plan]
   if (!PlanDetail) return null
 
   const PlanIcon = PlanDetail.icon
   const isCurrent = current === plan
+  const cupos = getPlanQuotaLines(limits)
 
   return (
-    <Card
-      styles={{
-        body: {
-          padding: 20,
-        },
-      }}
-      style={{
-        borderRadius: token.borderRadiusLG,
-        border: `2px solid ${isCurrent ? token.colorPrimary : token.colorBorderSecondary}`,
-        background: isCurrent ? token.colorPrimaryBg : 'transparent',
-      }}
+    <article
+      className={`hk-sus-plan${isCurrent ? ' is-current' : ''}`}
+      aria-label={`Plan ${PlanDetail.name}`}
     >
-      <Flex justify="space-between" align="flex-start" gap={12}>
-        <Flex direction="vertical" gap={8} style={{ flex: 1 }}>
-          <Flex align="center" gap={8}>
-            <PlanIcon style={{ fontSize: 20, color: token.colorPrimary }} />
-            <Text strong style={{ fontSize: 16 }}>
-              {PlanDetail.name}
-            </Text>
-          </Flex>
-          <Text strong style={{ fontSize: 24, color: token.colorTextHeading }}>
-            {formatArs(priceArs, { sinPrecio: 'A definir' })}
-            <Text style={{ fontSize: 12, marginLeft: 4 }}>/ mes</Text>
-          </Text>
-        </Flex>
+      <header className="hk-sus-plan-head">
+        <span className="hk-sus-plan-icon" aria-hidden="true">
+          <PlanIcon />
+        </span>
+        <h3>{PlanDetail.name}</h3>
         {isCurrent && (
-          <Tag color="success" icon={<CheckCircleOutlined />}>
-            Actual
-          </Tag>
+          <span className="hk-sus-pill is-ok">
+            <CheckCircleOutlined aria-hidden="true" /> Actual
+          </span>
         )}
-      </Flex>
+      </header>
+
+      <p className="hk-sus-plan-price">
+        <strong>{formatArs(priceArs, { sinPrecio: 'A definir' })}</strong>
+        <span>/ mes</span>
+      </p>
+
+      <ul className="hk-sus-plan-list">
+        {PlanDetail.features.map(feature => (
+          <li key={feature}>
+            <CheckOutlined aria-hidden="true" /> {feature}
+          </li>
+        ))}
+      </ul>
+
+      {cupos.length > 0 && (
+        <div className="hk-sus-quotas">
+          <span>Cada mes incluye</span>
+          <ul>
+            {cupos.map(cupo => (
+              <li key={cupo.key}>
+                <b>{formatCount(cupo.amount)}</b> {cupo.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!isCurrent && (
         <Button
           type="primary"
           block
-          style={{ marginTop: 16 }}
+          size="large"
           onClick={() => onSelectPlan(plan)}
           icon={<SwapOutlined />}
           disabled={!isPlanContratable(priceArs)}
@@ -143,13 +135,12 @@ const PlanCard = ({ plan, priceArs, current, onSelectPlan }) => {
           {isPlanContratable(priceArs) ? 'Cambiar a este plan' : 'Precio a definir'}
         </Button>
       )}
-    </Card>
+    </article>
   )
 }
 
 const SubscriptionManagementPage = () => {
   const navigate = useNavigate()
-  const { token } = useToken()
   const [loading, setLoading] = useState(true)
   const [subscription, setSubscription] = useState(null)
   const [invoices, setInvoices] = useState([])
@@ -157,9 +148,9 @@ const SubscriptionManagementPage = () => {
   const [cancellingSubscription, setCancellingSubscription] = useState(false)
   const [error, setError] = useState(null)
   const [selectedPlan, setSelectedPlan] = useState(null)
-  // Los precios los sirve el backend. Esta pantalla los tenía escritos a mano y
-  // no coincidían con los de la pantalla de planes ni con lo que se cobra.
-  const [precios, setPrecios] = useState({})
+  // Los precios y los cupos los sirve el backend. Esta pantalla los tenía escritos
+  // a mano y no coincidían con los de la pantalla de planes ni con lo que se cobra.
+  const [catalogo, setCatalogo] = useState({})
 
   // Cargar datos de suscripción
   useEffect(() => {
@@ -174,8 +165,12 @@ const SubscriptionManagementPage = () => {
           api.get('/subscriptions/plans'),
         ])
 
-        const catalogo = plansResponse?.data?.data?.plans || []
-        setPrecios(Object.fromEntries(catalogo.map(p => [p.plan, p.monthlyPriceArs])))
+        const planes = plansResponse?.data?.data?.plans || []
+        setCatalogo(
+          Object.fromEntries(
+            planes.map(p => [p.plan, { price: p.monthlyPriceArs, limits: p.limits }]),
+          ),
+        )
 
         if (subResponse.data.success) {
           setSubscription(subResponse.data.data)
@@ -288,16 +283,7 @@ const SubscriptionManagementPage = () => {
 
   if (loading) {
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          padding: '56px 20px 40px',
-          background: token.colorBgLayout,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <main className="hk-sus is-centered">
         <Spin size="large" />
       </main>
     )
@@ -305,21 +291,25 @@ const SubscriptionManagementPage = () => {
 
   if (!subscription) {
     return (
-      <main
-        style={{
-          minHeight: '100vh',
-          padding: '56px 20px 40px',
-          background: token.colorBgLayout,
-        }}
-      >
-        <section style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
-          <Empty description="No hay información de suscripción" style={{ marginTop: 48 }} />
-          <Flex justify="center" gap={16} style={{ marginTop: 24 }}>
+      <main className="hk-sus">
+        <section className="hk-sus-wrap">
+          {/* Si la carga falló hay que decir por qué: «no hay información» a secas escondía el error. */}
+          {error && (
+            <Alert
+              message="Error"
+              description={error}
+              type="error"
+              showIcon
+              style={{ marginBottom: 24 }}
+            />
+          )}
+          <Empty description="No hay información de suscripción" />
+          <div className="hk-sus-empty-actions">
             <Button type="primary" onClick={() => navigate('/subscripcion')}>
               Ver planes
             </Button>
             <Button onClick={() => navigate('/admin')}>Volver al panel</Button>
-          </Flex>
+          </div>
         </section>
       </main>
     )
@@ -329,6 +319,11 @@ const SubscriptionManagementPage = () => {
   const StatusIcon = statusConfig.icon
   const isActive = subscription.subscriptionStatus === 'active'
   const canChangeOrCancel = isActive || subscription.subscriptionStatus === 'past_due'
+  // En prueba todavía no hay nada que cancelar, pero SÍ hay que poder elegir plan: es el comercio
+  // que tiene que suscribirse. Antes la pantalla lo trataba como dado de baja y le decía que su
+  // suscripción ya estaba «cancelada o expirada». Sin suscripción en Mercado Pago, elegir un plan
+  // lleva al checkout (ver handleChangePlan).
+  const puedeElegirPlan = canChangeOrCancel || subscription.subscriptionStatus === 'trialing'
 
   // Cancelar exige una suscripción real en Mercado Pago. El estado del comercio
   // puede decir 'active' sin que exista ninguna —es el caso de un plan puesto a
@@ -340,6 +335,11 @@ const SubscriptionManagementPage = () => {
   const nextPaymentAt =
     subscription.mercadoPago?.nextBillingAt || subscription.mercadoPago?.currentPeriodEnd || null
 
+  // Una suscripción dada de baja y sin ninguna fecha no tiene un «fin de la prueba» que mostrar.
+  const mostrarFecha =
+    Boolean(nextPaymentAt || subscription.trialEndsAt) ||
+    ['active', 'trialing', 'past_due'].includes(subscription.subscriptionStatus)
+
   const trialEndsIn = subscription.trialEndsAt
     ? Math.ceil((new Date(subscription.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24))
     : null
@@ -350,16 +350,16 @@ const SubscriptionManagementPage = () => {
       dataIndex: 'date',
       key: 'date',
       render: date => formatDate(date),
-      width: 150,
+      width: 200,
     },
     {
       title: 'Estado',
       dataIndex: 'status',
       key: 'status',
       render: status => (
-        <Tag color={status === 'approved' ? 'success' : 'processing'}>
+        <span className={`hk-sus-pill ${status === 'approved' ? 'is-ok' : 'is-info'}`}>
           {status === 'approved' ? 'Pagado' : 'Pendiente'}
-        </Tag>
+        </span>
       ),
       width: 120,
     },
@@ -367,7 +367,7 @@ const SubscriptionManagementPage = () => {
       title: 'Monto',
       dataIndex: 'amount',
       key: 'amount',
-      render: (amount, record) => formatCurrency(amount, record.currency || 'USD'),
+      render: (amount, record) => formatCurrency(amount, record.currency || 'ARS'),
       align: 'right',
       width: 120,
     },
@@ -380,18 +380,11 @@ const SubscriptionManagementPage = () => {
   ]
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        padding: '56px 20px 40px',
-        background: token.colorBgLayout,
-      }}
-    >
-      <section style={{ width: '100%', maxWidth: 960, margin: '0 auto' }}>
-        <header style={{ marginBottom: 32 }}>
-          <Title level={1} style={{ margin: 0 }}>
-            Mi suscripción
-          </Title>
+    <main className="hk-sus">
+      <section className="hk-sus-wrap">
+        <header className="hk-sus-head">
+          <h1>Mi suscripción</h1>
+          <p>Tu plan, tu próximo cobro y tu historial de pagos.</p>
         </header>
 
         {error && (
@@ -406,43 +399,24 @@ const SubscriptionManagementPage = () => {
         )}
 
         {/* Estado actual de suscripción */}
-        <Card
-          style={{
-            marginBottom: 32,
-            borderRadius: token.borderRadiusLG,
-            borderLeft: `4px solid ${token.colorSuccess}`,
-          }}
-        >
-          <Row gutter={[24, 24]}>
-            <Col xs={24} sm={12} md={6}>
-              <Statistic
-                title="Plan actual"
-                value={PLAN_PRESENTATION[subscription.plan]?.name || 'Desconocido'}
-                valueStyle={{ color: token.colorPrimary }}
-              />
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Flex direction="vertical" gap={4}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Estado
-                </Text>
-                <Flex align="center" gap={8}>
-                  <StatusIcon style={{ color: token[`color${statusConfig.color}`] }} />
-                  <Text strong>{statusConfig.label}</Text>
-                </Flex>
-              </Flex>
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Statistic
-                title="Precio mensual"
-                value={formatArs(precios[subscription.plan] ?? null)}
-              />
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Flex direction="vertical" gap={4}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {nextPaymentAt ? 'Próximo pago' : 'Fin de la prueba'}
-                </Text>
+        <section className="hk-sus-summary" aria-label="Estado de tu suscripción">
+          <div className="hk-sus-summary-main">
+            <span className="hk-sus-eyebrow">PLAN ACTUAL</span>
+            <p className="hk-sus-summary-plan">
+              {PLAN_PRESENTATION[subscription.plan]?.name || 'Desconocido'}
+            </p>
+            <span className={`hk-sus-pill is-${statusConfig.tone} is-on-dark`}>
+              <StatusIcon aria-hidden="true" /> {statusConfig.label}
+            </span>
+          </div>
+
+          <dl className="hk-sus-facts">
+            <div>
+              <dt>Precio mensual</dt>
+              <dd>{formatArs(catalogo[subscription.plan]?.price ?? null)}</dd>
+            </div>
+            {mostrarFecha && (
+              <div>
                 {/*
                   Decía "Próximo pago" y mostraba trialEndsAt: el fin del
                   período de prueba, que en un comercio que ya paga es una
@@ -450,104 +424,82 @@ const SubscriptionManagementPage = () => {
                   El dato correcto lo informa Mercado Pago y el endpoint ya lo
                   devolvía dentro de mercadoPago; solo que nadie lo leía.
                 */}
-                <Text strong>{formatDate(nextPaymentAt || subscription.trialEndsAt)}</Text>
-              </Flex>
-            </Col>
-          </Row>
+                <dt>{nextPaymentAt ? 'Próximo pago' : 'Fin de la prueba'}</dt>
+                <dd>{formatDate(nextPaymentAt || subscription.trialEndsAt)}</dd>
+              </div>
+            )}
+          </dl>
 
           {subscription.subscriptionStatus === 'trialing' && trialEndsIn !== null && (
-            <Alert
-              message={`Tu período de prueba termina en ${trialEndsIn} días`}
-              type="info"
-              showIcon
-              style={{ marginTop: 16 }}
-            />
+            <p className="hk-sus-note is-info">
+              {`Tu período de prueba termina en ${trialEndsIn} días`}
+            </p>
           )}
 
           {subscription.subscriptionStatus === 'past_due' && (
-            <Alert
-              message="Tu pago está pendiente. Por favor, actualiza tu método de pago."
-              type="warning"
-              showIcon
-              style={{ marginTop: 16 }}
-            />
+            <p className="hk-sus-note is-warn" role="alert">
+              Tu pago está pendiente. Por favor, actualiza tu método de pago.
+            </p>
           )}
-        </Card>
+        </section>
 
         {/* Seleccionar plan */}
-        {canChangeOrCancel && (
-          <>
-            <Title level={3} style={{ marginBottom: 16 }}>
-              Cambiar de plan
-            </Title>
-            <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+        {puedeElegirPlan && (
+          <section className="hk-sus-section" aria-labelledby="hk-sus-plans-title">
+            <h2 id="hk-sus-plans-title">Cambiar de plan</h2>
+            <div className="hk-sus-plans">
               {SELLABLE_PLANS.map(planId => (
-                <Col xs={24} sm={12} key={planId}>
-                  <PlanCard
-                    plan={planId}
-                    priceArs={precios[planId] ?? null}
-                    current={subscription.plan}
-                    onSelectPlan={handleChangePlan}
-                  />
-                </Col>
+                <PlanCard
+                  key={planId}
+                  plan={planId}
+                  priceArs={catalogo[planId]?.price ?? null}
+                  limits={catalogo[planId]?.limits}
+                  current={subscription.plan}
+                  onSelectPlan={handleChangePlan}
+                />
               ))}
-            </Row>
-
-            <Divider />
-          </>
+            </div>
+          </section>
         )}
 
         {/* Historial de pagos */}
-        <Title level={3} style={{ marginBottom: 16, marginTop: 32 }}>
-          Historial de pagos
-        </Title>
+        <section className="hk-sus-section" aria-labelledby="hk-sus-invoices-title">
+          <h2 id="hk-sus-invoices-title">Historial de pagos</h2>
 
-        {invoices && invoices.length > 0 ? (
-          <Card style={{ marginBottom: 32 }}>
-            <Table
-              columns={invoiceColumns}
-              dataSource={invoices.map((inv, idx) => ({ ...inv, key: inv.id || idx }))}
-              pagination={{ pageSize: 10 }}
-              size="small"
-            />
-          </Card>
-        ) : (
-          <Card style={{ marginBottom: 32 }}>
-            <Empty description="No hay pagos registrados" />
-          </Card>
-        )}
+          <div className="hk-sus-card">
+            {invoices && invoices.length > 0 ? (
+              <Table
+                columns={invoiceColumns}
+                dataSource={invoices.map((inv, idx) => ({ ...inv, key: inv.id || idx }))}
+                pagination={{ pageSize: 10 }}
+                size="small"
+                scroll={{ x: 520 }}
+              />
+            ) : (
+              <Empty description="No hay pagos registrados" />
+            )}
+          </div>
+        </section>
 
         {/* Cancelar suscripción */}
         {canChangeOrCancel && tieneSuscripcionEnMercadoPago && (
-          <Card
-            style={{
-              borderRadius: token.borderRadiusLG,
-              background: token.colorErrorBg,
-              borderColor: token.colorError,
-            }}
-          >
-            <Flex direction="vertical" gap={12}>
-              <Title level={4} style={{ margin: 0, color: token.colorError }}>
-                Zona de peligro
-              </Title>
-              <Paragraph style={{ margin: 0, color: token.colorError }}>
-                Cancelar tu suscripción eliminará acceso a características premium.
-              </Paragraph>
-              <Button
-                danger
-                type="primary"
-                icon={<DeleteOutlined />}
-                loading={cancellingSubscription}
-                onClick={handleCancelSubscription}
-                style={{ width: 'fit-content' }}
-              >
-                Cancelar suscripción
-              </Button>
-            </Flex>
-          </Card>
+          <section className="hk-sus-danger" aria-labelledby="hk-sus-danger-title">
+            <div>
+              <h2 id="hk-sus-danger-title">Zona de peligro</h2>
+              <p>Cancelar tu suscripción eliminará acceso a características premium.</p>
+            </div>
+            <Button
+              danger
+              loading={cancellingSubscription}
+              onClick={handleCancelSubscription}
+              size="large"
+            >
+              Cancelar suscripción
+            </Button>
+          </section>
         )}
 
-        {!canChangeOrCancel && (
+        {!puedeElegirPlan && (
           <Alert
             message="Tu suscripción ya está cancelada o expirada"
             description="Volvé a suscribirte para acceder a características premium."
