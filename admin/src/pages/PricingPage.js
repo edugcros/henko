@@ -49,6 +49,30 @@ import {
 
 const PRODUCT_OPTIONS_LIMIT = 20
 
+// Identidad de Henkart (la misma de la pantalla de planes y las de acceso).
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
+const VERDICT_BG = [
+  'radial-gradient(420px 260px at 6% 0%, rgba(11,107,255,0.34), transparent 70%)',
+  'radial-gradient(380px 300px at 100% 100%, rgba(122,44,255,0.3), transparent 70%)',
+  '#050b1f',
+].join(', ')
+
+const SECTION_TITLE = {
+  fontFamily: DISPLAY_FONT,
+  fontWeight: 800,
+  fontSize: 22,
+  letterSpacing: '-0.01em',
+}
+
+const PANEL_LABEL = {
+  display: 'block',
+  mb: 1,
+  color: 'text.secondary',
+  fontWeight: 700,
+  letterSpacing: '0.12em',
+}
+
 const STRATEGIES = [
   { value: 'margin', label: 'Proteger margen' },
   { value: 'rotation', label: 'Priorizar rotación' },
@@ -61,6 +85,26 @@ const MODES = [
   { value: 'manual', label: 'Manual — solo sugiere' },
   { value: 'semi', label: 'Semiautomático — aplica cambios chicos' },
   { value: 'autopilot', label: 'Automático — aplica dentro de la política' },
+]
+
+// Cuatro pasos, en orden: cada uno solo corre si el anterior dio algo.
+const STEPS = [
+  {
+    title: 'HENKO mira los números',
+    text: 'Elegís un producto y HENKO mira sus números: costo, margen, cuánto vendió en 30 días contra los 30 anteriores, cuánto stock le queda y si el costo se movió desde el último cambio de precio. Esto no gasta consumo de IA.',
+  },
+  {
+    title: 'Aparecen las señales',
+    text: 'Si algo de eso está fuera de lugar, aparece como una señal con su explicación. Si está todo bien, la pantalla te lo dice y no se analiza nada más.',
+  },
+  {
+    title: 'La IA propone un precio',
+    text: 'Solo cuando hay una señal que se puede razonar, la IA propone un precio y explica el motivo.',
+  },
+  {
+    title: 'Tu política lo ajusta',
+    text: 'Tu política —la de abajo— recorta esa propuesta: margen mínimo, variación máxima, piso y techo. Recién ahí aparece el botón para aplicarla, y el cambio queda en el historial del producto.',
+  },
 ]
 
 // Cada señal, con lo que significa en plata y qué se puede hacer. Eran
@@ -144,11 +188,18 @@ const Row = ({ label, value, source, emphasis = false }) => {
   return (
     <Stack
       direction="row"
-      justifyContent="space-between"
-      alignItems="baseline"
-      sx={{ py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}
+      spacing={2}
+      // justifyContent y alignItems por sx: en MUI v9 como props sueltos no se aplican, y el valor
+      // quedaba pegado a la etiqueta en lugar de alinearse a la derecha.
+      sx={{
+        py: 1,
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+      }}
     >
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary">
           {label}
         </Typography>
@@ -163,9 +214,13 @@ const Row = ({ label, value, source, emphasis = false }) => {
         )}
       </Stack>
       <Typography
-        variant={emphasis ? 'subtitle1' : 'body2'}
-        fontWeight={emphasis ? 700 : 500}
-        sx={{ fontVariantNumeric: 'tabular-nums' }}
+        sx={{
+          fontFamily: emphasis ? DISPLAY_FONT : undefined,
+          fontSize: emphasis ? 18 : 14,
+          fontWeight: emphasis ? 800 : 500,
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right',
+        }}
       >
         {value}
       </Typography>
@@ -343,47 +398,95 @@ const PricingPage = () => {
 
   // ------------------------------------------------------------------
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: 'auto' }}>
-      <Stack spacing={1.5} sx={{ mb: 3 }}>
-        <Typography variant="h4" fontWeight={700}>
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1100, mx: 'auto' }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography
+          variant="overline"
+          sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.16em' }}
+        >
+          PRECIOS
+        </Typography>
+        <Typography
+          component="h1"
+          sx={{
+            fontFamily: DISPLAY_FONT,
+            fontWeight: 800,
+            fontSize: { xs: 26, md: 34 },
+            letterSpacing: '-0.02em',
+            lineHeight: 1.15,
+          }}
+        >
           Pricing Intelligence
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 700 }}>
           Te dice si el precio de un producto está donde tiene que estar, y por qué. Nunca cambia un
           precio solo: te muestra el número y lo aplicás vos.
         </Typography>
+      </Box>
 
-        {/*
-          Cuatro pasos, numerados porque son una secuencia real: cada uno solo
-          corre si el anterior dio algo. La pantalla se entendía solo sabiendo
-          cómo está construida por dentro.
-        */}
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-            Cómo funciona
-          </Typography>
-          <Stack component="ol" spacing={0.75} sx={{ m: 0, pl: 2.5 }}>
-            {[
-              'Elegís un producto y HENKO mira sus números: costo, margen, cuánto vendió en 30 días contra los 30 anteriores, cuánto stock le queda y si el costo se movió desde el último cambio de precio. Esto no gasta consumo de IA.',
-              'Si algo de eso está fuera de lugar, aparece como una señal con su explicación. Si está todo bien, la pantalla te lo dice y no se analiza nada más.',
-              'Solo cuando hay una señal que se puede razonar, la IA propone un precio y explica el motivo.',
-              'Tu política —la de abajo— recorta esa propuesta: margen mínimo, variación máxima, piso y techo. Recién ahí aparece el botón para aplicarla, y el cambio queda en el historial del producto.',
-            ].map(paso => (
-              <Typography component="li" variant="body2" color="text.secondary" key={paso}>
-                {paso}
-              </Typography>
-            ))}
-          </Stack>
-        </Paper>
-      </Stack>
+      {/*
+        Cuatro pasos, numerados porque son una secuencia real: cada uno solo
+        corre si el anterior dio algo. La pantalla se entendía solo sabiendo
+        cómo está construida por dentro.
+      */}
+      <Box component="section" sx={{ mb: 4 }}>
+        <Typography component="h2" sx={{ ...SECTION_TITLE, mb: 2 }}>
+          Cómo funciona
+        </Typography>
+        <Box
+          component="ol"
+          sx={{
+            m: 0,
+            p: 0,
+            listStyle: 'none',
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+            gap: 2,
+          }}
+        >
+          {STEPS.map((paso, index) => (
+            <Paper
+              component="li"
+              variant="outlined"
+              key={paso.title}
+              sx={{ p: 2.5, borderRadius: 3, display: 'flex', gap: 2 }}
+            >
+              <Box
+                aria-hidden="true"
+                sx={{
+                  width: 32,
+                  height: 32,
+                  flexShrink: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: '#fff',
+                  fontFamily: DISPLAY_FONT,
+                  fontWeight: 800,
+                  fontSize: 15,
+                  borderRadius: '50%',
+                  background: GRADIENT,
+                }}
+              >
+                {index + 1}
+              </Box>
+              <Box>
+                <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{paso.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {paso.text}
+                </Typography>
+              </Box>
+            </Paper>
+          ))}
+        </Box>
+      </Box>
 
       {/* ── Análisis ────────────────────────────────────── */}
-      <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, mb: 3 }}>
-        <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+      <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, mb: 4, borderRadius: 4 }}>
+        <Typography component="h2" sx={{ ...SECTION_TITLE, mb: 2 }}>
           Analizar un producto
         </Typography>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'stretch' }}>
           <Autocomplete
             sx={{ flex: 1 }}
             options={productOptions}
@@ -430,7 +533,7 @@ const PricingPage = () => {
             size="large"
             disabled={!selected || analyzing}
             onClick={() => analyze(false)}
-            sx={{ minWidth: 160 }}
+            sx={{ minWidth: 160, textTransform: 'none', fontWeight: 700, borderRadius: 3 }}
           >
             {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
             {analyzing ? <CircularProgress size={22} color="inherit" /> : <span>Analizar</span>}
@@ -445,11 +548,17 @@ const PricingPage = () => {
 
         {/* ── Resultado ─────────────────────────────── */}
         {signals && (
-          <Box sx={{ mt: 3 }}>
-            <Grid container spacing={3}>
+          <Box sx={{ mt: 4 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                gap: 3,
+              }}
+            >
               {/* Costo y margen */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+                <Typography variant="overline" sx={PANEL_LABEL}>
                   COSTO Y MARGEN
                 </Typography>
 
@@ -472,20 +581,23 @@ const PricingPage = () => {
                     <Row label="Margen actual" value={percent(signals.marginPercent)} emphasis />
                   </>
                 ) : (
-                  <Alert severity="warning" sx={{ mt: 1 }}>
+                  <Alert severity="warning" sx={{ mt: 1.5 }}>
                     Este producto no tiene costo cargado, así que no se puede calcular su margen.
                     Cargalo en la ficha del producto.
                   </Alert>
                 )}
-              </Grid>
+              </Paper>
 
               {/* Demanda */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+              <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+                <Typography variant="overline" sx={PANEL_LABEL}>
                   DEMANDA Y STOCK
                 </Typography>
 
-                <Row label="Stock" value={`${signals.stock} unidades`} />
+                <Row
+                  label="Stock"
+                  value={`${signals.stock} ${Number(signals.stock) === 1 ? 'unidad' : 'unidades'}`}
+                />
                 <Row label="Vendidas (30 días)" value={signals.demand?.unitsLast30} />
                 <Row label="30 días previos" value={signals.demand?.unitsPrior30} />
                 <Row label="Variación" value={percent(signals.demand?.changePercent)} />
@@ -503,45 +615,49 @@ const PricingPage = () => {
                     value={percent(signals.costChangePercent)}
                   />
                 )}
-              </Grid>
-            </Grid>
+              </Paper>
+            </Box>
 
             {flags.length > 0 && (
-              <Stack spacing={1.25} sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              <Box sx={{ mt: 3 }}>
+                <Typography component="h3" sx={{ ...SECTION_TITLE, fontSize: 18, mb: 1.5 }}>
                   Qué encontramos en este producto
                 </Typography>
-                {flags.map(flag => {
-                  const meta = FLAG_LABEL[flag] || {
-                    text: flag,
-                    color: 'default',
-                  }
+                <Paper variant="outlined" sx={{ borderRadius: 3 }}>
+                  {flags.map((flag, index) => {
+                    const meta = FLAG_LABEL[flag] || {
+                      text: flag,
+                      color: 'default',
+                    }
 
-                  return (
-                    <Stack
-                      key={flag}
-                      direction="row"
-                      spacing={1.25}
-                      sx={{ alignItems: 'flex-start' }}
-                    >
-                      <Chip
-                        label={meta.text}
-                        color={meta.color}
-                        size="small"
-                        sx={{ mt: 0.25, flexShrink: 0 }}
-                      />
-                      {meta.detail && (
-                        <Typography variant="body2" color="text.secondary">
-                          {meta.detail}
-                        </Typography>
-                      )}
-                    </Stack>
-                  )
-                })}
-              </Stack>
+                    return (
+                      <Stack
+                        key={flag}
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={{ xs: 0.75, sm: 2 }}
+                        sx={{
+                          p: 2,
+                          alignItems: { sm: 'flex-start' },
+                          borderTop: index === 0 ? 'none' : '1px solid',
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <Box sx={{ width: { sm: 220 }, flexShrink: 0 }}>
+                          <Chip label={meta.text} color={meta.color} size="small" />
+                        </Box>
+                        {meta.detail && (
+                          <Typography variant="body2" color="text.secondary">
+                            {meta.detail}
+                          </Typography>
+                        )}
+                      </Stack>
+                    )
+                  })}
+                </Paper>
+              </Box>
             )}
 
-            <Divider sx={{ my: 3 }} />
+            <Divider sx={{ my: 4 }} />
 
             {/* Recomendación */}
             {/*
@@ -562,7 +678,12 @@ const PricingPage = () => {
                     ? 'Hay señales, pero no se ejecutó el análisis de IA.'
                     : 'Nada que corregir: los indicadores están dentro de lo que definiste, así que no se gastó consumo de IA.'}
                 </Alert>
-                <Button variant="outlined" onClick={() => analyze(true)} disabled={analyzing}>
+                <Button
+                  variant="outlined"
+                  onClick={() => analyze(true)}
+                  disabled={analyzing}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 3 }}
+                >
                   Analizar igual
                 </Button>
               </Stack>
@@ -570,51 +691,80 @@ const PricingPage = () => {
 
             {result?.analyzed && decision && (
               <Box>
-                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
-                  RECOMENDACIÓN
-                </Typography>
-
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2}
-                  // alignItems responsive va por sx: como prop suelto, Stack lo
-                  // reenvía al DOM y React avisa que no lo conoce.
-                  sx={{ mb: 2, alignItems: { sm: 'center' } }}
+                {/* El veredicto, destacado: es lo que el comerciante vino a buscar. */}
+                <Box
+                  sx={{
+                    p: { xs: 2.5, md: 3.5 },
+                    mb: 2.5,
+                    color: '#fff',
+                    borderRadius: 4,
+                    background: VERDICT_BG,
+                  }}
                 >
-                  <Typography variant="h5" fontWeight={700}>
-                    {sinCambio
-                      ? money(signals.price)
-                      : `${money(decision.currentPrice ?? signals.price)} → ${money(decision.finalPrice)}`}
+                  <Typography
+                    variant="overline"
+                    sx={{ color: '#14d8ff', fontWeight: 700, letterSpacing: '0.16em' }}
+                  >
+                    RECOMENDACIÓN
                   </Typography>
 
-                  <Chip
-                    label={
-                      sinCambio
-                        ? 'dejar como está'
-                        : `${decision.changePercent > 0 ? '+' : ''}${percent(decision.changePercent, 2)}`
-                    }
-                    color={
-                      sinCambio ? 'default' : decision.changePercent > 0 ? 'success' : 'warning'
-                    }
-                  />
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={2}
+                    // alignItems responsive va por sx: como prop suelto, Stack lo
+                    // reenvía al DOM y React avisa que no lo conoce.
+                    sx={{
+                      mt: 0.5,
+                      alignItems: { xs: 'flex-start', sm: 'center' },
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontFamily: DISPLAY_FONT,
+                        fontWeight: 800,
+                        fontSize: { xs: 28, md: 38 },
+                        letterSpacing: '-0.02em',
+                        lineHeight: 1.1,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {sinCambio
+                        ? money(signals.price)
+                        : `${money(decision.currentPrice ?? signals.price)} → ${money(decision.finalPrice)}`}
+                    </Typography>
 
-                  {result.recommendation?.confidence !== null &&
-                    result.recommendation?.confidence !== undefined && (
-                      <Tooltip title="Confianza que declaró el modelo en su propia recomendación">
-                        <Chip
-                          variant="outlined"
-                          size="small"
-                          label={`confianza ${Math.round(result.recommendation.confidence * 100)}%`}
-                        />
-                      </Tooltip>
-                    )}
-                </Stack>
+                    <Chip
+                      label={
+                        sinCambio
+                          ? 'dejar como está'
+                          : `${decision.changePercent > 0 ? '+' : ''}${percent(decision.changePercent, 2)}`
+                      }
+                      color={
+                        sinCambio ? 'default' : decision.changePercent > 0 ? 'success' : 'warning'
+                      }
+                      sx={{ fontWeight: 700 }}
+                    />
 
-                {result.recommendation?.reason && (
-                  <Typography variant="body2" sx={{ mb: 2 }}>
-                    {result.recommendation.reason}
-                  </Typography>
-                )}
+                    {result.recommendation?.confidence !== null &&
+                      result.recommendation?.confidence !== undefined && (
+                        <Tooltip title="Confianza que declaró el modelo en su propia recomendación">
+                          <Chip
+                            variant="outlined"
+                            size="small"
+                            label={`confianza ${Math.round(result.recommendation.confidence * 100)}%`}
+                            sx={{ color: '#d7e1ff', borderColor: 'rgba(215,225,255,0.5)' }}
+                          />
+                        </Tooltip>
+                      )}
+                  </Stack>
+
+                  {result.recommendation?.reason && (
+                    <Typography sx={{ mt: 2, color: '#d7e1ff', maxWidth: 760 }}>
+                      {result.recommendation.reason}
+                    </Typography>
+                  )}
+                </Box>
 
                 {/* Lo que la política recortó. Es la diferencia entre una
                     recomendación que pasó entera y una que llegó ajustada. */}
@@ -649,7 +799,7 @@ const PricingPage = () => {
                     moverlo.
                   </Alert>
                 ) : (
-                  <Stack spacing={1.5}>
+                  <Stack spacing={2}>
                     <Alert severity={decision.requiresApproval ? 'info' : 'success'}>
                       {decision.requiresApproval
                         ? 'Este cambio está fuera de lo que tu política aplica sin revisar: mirá el número antes de confirmarlo.'
@@ -664,17 +814,26 @@ const PricingPage = () => {
                     */}
                     <Stack
                       direction={{ xs: 'column', sm: 'row' }}
-                      spacing={1.5}
+                      spacing={2}
                       sx={{ alignItems: { sm: 'center' } }}
                     >
                       <Button
                         variant="contained"
+                        size="large"
                         onClick={applyPrice}
                         disabled={applying || decision.finalPrice === signals?.price}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          borderRadius: 3,
+                          px: 4,
+                          flexShrink: 0,
+                          background: GRADIENT,
+                        }}
                       >
                         {applying ? 'Aplicando…' : `Aplicar ${money(decision.finalPrice)}`}
                       </Button>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary">
                         Cambia el precio del producto ahora y queda registrado en su historial como
                         cambio sugerido por HENKO.
                       </Typography>
@@ -702,11 +861,11 @@ const PricingPage = () => {
       {/* Accordion sin component={Paper}: su raíz YA es un Paper, y pasarle
           Paper como componente lo anida en sí mismo. Mismo tratamiento que
           MarketIntelligencePage: el borde lo pone el Paper de afuera. */}
-      <Paper variant="outlined">
+      <Paper variant="outlined" sx={{ borderRadius: 4, overflow: 'hidden' }}>
         <Accordion elevation={0} disableGutters sx={{ '&:before': { display: 'none' } }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: { xs: 2, md: 3 }, py: 0.5 }}>
             <Stack>
-              <Typography variant="h6" fontWeight={600}>
+              <Typography component="h2" sx={SECTION_TITLE}>
                 Tus reglas de precio
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -715,7 +874,7 @@ const PricingPage = () => {
             </Stack>
           </AccordionSummary>
 
-          <AccordionDetails>
+          <AccordionDetails sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
             {policyLoading ? (
               <CircularProgress size={24} />
             ) : policy ? (
@@ -726,127 +885,153 @@ const PricingPage = () => {
                   </Alert>
                 )}
 
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      select
-                      fullWidth
-                      label="Estrategia"
-                      value={policy.strategy || 'margin'}
-                      onChange={e => setField('strategy', e.target.value)}
-                    >
-                      {STRATEGIES.map(s => (
-                        <MenuItem key={s.value} value={s.value}>
-                          {s.label}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
+                <Box>
+                  <Typography variant="overline" sx={PANEL_LABEL}>
+                    QUIÉN DECIDE
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        select
+                        fullWidth
+                        label="Estrategia"
+                        value={policy.strategy || 'margin'}
+                        onChange={e => setField('strategy', e.target.value)}
+                      >
+                        {STRATEGIES.map(s => (
+                          <MenuItem key={s.value} value={s.value}>
+                            {s.label}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
 
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      select
-                      fullWidth
-                      label="Quién aplica los cambios"
-                      value={policy.mode || 'manual'}
-                      onChange={e => setField('mode', e.target.value)}
-                      helperText={
-                        policy.mode === 'autopilot'
-                          ? 'Los precios se van a mover solos dentro de estos límites.'
-                          : ' '
-                      }
-                    >
-                      {MODES.map(m => (
-                        <MenuItem key={m.value} value={m.value}>
-                          {m.label}
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        select
+                        fullWidth
+                        label="Quién aplica los cambios"
+                        value={policy.mode || 'manual'}
+                        onChange={e => setField('mode', e.target.value)}
+                        helperText={
+                          policy.mode === 'autopilot'
+                            ? 'Los precios se van a mover solos dentro de estos límites.'
+                            : ' '
+                        }
+                      >
+                        {MODES.map(m => (
+                          <MenuItem key={m.value} value={m.value}>
+                            {m.label}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
                   </Grid>
+                </Box>
 
-                  {[
-                    [
-                      'minMarginPercent',
-                      'Margen mínimo (%)',
-                      'Ninguna recomendación puede dejar el margen por debajo.',
-                    ],
-                    ['targetMarginPercent', 'Margen objetivo (%)', ' '],
-                    ['maxChangePercent', 'Variación máxima por ajuste (%)', ' '],
-                    [
-                      'autoApplyMaxPercent',
-                      'Aplicar solo hasta (%)',
-                      'Solo en modo semiautomático.',
-                    ],
-                  ].map(([key, label, helper]) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }} key={key}>
+                <Box>
+                  <Typography variant="overline" sx={PANEL_LABEL}>
+                    MÁRGENES Y VARIACIÓN
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {[
+                      [
+                        'minMarginPercent',
+                        'Margen mínimo (%)',
+                        'Ninguna recomendación puede dejar el margen por debajo.',
+                      ],
+                      ['targetMarginPercent', 'Margen objetivo (%)', ' '],
+                      ['maxChangePercent', 'Variación máxima por ajuste (%)', ' '],
+                      [
+                        'autoApplyMaxPercent',
+                        'Aplicar solo hasta (%)',
+                        'Solo en modo semiautomático.',
+                      ],
+                    ].map(([key, label, helper]) => (
+                      <Grid size={{ xs: 12, sm: 6, md: 3 }} key={key}>
+                        <TextField
+                          fullWidth
+                          type="number"
+                          label={label}
+                          helperText={helper}
+                          value={policy[key] ?? ''}
+                          onChange={e =>
+                            setField(key, e.target.value === '' ? '' : Number(e.target.value))
+                          }
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+
+                <Box>
+                  <Typography variant="overline" sx={PANEL_LABEL}>
+                    LÍMITES DE PRECIO
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
                         fullWidth
                         type="number"
-                        label={label}
-                        helperText={helper}
-                        value={policy[key] ?? ''}
+                        label="Precio mínimo (opcional)"
+                        value={policy.priceFloor ?? ''}
                         onChange={e =>
-                          setField(key, e.target.value === '' ? '' : Number(e.target.value))
+                          setField(
+                            'priceFloor',
+                            e.target.value === '' ? null : Number(e.target.value),
+                          )
                         }
                       />
                     </Grid>
-                  ))}
 
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      type="number"
-                      label="Precio mínimo (opcional)"
-                      value={policy.priceFloor ?? ''}
-                      onChange={e =>
-                        setField(
-                          'priceFloor',
-                          e.target.value === '' ? null : Number(e.target.value),
-                        )
-                      }
-                    />
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Precio máximo (opcional)"
+                        value={policy.priceCeiling ?? ''}
+                        onChange={e =>
+                          setField(
+                            'priceCeiling',
+                            e.target.value === '' ? null : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </Grid>
                   </Grid>
 
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      type="number"
-                      label="Precio máximo (opcional)"
-                      value={policy.priceCeiling ?? ''}
-                      onChange={e =>
-                        setField(
-                          'priceCeiling',
-                          e.target.value === '' ? null : Number(e.target.value),
-                        )
-                      }
-                    />
-                  </Grid>
-                </Grid>
-
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(policy.rounding?.enabled)}
-                      onChange={e =>
-                        setField('rounding', {
-                          ...(policy.rounding || {}),
-                          enabled: e.target.checked,
-                          endings: policy.rounding?.endings?.length
-                            ? policy.rounding.endings
-                            : [990],
-                        })
-                      }
-                    />
-                  }
-                  label="Redondear a precios terminados en 990"
-                />
+                  <FormControlLabel
+                    sx={{ mt: 1.5 }}
+                    control={
+                      <Switch
+                        checked={Boolean(policy.rounding?.enabled)}
+                        onChange={e =>
+                          setField('rounding', {
+                            ...(policy.rounding || {}),
+                            enabled: e.target.checked,
+                            endings: policy.rounding?.endings?.length
+                              ? policy.rounding.endings
+                              : [990],
+                          })
+                        }
+                      />
+                    }
+                    label="Redondear a precios terminados en 990"
+                  />
+                </Box>
 
                 {policyMessage && (
                   <Alert severity={policyMessage.severity}>{policyMessage.text}</Alert>
                 )}
 
                 <Box>
-                  <Button variant="contained" onClick={savePolicy} disabled={policySaving}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    onClick={savePolicy}
+                    disabled={policySaving}
+                    sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 3, px: 4 }}
+                  >
                     {policySaving ? (
                       <CircularProgress size={22} color="inherit" />
                     ) : (
