@@ -831,3 +831,41 @@ describe('Lista de productos · en el celular', () => {
     expect(screen.queryByRole('article')).toBeNull()
   })
 })
+
+describe('Lista de productos · la espera de la búsqueda', () => {
+  test('pasar de página apenas se abre la lista no te devuelve a la 1', async () => {
+    // Al abrir, la espera de la búsqueda arrancaba igual y, al cumplirse (400 ms), volvía a la página 1
+    // aunque no se hubiera buscado nada: quien cambiaba de página en esos primeros instantes rebotaba.
+    montar({ adminMeta: { totalPages: 5 } })
+    await waitFor(() => expect(mockGetAdminProducts).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByRole('button', { name: /page 3|página 3/i }))
+    await waitFor(() => expect(ultimaConsulta().page).toBe(3))
+
+    // Más que la espera de la búsqueda (400 ms).
+    await new Promise(resolve => setTimeout(resolve, 800))
+
+    expect(ultimaConsulta().page).toBe(3)
+    expect(
+      mockGetAdminProducts.mock.calls.some(([consulta]) => consulta.page === 1 && consulta.q),
+    ).toBe(false)
+  })
+
+  test('buscar lo mismo que ya se está buscando no vuelve a la página 1', async () => {
+    montar({ adminMeta: { totalPages: 5 } })
+    await waitFor(() => expect(mockGetAdminProducts).toHaveBeenCalled())
+
+    const buscador = screen.getByRole('textbox', { name: /buscar productos/i })
+    await userEvent.type(buscador, 'casco')
+    await waitFor(() => expect(ultimaConsulta().q).toBe('casco'), { timeout: 2000 })
+
+    await userEvent.click(screen.getByRole('button', { name: /page 3|página 3/i }))
+    await waitFor(() => expect(ultimaConsulta().page).toBe(3))
+
+    // Un espacio al final no cambia la búsqueda: no hay por qué volver a la 1.
+    await userEvent.type(buscador, ' ')
+    await new Promise(resolve => setTimeout(resolve, 800))
+
+    expect(ultimaConsulta()).toMatchObject({ q: 'casco', page: 3 })
+  })
+})

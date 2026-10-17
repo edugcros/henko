@@ -284,13 +284,21 @@ const Productlist = () => {
   // ============================================================================
 
   useEffect(() => {
+    const next = searchInput.trim()
+
+    // Solo si la búsqueda CAMBIÓ. Antes el temporizador arrancaba igual al abrir la lista y, al
+    // cumplirse (400 ms), volvía a la página 1 aunque nadie hubiera buscado nada: quien pasaba de
+    // página en esos primeros instantes rebotaba, y escribir un espacio al final de una búsqueda
+    // vigente también lo mandaba a la 1.
+    if (next === searchTerm) return undefined
+
     const handle = setTimeout(() => {
-      setSearchTerm(searchInput.trim())
+      setSearchTerm(next)
       setPage(1)
     }, SEARCH_DEBOUNCE_MS)
 
     return () => clearTimeout(handle)
-  }, [searchInput])
+  }, [searchInput, searchTerm])
 
   // ============================================================================
   // FETCH (server-side: búsqueda, filtros, orden y paginación)
