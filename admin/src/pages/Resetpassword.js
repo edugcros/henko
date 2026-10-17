@@ -1,19 +1,11 @@
 // 📁 src/pages/Resetpassword.js
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useFormik } from 'formik'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import * as yup from 'yup'
-import {
-  Box,
-  Typography,
-  TextField,
-  Button,
-  Card,
-  CardContent,
-  CircularProgress,
-} from '@mui/material'
+import { CheckOutlined, EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import authService from '@features/auth/authServices'
-import { Newprimary } from '../theme/colors'
+import AuthShell from '../components/AuthShell.js'
 
 const validationSchema = yup.object({
   password: yup
@@ -26,11 +18,20 @@ const validationSchema = yup.object({
     .required('Confirmá la contraseña'),
 })
 
+// Cuánto se muestra el aviso de «listo» antes de llevar al login.
+const REDIRECT_DELAY_MS = 2500
+
 const Resetpassword = () => {
   const { token } = useParams()
   const navigate = useNavigate()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState({ done: false, error: '' })
+  const [verPassword, setVerPassword] = useState(false)
+  const redirectTimer = useRef(null)
+
+  // Si la persona se va de la pantalla antes de que se cumpla el plazo, no hay que mandarla al
+  // login igual: el temporizador seguía corriendo después de desmontar.
+  useEffect(() => () => clearTimeout(redirectTimer.current), [])
 
   const formik = useFormik({
     initialValues: { password: '', confirmPassword: '' },
@@ -42,7 +43,7 @@ const Resetpassword = () => {
       try {
         await authService.resetPassword({ token, password: values.password })
         setResult({ done: true, error: '' })
-        setTimeout(() => navigate('/login'), 2500)
+        redirectTimer.current = setTimeout(() => navigate('/login'), REDIRECT_DELAY_MS)
       } catch (error) {
         setResult({
           done: false,
@@ -56,124 +57,126 @@ const Resetpassword = () => {
 
   if (!token) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          background: 'linear-gradient(to bottom, #f5f5f5, #b0b0b0)',
-        }}
-      >
-        <Card sx={{ width: 380, borderRadius: 4, p: 2 }}>
-          <CardContent>
-            <Typography align="center" color="error">
-              El enlace de recuperación no es válido. Solicitá uno nuevo.
-            </Typography>
-            <Typography align="center" sx={{ mt: 2 }}>
-              <Link to="/forgot-password" style={{ color: Newprimary.darkCyan }}>
-                Pedir un nuevo enlace
-              </Link>
-            </Typography>
-          </CardContent>
-        </Card>
-      </Box>
+      <AuthShell titleId="reset-title">
+        <h1 id="reset-title">El enlace no es válido</h1>
+        <p className="hk-auth-lead" role="alert">
+          El enlace de recuperación no es válido. Solicitá uno nuevo.
+        </p>
+
+        <Link className="hk-auth-submit" to="/forgot-password">
+          <span>Pedir un nuevo enlace</span>
+        </Link>
+      </AuthShell>
     )
   }
 
-  return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        background: 'linear-gradient(to bottom, #f5f5f5, #b0b0b0)',
-      }}
-    >
-      <Card
-        sx={{
-          width: 380,
-          borderRadius: 4,
-          boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
-        }}
-      >
-        <CardContent sx={{ p: 4 }}>
-          <Typography
-            variant="h5"
-            align="center"
-            sx={{ fontWeight: 600, mb: 1, color: Newprimary.darkCyan }}
-          >
-            Restablecer contraseña
-          </Typography>
-          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
-            Elegí tu nueva contraseña.
-          </Typography>
+  const errorPassword = formik.touched.password && formik.errors.password
+  const errorConfirm = formik.touched.confirmPassword && formik.errors.confirmPassword
+  const tipoCampo = verPassword ? 'text' : 'password'
 
-          {result.done ? (
-            <Typography align="center" color="success.main" sx={{ fontSize: '0.9rem' }}>
-              Contraseña restablecida correctamente. Te redirigimos al login...
-            </Typography>
-          ) : (
-            <form onSubmit={formik.handleSubmit} noValidate>
-              <TextField
-                fullWidth
+  return (
+    <AuthShell titleId="reset-title">
+      <h1 id="reset-title">{result.done ? '¡Listo!' : 'Elegí tu nueva contraseña'}</h1>
+      <p className="hk-auth-lead">
+        {result.done
+          ? 'Ya podés entrar a tu panel con tu nueva contraseña.'
+          : 'Es la que vas a usar para entrar a tu panel.'}
+      </p>
+
+      {result.done ? (
+        <>
+          <div className="hk-auth-notice" role="status">
+            <span className="hk-auth-notice-icon" aria-hidden="true">
+              <CheckOutlined />
+            </span>
+            <div>
+              <b>Contraseña restablecida</b>
+              <p>Contraseña restablecida correctamente. Te redirigimos al login...</p>
+            </div>
+          </div>
+
+          <Link className="hk-auth-submit" to="/login">
+            <span>Ir a iniciar sesión</span>
+          </Link>
+        </>
+      ) : (
+        <form onSubmit={formik.handleSubmit} noValidate>
+          <div className="hk-auth-field">
+            <label htmlFor="password">Nueva contraseña</label>
+            <div className="hk-auth-password">
+              <input
                 id="password"
                 name="password"
-                label="Nueva contraseña"
-                type="password"
-                variant="outlined"
-                margin="normal"
+                type={tipoCampo}
+                autoComplete="new-password"
+                aria-invalid={Boolean(errorPassword)}
+                aria-describedby={errorPassword ? 'password-error' : 'password-hint'}
                 {...formik.getFieldProps('password')}
-                error={formik.touched.password && Boolean(formik.errors.password)}
-                helperText={formik.touched.password && formik.errors.password}
               />
-
-              <TextField
-                fullWidth
-                id="confirmPassword"
-                name="confirmPassword"
-                label="Confirmar contraseña"
-                type="password"
-                variant="outlined"
-                margin="normal"
-                {...formik.getFieldProps('confirmPassword')}
-                error={formik.touched.confirmPassword && Boolean(formik.errors.confirmPassword)}
-                helperText={formik.touched.confirmPassword && formik.errors.confirmPassword}
-              />
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                sx={{
-                  backgroundColor: Newprimary.darkCyan,
-                  color: '#fff',
-                  fontWeight: 600,
-                  py: 1.2,
-                  borderRadius: 2,
-                  mt: 2,
-                  '&:hover': { backgroundColor: '#056178' },
-                }}
-                disabled={isSubmitting}
+              <button
+                type="button"
+                className="hk-auth-eye"
+                onClick={() => setVerPassword(v => !v)}
+                aria-label={verPassword ? 'Ocultar contraseñas' : 'Mostrar contraseñas'}
+                aria-pressed={verPassword}
               >
-                {isSubmitting ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  'Restablecer contraseña'
-                )}
-              </Button>
+                {verPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              </button>
+            </div>
+            {errorPassword ? (
+              <p className="hk-auth-field-error" id="password-error">
+                {formik.errors.password}
+              </p>
+            ) : (
+              <p className="hk-auth-hint" id="password-hint">
+                Mínimo 8 caracteres.
+              </p>
+            )}
+          </div>
 
-              {result.error && (
-                <Typography color="error" align="center" sx={{ mt: 2, fontSize: '0.875rem' }}>
-                  {result.error}
-                </Typography>
-              )}
-            </form>
+          <div className="hk-auth-field">
+            <label htmlFor="confirmPassword">Confirmar contraseña</label>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type={tipoCampo}
+              autoComplete="new-password"
+              aria-invalid={Boolean(errorConfirm)}
+              aria-describedby={errorConfirm ? 'confirm-error' : undefined}
+              {...formik.getFieldProps('confirmPassword')}
+            />
+            {errorConfirm && (
+              <p className="hk-auth-field-error" id="confirm-error">
+                {formik.errors.confirmPassword}
+              </p>
+            )}
+          </div>
+
+          <button type="submit" className="hk-auth-submit" disabled={isSubmitting}>
+            {/* Texto envuelto, no desnudo: ver website/src/Pages/Login.js. */}
+            {isSubmitting && <span className="hk-auth-spinner" aria-hidden="true" />}
+            <span>{isSubmitting ? 'Guardando' : 'Restablecer contraseña'}</span>
+          </button>
+
+          {result.error && (
+            <div className="hk-auth-alert" role="alert">
+              <p>{result.error}</p>
+              <Link className="hk-auth-link is-strong" to="/forgot-password">
+                Pedir un nuevo enlace
+              </Link>
+            </div>
           )}
-        </CardContent>
-      </Card>
-    </Box>
+        </form>
+      )}
+
+      {!result.done && (
+        <p className="hk-auth-foot">
+          <Link className="hk-auth-link is-strong" to="/login">
+            Volver a iniciar sesión
+          </Link>
+        </p>
+      )}
+    </AuthShell>
   )
 }
 
