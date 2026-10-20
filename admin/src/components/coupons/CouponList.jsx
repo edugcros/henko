@@ -26,7 +26,7 @@ import {
   Pagination,
   Stack,
   alpha,
-  useTheme,
+  useMediaQuery,
 } from '@mui/material'
 
 // Icons
@@ -45,6 +45,28 @@ import {
 // CONFIGURACIÓN Y UTILIDADES
 // ======================================================
 
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
+
+const HEAD_CELL_SX = {
+  fontWeight: 700,
+  color: BRAND.muted,
+  fontSize: '0.75rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bgcolor: BRAND.paper,
+  borderColor: BRAND.line,
+}
+
 const STATUS_CONFIG = {
   active: { label: 'Activo', color: 'success' },
   inactive: { label: 'Inactivo', color: 'default' },
@@ -57,8 +79,21 @@ const STATUS_CONFIG = {
 const formatDate = dateString => {
   if (!dateString) return '-'
   const date = new Date(dateString)
-  return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('es-ES')
+  return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('es-AR')
 }
+
+// Pesos argentinos, sin centavos: un descuento de 10000 se lee «$ 10.000».
+export const formatMoney = value =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(Number(value) || 0)
+
+export const formatDiscount = coupon =>
+  coupon.discountType === 'percentage'
+    ? `${coupon.discountValue}%`
+    : formatMoney(coupon.discountValue)
 
 const PLACEHOLDER_IMAGE = '/placeholder-product.png'
 
@@ -91,7 +126,7 @@ const getProductImage = product => {
   return `${getImageBaseUrl()}/${url}`
 }
 
-const getStatus = coupon => {
+export const getStatus = coupon => {
   const now = new Date()
   const start = coupon.startDate ? new Date(coupon.startDate) : null
   const end = coupon.endDate ? new Date(coupon.endDate) : null
@@ -117,7 +152,7 @@ const UsageProgress = ({ count, limit }) => {
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
         <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
           {count}
-          {limit ? ` / ${limit}` : ' usos'}
+          {limit ? ` / ${limit}` : count === 1 ? ' uso' : ' usos'}
         </Typography>
       </Stack>
       <LinearProgress
@@ -209,7 +244,12 @@ const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRes
 
   return (
     <>
-      <IconButton onClick={handleOpen} size="small">
+      <IconButton
+        onClick={handleOpen}
+        size="small"
+        aria-label={`Acciones del cupón ${coupon.code}`}
+        aria-haspopup="menu"
+      >
         <MoreVertIcon fontSize="small" />
       </IconButton>
       <Menu
@@ -267,6 +307,86 @@ const ActionMenu = ({ coupon, onEdit, onClone, onSoftDelete, onHardDelete, onRes
 // COMPONENTE PRINCIPAL
 // ======================================================
 
+const CodeTag = ({ coupon }) => (
+  <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
+    <Typography
+      variant="body2"
+      component="code"
+      sx={{
+        bgcolor: BRAND.paper,
+        color: BRAND.ink,
+        border: `1px solid ${BRAND.line}`,
+        px: 1,
+        py: 0.5,
+        borderRadius: 2,
+        fontWeight: 800,
+        letterSpacing: 1,
+      }}
+    >
+      {coupon.code}
+    </Typography>
+    {coupon.stackable && (
+      <Tooltip title="Acumulable con otras promociones">
+        <StackableIcon
+          aria-label="Acumulable con otras promociones"
+          sx={{ fontSize: 16, color: 'info.main' }}
+        />
+      </Tooltip>
+    )}
+  </Stack>
+)
+
+const CouponCard = ({ coupon, actions }) => {
+  const status = STATUS_CONFIG[coupon.computedStatus]
+
+  return (
+    <Paper
+      component="article"
+      variant="outlined"
+      sx={{ ...PANEL_SX, p: 2, opacity: coupon.isActive === false ? 0.75 : 1 }}
+    >
+      <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box sx={{ minWidth: 0 }}>
+          <CodeTag coupon={coupon} />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            {coupon.description || 'Sin descripción'}
+          </Typography>
+        </Box>
+        {actions}
+      </Stack>
+
+      <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
+        <Typography sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+          {formatDiscount(coupon)}
+        </Typography>
+        {coupon.maxDiscountAmount && (
+          <Typography variant="caption" color="text.secondary">
+            Máx: {formatMoney(coupon.maxDiscountAmount)}
+          </Typography>
+        )}
+        <Chip
+          label={status.label}
+          color={status.color}
+          size="small"
+          sx={{ fontWeight: 700, ml: 'auto' }}
+        />
+      </Stack>
+
+      <Typography variant="caption" sx={{ display: 'block', mt: 1.5 }}>
+        Desde: {formatDate(coupon.startDate)} · Hasta: {formatDate(coupon.endDate)}
+      </Typography>
+
+      <Box sx={{ mt: 1.5 }}>
+        <UsageProgress count={coupon.usageCount || 0} limit={coupon.usageLimit} />
+      </Box>
+
+      <Box sx={{ mt: 1.5 }}>
+        <ProductSummary products={coupon.applicableProducts} />
+      </Box>
+    </Paper>
+  )
+}
+
 const CouponList = ({
   coupons = [],
   loading = false,
@@ -279,7 +399,7 @@ const CouponList = ({
   pagination = { total: 0, page: 1, pages: 1 },
   onPageChange,
 }) => {
-  const theme = useTheme()
+  const isNarrow = useMediaQuery('(max-width:600px)')
 
   const processedCoupons = useMemo(() => {
     return coupons.map(coupon => ({
@@ -289,48 +409,104 @@ const CouponList = ({
     }))
   }, [coupons])
 
+  const renderActions = coupon => (
+    <ActionMenu
+      coupon={coupon}
+      onEdit={onEdit}
+      onClone={onClone}
+      onSoftDelete={onSoftDelete}
+      onHardDelete={onHardDelete}
+      onRestore={onRestore}
+    />
+  )
+
   if (!loading && processedCoupons.length === 0) {
     return (
       <Paper
         variant="outlined"
-        sx={{
-          p: 10,
-          textAlign: 'center',
-          borderRadius: 4,
-          borderStyle: 'dashed',
-        }}
+        sx={{ ...PANEL_SX, p: { xs: 4, md: 8 }, textAlign: 'center', borderStyle: 'dashed' }}
       >
-        <Typography variant="h6" color="text.secondary" gutterBottom>
+        <Typography
+          component="h2"
+          sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, mb: 0.5 }}
+        >
           {showDeleted ? 'La papelera está vacía' : 'No se encontraron cupones'}
         </Typography>
-        <Typography variant="body2" color="text.disabled">
-          Intenta ajustar los filtros de búsqueda
-        </Typography>
+        <Typography color="text.secondary">Intenta ajustar los filtros de búsqueda</Typography>
       </Paper>
+    )
+  }
+
+  const footer = (
+    <Stack
+      direction="row"
+      sx={{
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        p: 2,
+        gap: 1,
+        flexWrap: 'wrap',
+        borderTop: isNarrow ? 'none' : `1px solid ${BRAND.line}`,
+      }}
+    >
+      <Typography variant="caption" color="text.secondary">
+        Total: <strong>{pagination.total}</strong> cupones encontrados
+      </Typography>
+      {pagination.pages > 1 && (
+        <Pagination
+          count={pagination.pages}
+          page={pagination.page}
+          onChange={(e, val) => onPageChange(val)}
+          color="primary"
+          size="small"
+          shape="rounded"
+          siblingCount={isNarrow ? 0 : 1}
+          getItemAriaLabel={(type, page, selected) => {
+            if (type === 'page') {
+              return selected ? `Página ${page}, actual` : `Ir a la página ${page}`
+            }
+
+            return {
+              first: 'Ir a la primera página',
+              last: 'Ir a la última página',
+              next: 'Ir a la página siguiente',
+              previous: 'Ir a la página anterior',
+            }[type]
+          }}
+        />
+      )}
+    </Stack>
+  )
+
+  if (isNarrow) {
+    return (
+      <Box>
+        <Stack spacing={1.5}>
+          {processedCoupons.map(coupon => (
+            <CouponCard key={coupon.id} coupon={coupon} actions={renderActions(coupon)} />
+          ))}
+        </Stack>
+        {footer}
+      </Box>
     )
   }
 
   return (
     <TableContainer
       component={Paper}
-      elevation={0}
-      sx={{
-        borderRadius: 4,
-        border: '1px solid',
-        borderColor: 'divider',
-        overflow: 'hidden',
-      }}
+      variant="outlined"
+      sx={{ ...PANEL_SX, overflowX: 'auto', overflowY: 'hidden' }}
     >
       <Table sx={{ minWidth: 900 }}>
-        <TableHead sx={{ bgcolor: alpha(theme.palette.primary.main, 0.03) }}>
+        <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 'bold' }}>Código</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Descuento</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Vigencia</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Uso</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Productos</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Estado</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+            <TableCell sx={HEAD_CELL_SX}>Código</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Descuento</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Vigencia</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Uso</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Productos</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Estado</TableCell>
+            <TableCell align="right" sx={HEAD_CELL_SX}>
               Acciones
             </TableCell>
           </TableRow>
@@ -348,31 +524,10 @@ const CouponList = ({
                 }}
               >
                 <TableCell>
-                  <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1}>
-                    <Typography
-                      variant="body2"
-                      component="code"
-                      sx={{
-                        bgcolor: 'action.hover',
-                        px: 1,
-                        py: 0.5,
-                        borderRadius: 1,
-                        fontWeight: 'bold',
-                        letterSpacing: 1,
-                      }}
-                    >
-                      {coupon.code}
-                    </Typography>
-                    {coupon.stackable && (
-                      <Tooltip title="Acumulable con otras promociones">
-                        <StackableIcon sx={{ fontSize: 16, color: 'info.main' }} />
-                      </Tooltip>
-                    )}
-                  </Stack>
+                  <CodeTag coupon={coupon} />
                   <Typography
                     variant="caption"
                     color="text.secondary"
-
                     noWrap
                     sx={{ display: 'block', maxWidth: 200, mt: 0.5 }}
                   >
@@ -381,14 +536,12 @@ const CouponList = ({
                 </TableCell>
 
                 <TableCell>
-                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                    {coupon.discountType === 'percentage'
-                      ? `${coupon.discountValue}%`
-                      : `$${coupon.discountValue}`}
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                    {formatDiscount(coupon)}
                   </Typography>
                   {coupon.maxDiscountAmount && (
                     <Typography variant="caption" color="text.secondary">
-                      Max: ${coupon.maxDiscountAmount}
+                      Máx: {formatMoney(coupon.maxDiscountAmount)}
                     </Typography>
                   )}
                 </TableCell>
@@ -415,53 +568,18 @@ const CouponList = ({
                     label={status.label}
                     color={status.color}
                     size="small"
-                    sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}
+                    sx={{ fontWeight: 700, fontSize: '0.7rem' }}
                   />
                 </TableCell>
 
-                <TableCell align="right">
-                  <ActionMenu
-                    coupon={coupon}
-                    onEdit={onEdit}
-                    onClone={onClone}
-                    onSoftDelete={onSoftDelete}
-                    onHardDelete={onHardDelete}
-                    onRestore={onRestore}
-                  />
-                </TableCell>
+                <TableCell align="right">{renderActions(coupon)}</TableCell>
               </TableRow>
             )
           })}
         </TableBody>
       </Table>
 
-      {/* Footer / Pagination */}
-      <Stack
-        direction="row"
-
-        sx={{
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          p: 2,
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          bgcolor: alpha(theme.palette.background.paper, 0.5),
-        }}
-      >
-        <Typography variant="caption" color="text.secondary">
-          Total: <strong>{pagination.total}</strong> cupones encontrados
-        </Typography>
-        {pagination.pages > 1 && (
-          <Pagination
-            count={pagination.pages}
-            page={pagination.page}
-            onChange={(e, val) => onPageChange(val)}
-            color="primary"
-            size="small"
-            shape="rounded"
-          />
-        )}
-      </Stack>
+      {footer}
     </TableContainer>
   )
 }
