@@ -11,7 +11,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockDispatch = jest.fn()
@@ -183,7 +183,7 @@ describe('Cupones · consulta al servidor', () => {
     montar({ lastFilters: { page: 3 } })
     await waitFor(() => expect(mockGetAll).toHaveBeenCalled())
 
-    await userEvent.type(screen.getByPlaceholderText(/buscar por código/i), 'verano')
+    await userEvent.type(screen.getByRole('textbox', { name: /buscar cupones/i }), 'verano')
 
     await waitFor(() => expect(ultimaConsulta().search).toBe('verano'), { timeout: 2000 })
     expect(ultimaConsulta().page).toBe(1)
@@ -196,7 +196,7 @@ describe('Cupones · consulta al servidor', () => {
     const [estadoCombo, tipoCombo] = screen.getAllByRole('combobox')
 
     await userEvent.click(estadoCombo)
-    await userEvent.click(await screen.findByRole('option', { name: /expirados/i }))
+    await userEvent.click(await screen.findByRole('option', { name: /^expirados$/i }))
     await waitFor(() => expect(ultimaConsulta()).toMatchObject({ status: 'expired', page: 1 }))
 
     await userEvent.click(tipoCombo)
@@ -210,13 +210,13 @@ describe('Cupones · consulta al servidor', () => {
     montar()
     await waitFor(() => expect(mockGetAll).toHaveBeenCalled())
 
-    expect(screen.queryByRole('button', { name: /^limpiar/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^limpiar filtros/i })).toBeNull()
 
     await userEvent.click(screen.getAllByRole('combobox')[0])
-    await userEvent.click(await screen.findByRole('option', { name: /^✓ activos$/i }))
+    await userEvent.click(await screen.findByRole('option', { name: /^activos$/i }))
     await waitFor(() => expect(ultimaConsulta().status).toBe('active'))
 
-    await userEvent.click(screen.getByRole('button', { name: /^limpiar/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^limpiar filtros/i }))
 
     await waitFor(() => expect(ultimaConsulta().status).toBe('all'))
   })
@@ -226,7 +226,7 @@ describe('Cupones · consulta al servidor', () => {
     await waitFor(() => expect(mockGetAll).toHaveBeenCalled())
     const antes = mockGetAll.mock.calls.length
 
-    await userEvent.click(screen.getByTestId('RefreshIcon').closest('button'))
+    await userEvent.click(screen.getByRole('button', { name: 'Recargar' }))
 
     expect(mockGetAll.mock.calls.length).toBe(antes + 1)
   })
@@ -253,7 +253,7 @@ describe('Cupones · lo que se ve', () => {
 
     expect(screen.getByText('VERANO10')).toBeTruthy()
     expect(screen.getByText('10%')).toBeTruthy()
-    expect(screen.getByText('$500')).toBeTruthy()
+    expect(screen.getByText(/\$\s?500/)).toBeTruthy()
     expect(screen.getByText('Descuento de verano')).toBeTruthy()
   })
 
@@ -438,24 +438,44 @@ describe('Cupones · clonar, eliminar y restaurar', () => {
     await waitFor(() => expect(mockToastSuccess).toHaveBeenCalledWith('Clonado: COPIA'))
   })
 
-  test('eliminar pide confirmación y manda el id', async () => {
+  test('eliminar pide confirmación con el código y recién al confirmar manda el id', async () => {
     montar()
 
     await menuDe('VERANO10')
     await userEvent.click(await screen.findByRole('menuitem', { name: /^eliminar$/i }))
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('VERANO10'))
+    const dialogo = await screen.findByRole('dialog', { name: 'Eliminar cupón' })
+
+    expect(within(dialogo).getByText(/VERANO10/)).toBeTruthy()
+    expect(within(dialogo).getByText(/restaurarlo desde el filtro "Eliminados"/)).toBeTruthy()
+    expect(mockDelete).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Eliminar' }))
+
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('k1'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
-  test('si no se confirma, no se elimina', async () => {
-    window.confirm = jest.fn(() => false)
+  test('si se cancela la confirmación, no se elimina', async () => {
+    montar()
+
+    await menuDe('VERANO10')
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^eliminar$/i }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancelar' }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  test('no se usa el cuadro de confirmación del navegador', async () => {
     montar()
 
     await menuDe('VERANO10')
     await userEvent.click(await screen.findByRole('menuitem', { name: /^eliminar$/i }))
 
-    expect(mockDelete).not.toHaveBeenCalled()
+    expect(window.confirm).not.toHaveBeenCalled()
   })
 
   test('en la papelera se puede restaurar', async () => {
@@ -473,7 +493,13 @@ describe('Cupones · clonar, eliminar y restaurar', () => {
     await menuDe('VIEJO20')
     await userEvent.click(await screen.findByRole('menuitem', { name: /eliminar permanente/i }))
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('PERMANENTE'))
+    const dialogo = await screen.findByRole('dialog', { name: 'Eliminación permanente' })
+
+    expect(within(dialogo).getByText(/no se puede deshacer/)).toBeTruthy()
+    expect(mockPermanentDelete).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'Eliminar para siempre' }))
+
     await waitFor(() => expect(mockPermanentDelete).toHaveBeenCalledWith({ id: 'k3' }))
   })
 
@@ -487,19 +513,53 @@ describe('Cupones · clonar, eliminar y restaurar', () => {
     expect(opcion.getAttribute('aria-disabled')).toBe('true')
   })
 
-  test.each([
-    ['clone', 'VERANO10', /clonar/i, 'Error al clonar'],
-    ['delete', 'VERANO10', /^eliminar$/i, 'Error al eliminar'],
-  ])('si falla %s sin mensaje, avisa «%s»', async (tipo, codigo, opcion, esperado) => {
+  test('si falla clonar sin mensaje, avisa «Error al clonar»', async () => {
     mockDispatch.mockImplementation(action => ({
-      unwrap: () => (action.type === tipo ? Promise.reject({}) : Promise.resolve({})),
+      unwrap: () => (action.type === 'clone' ? Promise.reject({}) : Promise.resolve({})),
     }))
     montar()
 
+    await menuDe('VERANO10')
+    await userEvent.click(await screen.findByRole('menuitem', { name: /clonar/i }))
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Error al clonar'))
+  })
+
+  test.each([
+    ['delete', 'VERANO10', /^eliminar$/i, 'Eliminar', 'Error al eliminar'],
+    [
+      'permanentDelete',
+      'VIEJO20',
+      /eliminar permanente/i,
+      'Eliminar para siempre',
+      'Error en borrado permanente',
+    ],
+  ])('si falla %s sin mensaje, avisa «%s»', async (tipo, codigo, opcion, boton, esperado) => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === tipo ? Promise.reject({}) : Promise.resolve({})),
+    }))
+    montar({ coupons: [CUPON_ACTIVO, CUPON_ELIMINADO] })
+
     await menuDe(codigo)
     await userEvent.click(await screen.findByRole('menuitem', { name: opcion }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: boton }),
+    )
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledWith(esperado))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  test('si falla restaurar sin mensaje, avisa «Error al restaurar»', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === 'restore' ? Promise.reject({}) : Promise.resolve({})),
+    }))
+    montar({ coupons: [CUPON_ELIMINADO] })
+
+    await menuDe('VIEJO20')
+    await userEvent.click(await screen.findByRole('menuitem', { name: /restaurar/i }))
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Error al restaurar'))
   })
 })
 
@@ -528,5 +588,157 @@ describe('Cupones · generar en masa', () => {
     )
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+})
+
+describe('Cupones · lo que se mejoró', () => {
+  test('al abrir se pide la lista una sola vez, y la espera de la búsqueda no suma otra', async () => {
+    montar()
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalled())
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 700))
+    })
+
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+  })
+
+  test('si no se pudo cargar la lista lo dice, en vez de «no se encontraron cupones»', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === 'getAll' ? Promise.reject({}) : Promise.resolve({})),
+    }))
+    montar({ coupons: [], pagination: { total: 0, page: 1, pages: 1 } })
+
+    expect(await screen.findByText('No se pudieron cargar los cupones.')).toBeTruthy()
+    expect(screen.queryByText('No se encontraron cupones')).toBeNull()
+  })
+
+  test('«Reintentar» vuelve a pedir la lista y, si anda, muestra los cupones', async () => {
+    let fallar = true
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === 'getAll' && fallar ? Promise.reject({}) : Promise.resolve({})),
+    }))
+    montar({ coupons: [], pagination: { total: 0, page: 1, pages: 1 } })
+
+    await screen.findByText('No se pudieron cargar los cupones.')
+    fallar = false
+    mockGetAll.mockClear()
+
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByText('No se pudieron cargar los cupones.')).toBeNull())
+  })
+
+  test('si falla editar, el formulario sigue abierto para corregir', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () =>
+        action.type === 'update' ? Promise.reject({ message: 'Inválido' }) : Promise.resolve({}),
+    }))
+    montar()
+
+    await menuDe('VERANO10')
+    await userEvent.click(await screen.findByRole('menuitem', { name: /editar/i }))
+    const dialogo = await screen.findByRole('dialog', { name: 'Editar Cupón: VERANO10' })
+
+    await userEvent.click(within(dialogo).getByRole('button', { name: 'enviar' }))
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled())
+    expect(screen.getByRole('dialog', { name: 'Editar Cupón: VERANO10' })).toBeTruthy()
+  })
+
+  test('el estado y el tipo tienen nombre, y las opciones no llevan símbolos', async () => {
+    montar()
+
+    expect(screen.getByRole('combobox', { name: /estado/i })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: /tipo/i })).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('combobox', { name: /estado/i }))
+
+    expect(await screen.findByRole('option', { name: 'Programados' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Eliminados' })).toBeTruthy()
+  })
+
+  test('un solo uso se escribe en singular', () => {
+    montar({ coupons: [{ ...CUPON_FIJO, usageCount: 1 }] })
+
+    expect(screen.getByText('1 uso')).toBeTruthy()
+    expect(screen.queryByText('1 usos')).toBeNull()
+  })
+
+  test('el menú de cada cupón tiene nombre con el código', () => {
+    montar()
+
+    expect(screen.getByRole('button', { name: 'Acciones del cupón VERANO10' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Acciones del cupón MENOS500' })).toBeTruthy()
+  })
+
+  test('los montos salen en pesos argentinos', () => {
+    montar({
+      coupons: [{ ...CUPON_FIJO, discountValue: 15000, maxDiscountAmount: 2500 }],
+    })
+
+    expect(screen.getByText(/\$\s?15\.000/)).toBeTruthy()
+    expect(screen.getByText(/Máx: \$\s?2\.500/)).toBeTruthy()
+  })
+
+  test('las fechas salen en formato argentino', () => {
+    montar({ coupons: [{ ...CUPON_ACTIVO, startDate: '2026-03-05T12:00:00.000Z' }] })
+
+    expect(screen.getByText('Desde: 5/3/2026')).toBeTruthy()
+  })
+})
+
+describe('Cupones · en el celular', () => {
+  const estrecha = () => {
+    window.matchMedia = query => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })
+  }
+
+  afterEach(() => {
+    delete window.matchMedia
+  })
+
+  test('no hay tabla: cada cupón es una tarjeta con todo a la vista', () => {
+    estrecha()
+    montar()
+
+    expect(screen.queryByRole('table')).toBeNull()
+
+    const tarjetas = screen.getAllByRole('article')
+
+    expect(tarjetas).toHaveLength(2)
+
+    const verano = within(tarjetas[0])
+
+    expect(verano.getByText('VERANO10')).toBeTruthy()
+    expect(verano.getByText('10%')).toBeTruthy()
+    expect(verano.getByText('Activo')).toBeTruthy()
+    expect(verano.getByText('3 / 10')).toBeTruthy()
+    expect(verano.getByText('Todos los productos')).toBeTruthy()
+  })
+
+  test('las acciones funcionan igual que en la tabla', async () => {
+    estrecha()
+    montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Acciones del cupón VERANO10' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /clonar/i }))
+
+    await waitFor(() => expect(mockClone).toHaveBeenCalledWith('k1'))
+  })
+
+  test('sin cupones muestra el mismo aviso que en escritorio', () => {
+    estrecha()
+    montar({ coupons: [], pagination: { total: 0, page: 1, pages: 1 } })
+
+    expect(screen.getByText('No se encontraron cupones')).toBeTruthy()
+    expect(screen.queryByRole('article')).toBeNull()
   })
 })
