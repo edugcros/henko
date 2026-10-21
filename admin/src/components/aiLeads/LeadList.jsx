@@ -3,13 +3,16 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
-import ListItemText from '@mui/material/ListItemText'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
 import Skeleton from '@mui/material/Skeleton'
 import LeadStatusBadge from './LeadStatusBadge.jsx'
 import LeadScoreBadge from './LeadScoreBadge.jsx'
+
+const LINE = '#dfe6fb'
+const MUTED = '#55618a'
+const PAPER = '#f4f7ff'
+const BLUE = '#0b6bff'
 
 const formatDate = value => {
   if (!value) return 'Sin actividad'
@@ -42,17 +45,19 @@ const LeadListSkeletonComponent = () => (
   </Box>
 )
 
-const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
-  if (loading) return <LeadListSkeletonComponent />
+// `loading` solo muestra el esqueleto cuando todavía no hay nada que mostrar: al filtrar o actualizar
+// la lista anterior se queda a la vista (la página la atenúa y muestra una barra de progreso).
+const LeadList = ({ leads = [], selectedId, loading, onSelect, emptyTitle, emptyHint }) => {
+  if (loading && !leads.length) return <LeadListSkeletonComponent />
 
   if (!leads.length) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-          No hay leads para este filtro
+        <Typography sx={{ fontWeight: 800, color: '#050b1f' }}>
+          {emptyTitle || 'No hay leads para este filtro'}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Cuando el asistente detecte consultas comerciales, aparecerán acá.
+        <Typography variant="body2" sx={{ color: MUTED, mt: 0.5 }}>
+          {emptyHint || 'Cuando el asistente detecte consultas comerciales, aparecerán acá.'}
         </Typography>
       </Box>
     )
@@ -60,69 +65,61 @@ const LeadList = ({ leads = [], selectedId, loading, onSelect }) => {
 
   return (
     <List disablePadding>
-      {leads.map((lead, index) => (
-        <React.Fragment key={lead.id || lead._id}>
-          <ListItemButton
-            selected={String(selectedId) === String(lead.id || lead._id)}
-            onClick={() => onSelect?.(lead)}
-            sx={{ alignItems: 'flex-start', py: 1.6, px: 2 }}
-          >
-            <ListItemText
-              primary={
-                <Stack spacing={0.8}>
-                  <Stack
-                    direction="row"
-                    sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
-                  >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800 }} noWrap>
-                      {lead.displayName ||
-                        lead.customer?.name ||
-                        lead.customer?.email ||
-                        'Cliente web'}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ whiteSpace: 'nowrap' }}
-                    >
-                      {formatDate(lead.lastInteractionAt || lead.updatedAt)}
-                    </Typography>
-                  </Stack>
+      {leads.map(lead => {
+        const id = lead.id || lead._id
+        const selected = String(selectedId) === String(id)
 
-                  <Stack direction="row" sx={{ gap: 0.8, flexWrap: 'wrap' }}>
-                    <LeadStatusBadge status={lead.status} />
-                    <LeadScoreBadge score={lead.leadScore || lead.score} />
-                  </Stack>
-                </Stack>
-              }
-              secondary={
-                <Box sx={{ mt: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block' }}
-                    noWrap
-                  >
-                    {lead.customer?.email || lead.customer?.phone || 'Sin datos de contacto'}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: 'block' }}
-                    noWrap
-                  >
-                    Producto: {getProductLabel(lead)}
-                  </Typography>
-                  <Typography variant="body2" color="text.primary" sx={{ mt: 0.6 }} noWrap>
-                    {lead.lastMessage || 'Sin último mensaje registrado'}
-                  </Typography>
-                </Box>
-              }
-            />
+        return (
+          <ListItemButton
+            key={id}
+            selected={selected}
+            onClick={() => onSelect?.(lead)}
+            sx={{
+              display: 'block',
+              px: 2,
+              py: 1.6,
+              borderBottom: `1px solid ${LINE}`,
+              borderLeft: `3px solid ${selected ? BLUE : 'transparent'}`,
+              '&.Mui-selected, &.Mui-selected:hover': { bgcolor: PAPER },
+              '&:hover': { bgcolor: PAPER },
+            }}
+          >
+            <Stack spacing={0.8}>
+              <Stack
+                direction="row"
+                sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+              >
+                <Typography sx={{ fontWeight: 800, fontSize: 15 }} noWrap>
+                  {lead.displayName || lead.customer?.name || lead.customer?.email || 'Cliente web'}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{ color: MUTED, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {formatDate(lead.lastInteractionAt || lead.updatedAt)}
+                </Typography>
+              </Stack>
+
+              <Stack direction="row" sx={{ gap: 0.8, flexWrap: 'wrap' }}>
+                <LeadStatusBadge status={lead.status} />
+                <LeadScoreBadge score={lead.leadScore || lead.score} />
+              </Stack>
+
+              <Box>
+                <Typography variant="caption" sx={{ display: 'block', color: MUTED }} noWrap>
+                  {lead.customer?.email || lead.customer?.phone || 'Sin datos de contacto'}
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', color: MUTED }} noWrap>
+                  Producto: {getProductLabel(lead)}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.6, color: '#050b1f' }} noWrap>
+                  {lead.lastMessage || 'Sin último mensaje registrado'}
+                </Typography>
+              </Box>
+            </Stack>
           </ListItemButton>
-          {index < leads.length - 1 && <Divider />}
-        </React.Fragment>
-      ))}
+        )
+      })}
     </List>
   )
 }
