@@ -371,7 +371,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
                 label="Peso"
                 value={heading.weight}
                 onChange={event => updateHeading('weight', Number(event.target.value))}
-                inputProps={{ min: 300, max: 950, step: 50 }}
+                slotProps={{ htmlInput: { min: 100, max: 900, step: 50 } }}
               />
             </Grid>
           </Grid>
@@ -434,7 +434,7 @@ const TypographyEditor = ({ value, onChange, sectionMeta }) => {
               label="Peso"
               value={typography.secondary.weight}
               onChange={event => updateSecondary('weight', Number(event.target.value))}
-              inputProps={{ min: 300, max: 900, step: 50 }}
+              slotProps={{ htmlInput: { min: 100, max: 900, step: 50 } }}
             />
           </Grid>
           <Grid size={{ xs: 12 }}>

@@ -419,6 +419,19 @@ describe('Lista de productos · acciones', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
+  // En MUI 9 `inputProps` se ignora sin avisar, así que el mínimo tiene que estar en el <input> real.
+  test('el stock y el umbral no admiten negativos desde el propio campo', async () => {
+    montar()
+
+    await abrirMenu('Casco AGV K1')
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Editar stock' }))
+
+    const dialogo = within(await screen.findByRole('dialog'))
+
+    expect(dialogo.getByLabelText('Stock actual').getAttribute('min')).toBe('0')
+    expect(dialogo.getByLabelText(/alerta de stock bajo/i).getAttribute('min')).toBe('0')
+  })
+
   test('un producto con variantes no edita el stock acá: manda a la edición', async () => {
     montar()
 

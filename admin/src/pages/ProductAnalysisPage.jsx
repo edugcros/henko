@@ -1278,7 +1278,7 @@ const ProductAnalysisPage = () => {
             label="Programar disponibilidad"
             value={scheduledAt}
             onChange={event => setScheduledAt(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             sx={{ minWidth: 240 }}
             helperText={
               scheduledAt
@@ -1783,7 +1783,7 @@ const ProductAnalysisPage = () => {
             label="Nueva hora"
             value={rescheduleValue}
             onChange={event => setRescheduleValue(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
         </DialogContent>
         <DialogActions>

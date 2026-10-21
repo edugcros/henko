@@ -750,7 +750,7 @@ const ImageAiEditor = () => {
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
                     placeholder="Ej: Fondo blanco de estudio profesional con iluminación suave..."
-                    inputProps={{ maxLength: 1000 }}
+                    slotProps={{ htmlInput: { maxLength: 1000 } }}
                     sx={{
                       '& .MuiOutlinedInput-root': {
                         borderRadius: 2.5,

@@ -89,7 +89,7 @@ const SpacingEditor = ({ value, onChange }) => {
                   value={spacing[key]}
                   onChange={e => handleChange(key, Number(e.target.value))}
                   sx={{ width: 80 }}
-                  inputProps={{ min, max }}
+                  slotProps={{ htmlInput: { min, max } }}
                 />
               </Box>
 

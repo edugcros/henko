@@ -338,7 +338,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           value={share}
           onChange={event => setShare(event.target.value)}
           sx={{ mb: 2 }}
-          inputProps={{ step: 0.05, min: 0.01, max: 1 }}
+          slotProps={{ htmlInput: { step: 0.01, min: 0.01, max: 1 } }}
           helperText={
             share && Number(share) > 0
               ? `Cada comercio puede usar hasta el ${Math.round(Number(share) * 100)}% del techo. Vacío = variable de entorno.`
@@ -972,7 +972,7 @@ function TipoDeCambioCard({ fx, onSaved }) {
             fullWidth
             margin="normal"
             type="number"
-            inputProps={{ min: 1 }}
+            slotProps={{ htmlInput: { min: 1 } }}
           />
 
           <TextField
@@ -1300,7 +1300,7 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
           value={share}
           onChange={event => setShare(event.target.value)}
           sx={{ mb: 2 }}
-          inputProps={{ step: 0.05, min: 0.01, max: 1 }}
+          slotProps={{ htmlInput: { step: 0.01, min: 0.01, max: 1 } }}
           helperText={
             topeResultante
               ? `${Math.round(shareEfectiva * 100)}% del techo = ${formatTokens(topeResultante)} tokens para este comercio. Vacío = usa el reparto global.`
@@ -1325,7 +1325,7 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
           value={usdCap}
           onChange={event => setUsdCap(event.target.value)}
           sx={{ mb: 2 }}
-          inputProps={{ step: 1, min: 0.01 }}
+          slotProps={{ htmlInput: { step: 'any', min: 0.01 } }}
           helperText={
             usdCapValue
               ? `Este comercio no va a costar más de USD ${usdCapValue} este mes. Gana sobre la fracción de arriba.`

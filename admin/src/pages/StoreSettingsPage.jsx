@@ -345,7 +345,7 @@ const StoreSettingsPage = () => {
                 label="Descripción"
                 value={form.description}
                 onChange={e => setField('description', e.target.value)}
-                inputProps={{ maxLength: 300 }}
+                slotProps={{ htmlInput: { maxLength: 300 } }}
                 helperText={`${form.description.length}/300`}
               />
             </Grid>
@@ -407,7 +407,7 @@ const StoreSettingsPage = () => {
                 label="Teléfono"
                 value={form.contactPhone}
                 onChange={e => setField('contactPhone', e.target.value)}
-                inputProps={{ maxLength: 30 }}
+                slotProps={{ htmlInput: { maxLength: 30 } }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -416,7 +416,7 @@ const StoreSettingsPage = () => {
                 label="Dirección"
                 value={form.address}
                 onChange={e => setField('address', e.target.value)}
-                inputProps={{ maxLength: 200 }}
+                slotProps={{ htmlInput: { maxLength: 200 } }}
               />
             </Grid>
           </Grid>

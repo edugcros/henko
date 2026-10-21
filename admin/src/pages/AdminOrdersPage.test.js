@@ -801,6 +801,16 @@ describe('Pedidos · datos de envío', () => {
     expect(screen.getByText(/despachado:/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /guardar envío/i }).disabled).toBe(true)
   })
+
+  // Los mismos topes que recorta el backend (orderCtrl): 200 el código y 100 el transportista. En
+  // MUI 9 `inputProps` se ignora sin avisar, así que el atributo tiene que estar en el <input> real.
+  test('el código y el transportista tienen largo máximo', async () => {
+    montar()
+    await abrirOrden('A-1003')
+
+    expect(screen.getByLabelText('Código de seguimiento').getAttribute('maxlength')).toBe('200')
+    expect(screen.getByLabelText('Transportista').getAttribute('maxlength')).toBe('100')
+  })
 })
 
 describe('Pedidos · cancelar, reembolsar y eliminar', () => {

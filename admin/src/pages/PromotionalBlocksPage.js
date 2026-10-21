@@ -1314,12 +1314,14 @@ const PromotionalBlocksPage = () => {
                 label="Fecha inicio"
                 value={form.startDate}
                 onChange={event => setField('startDate', event.target.value)}
-                InputLabelProps={{
-                  shrink: true,
-                  sx: {
-                    backgroundColor: 'background.paper',
-                    px: 0.75,
-                    zIndex: 1,
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                    sx: {
+                      backgroundColor: 'background.paper',
+                      px: 0.75,
+                      zIndex: 1,
+                    },
                   },
                 }}
               />
@@ -1331,12 +1333,14 @@ const PromotionalBlocksPage = () => {
                 required
                 type="datetime-local"
                 label="Fecha fin"
-                InputLabelProps={{
-                  shrink: true,
-                  sx: {
-                    backgroundColor: 'background.paper',
-                    px: 0.75,
-                    zIndex: 1,
+                slotProps={{
+                  inputLabel: {
+                    shrink: true,
+                    sx: {
+                      backgroundColor: 'background.paper',
+                      px: 0.75,
+                      zIndex: 1,
+                    },
                   },
                 }}
                 value={form.endDate}
@@ -1350,19 +1354,21 @@ const PromotionalBlocksPage = () => {
                 type="number"
                 label="Máx. productos"
                 value={form.maxItems}
-                inputProps={{
-                  min: 1,
-                  max: CONFIG.MAX_PRODUCTS_PER_BLOCK,
-                }}
-                onChange={event => setField('maxItems', event.target.value)}
-                InputLabelProps={{
-                  shrink: true,
-                  sx: {
-                    backgroundColor: 'background.paper',
-                    px: 0.75,
-                    zIndex: 1,
+                slotProps={{
+                  htmlInput: {
+                    min: 1,
+                    max: CONFIG.MAX_PRODUCTS_PER_BLOCK,
+                  },
+                  inputLabel: {
+                    shrink: true,
+                    sx: {
+                      backgroundColor: 'background.paper',
+                      px: 0.75,
+                      zIndex: 1,
+                    },
                   },
                 }}
+                onChange={event => setField('maxItems', event.target.value)}
               />
             </Grid>
 
@@ -1372,9 +1378,11 @@ const PromotionalBlocksPage = () => {
                 type="number"
                 label="Prioridad"
                 value={form.priority}
-                inputProps={{
-                  min: 1,
-                  max: 100,
+                slotProps={{
+                  htmlInput: {
+                    min: 1,
+                    max: 100,
+                  },
                 }}
                 onChange={event => setField('priority', event.target.value)}
               />
@@ -1539,9 +1547,11 @@ const PromotionalBlocksPage = () => {
                               type="number"
                               label="% OFF"
                               value={item.discountPercentage}
-                              inputProps={{
-                                min: 0,
-                                max: 100,
+                              slotProps={{
+                                htmlInput: {
+                                  min: 0,
+                                  max: 100,
+                                },
                               }}
                               onChange={event =>
                                 updateSelectedProductField(
@@ -1560,9 +1570,11 @@ const PromotionalBlocksPage = () => {
                               type="number"
                               label="Orden"
                               value={item.priority}
-                              inputProps={{
-                                min: 1,
-                                max: 100,
+                              slotProps={{
+                                htmlInput: {
+                                  min: 1,
+                                  max: 100,
+                                },
                               }}
                               onChange={event =>
                                 updateSelectedProductField(

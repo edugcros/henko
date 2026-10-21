@@ -490,3 +490,13 @@ describe('Pagos · resumen y avisos en pantalla', () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1))
   })
 })
+
+describe('Pagos · largo máximo de los campos', () => {
+  // En MUI 9 `inputProps` se ignora sin avisar, así que el atributo tiene que estar en el <input>
+  // real o el tope no existe.
+  test('la Public Key limita a 300 caracteres', async () => {
+    await montar()
+
+    expect(campo('Public Key').getAttribute('maxlength')).toBe('300')
+  })
+})
