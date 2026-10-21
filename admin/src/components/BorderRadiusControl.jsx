@@ -50,7 +50,7 @@ const BorderRadiusControl = ({ value, onChange }) => {
                     value={value?.[preset.key] || '0rem'}
                     onChange={e => onChange({ ...value, [preset.key]: e.target.value })}
                     sx={{ width: 80 }}
-                    inputProps={{ style: { textAlign: 'center' } }}
+                    slotProps={{ htmlInput: { style: { textAlign: 'center' } } }}
                   />
                 </Box>
 

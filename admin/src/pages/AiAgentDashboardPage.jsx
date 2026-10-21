@@ -422,7 +422,7 @@ const AiAgentDashboardPage = () => {
             placeholder="Hola, ¿tenés zapatillas negras talle 42?"
             value={testInput}
             onChange={e => setTestInput(e.target.value)}
-            inputProps={{ maxLength: 2000 }}
+            slotProps={{ htmlInput: { maxLength: 2000 } }}
           />
           <Button
             variant="contained"

@@ -468,7 +468,7 @@ const AiKnowledgeBasePage = () => {
               fullWidth
               value={formData.title}
               onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              inputProps={{ maxLength: 200 }}
+              slotProps={{ htmlInput: { maxLength: 200 } }}
             />
             <TextField
               label="Contenido"
@@ -478,7 +478,7 @@ const AiKnowledgeBasePage = () => {
               maxRows={10}
               value={formData.content}
               onChange={e => setFormData(prev => ({ ...prev, content: e.target.value }))}
-              inputProps={{ maxLength: 10000 }}
+              slotProps={{ htmlInput: { maxLength: 10000 } }}
             />
             <TextField
               select

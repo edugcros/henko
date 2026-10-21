@@ -630,7 +630,7 @@ const AiLearningReviewPage = () => {
               label="Título"
               value={approveDialog?.title || ''}
               onChange={e => setApproveDialog(prev => ({ ...prev, title: e.target.value }))}
-              inputProps={{ maxLength: 200 }}
+              slotProps={{ htmlInput: { maxLength: 200 } }}
             />
             <TextField
               fullWidth
@@ -639,7 +639,7 @@ const AiLearningReviewPage = () => {
               label="Contenido"
               value={approveDialog?.content || ''}
               onChange={e => setApproveDialog(prev => ({ ...prev, content: e.target.value }))}
-              inputProps={{ maxLength: 10000 }}
+              slotProps={{ htmlInput: { maxLength: 10000 } }}
             />
             <TextField
               fullWidth
@@ -679,7 +679,7 @@ const AiLearningReviewPage = () => {
             label="Motivo (opcional)"
             value={rejectDialog?.reason || ''}
             onChange={e => setRejectDialog(prev => ({ ...prev, reason: e.target.value }))}
-            inputProps={{ maxLength: 500 }}
+            slotProps={{ htmlInput: { maxLength: 500 } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -710,7 +710,7 @@ const AiLearningReviewPage = () => {
             label="Motivo (opcional)"
             value={bulkRejectDialog?.reason || ''}
             onChange={e => setBulkRejectDialog(prev => ({ ...prev, reason: e.target.value }))}
-            inputProps={{ maxLength: 500 }}
+            slotProps={{ htmlInput: { maxLength: 500 } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

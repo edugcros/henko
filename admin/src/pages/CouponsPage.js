@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { toast } from 'react-toastify'
 
 // Material UI Components
 import {
+  Alert,
   Box,
   Typography,
   Button,
@@ -16,11 +17,13 @@ import {
   InputAdornment,
   IconButton,
   CircularProgress,
-  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  LinearProgress,
   Paper,
   Tooltip,
-  useTheme,
-  alpha,
 } from '@mui/material'
 
 // Material UI Icons
@@ -30,7 +33,7 @@ import {
   Search as SearchIcon,
   Clear as ClearIcon,
   Refresh as RefreshIcon,
-  FilterList as FilterListIcon,
+  FilterAltOff as FilterAltOffIcon,
 } from '@mui/icons-material'
 
 // Components
@@ -47,7 +50,6 @@ import {
   deleteCoupon,
   cloneCoupon,
   clearMessages,
-  clearError,
   setFilters,
   selectCouponError,
   permanentDeleteCoupon,
@@ -57,6 +59,19 @@ import {
 // ======================================================
 // CONSTANTES
 // ======================================================
+
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
 
 const DEFAULT_FILTERS = {
   status: 'all',
@@ -68,12 +83,12 @@ const DEFAULT_FILTERS = {
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Todos los estados' },
-  { value: 'active', label: '✓ Activos' },
-  { value: 'scheduled', label: '⏰ Programados' },
-  { value: 'expired', label: '⌛ Expirados' },
-  { value: 'exhausted', label: '∅ Agotados' },
-  { value: 'inactive', label: '⊘ Inactivos' },
-  { value: 'deleted', label: '🗑 Eliminados' },
+  { value: 'active', label: 'Activos' },
+  { value: 'scheduled', label: 'Programados' },
+  { value: 'expired', label: 'Expirados' },
+  { value: 'exhausted', label: 'Agotados' },
+  { value: 'inactive', label: 'Inactivos' },
+  { value: 'deleted', label: 'Eliminados' },
 ]
 
 // ======================================================
@@ -82,8 +97,8 @@ const STATUS_OPTIONS = [
 
 const CouponsPage = () => {
   const dispatch = useDispatch()
-  const theme = useTheme()
   const isMounted = useRef(false)
+  const searchMounted = useRef(false)
 
   // ======================================================
   // SELECTORES
@@ -110,6 +125,10 @@ const CouponsPage = () => {
   const [editingCoupon, setEditingCoupon] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [serverErrors, setServerErrors] = useState(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  // Confirmación antes de eliminar: { coupon, permanent }
+  const [confirming, setConfirming] = useState(null)
+  const [confirmBusy, setConfirmBusy] = useState(false)
 
   const [filters, setLocalFilters] = useState(() => ({
     ...DEFAULT_FILTERS,
@@ -117,6 +136,20 @@ const CouponsPage = () => {
   }))
 
   const searchTimeout = useRef(null)
+
+  // Pide la lista y recuerda si falló: el estado del slice se limpia apenas se avisa el error, y
+  // sin esto una lista que no se pudo cargar se veía igual que «no hay cupones».
+  const loadCoupons = useCallback(
+    currentFilters => {
+      dispatch(setFilters(currentFilters))
+
+      return dispatch(getAllCoupons(currentFilters))
+        .unwrap()
+        .then(() => setLoadFailed(false))
+        .catch(() => setLoadFailed(true))
+    },
+    [dispatch],
+  )
 
   // ======================================================
   // EFECTOS
@@ -132,19 +165,23 @@ const CouponsPage = () => {
 
   // Carga inicial y por filtros (excepto búsqueda)
   useEffect(() => {
-    dispatch(getAllCoupons(filters))
-    dispatch(setFilters(filters))
-  }, [dispatch, filters.status, filters.page, filters.limit, filters.discountType])
+    loadCoupons(filters)
+  }, [loadCoupons, filters.status, filters.page, filters.limit, filters.discountType])
 
-  // Búsqueda con debounce
+  // Búsqueda con espera. No corre al abrir: la carga de arriba ya pidió la lista, y esta pedía la
+  // misma una segunda vez 400 ms después.
   useEffect(() => {
+    if (!searchMounted.current) {
+      searchMounted.current = true
+      return undefined
+    }
+
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(() => {
-      dispatch(getAllCoupons(filters))
-      dispatch(setFilters(filters))
+      loadCoupons(filters)
     }, 400)
     return () => clearTimeout(searchTimeout.current)
-  }, [dispatch, filters.search])
+  }, [loadCoupons, filters.search])
 
   // Notificaciones Success/Error
   useEffect(() => {
@@ -190,7 +227,7 @@ const CouponsPage = () => {
         setShowForm(false)
 
         // Refrescar lista
-        dispatch(getAllCoupons(filters))
+        loadCoupons(filters)
 
         return result
       } catch (err) {
@@ -214,7 +251,7 @@ const CouponsPage = () => {
         setIsSubmitting(false)
       }
     },
-    [dispatch, filters],
+    [dispatch, filters, loadCoupons],
   )
 
   const handleUpdate = useCallback(
@@ -225,62 +262,54 @@ const CouponsPage = () => {
         await dispatch(updateCoupon({ id, data })).unwrap()
         setShowForm(false)
         setEditingCoupon(null)
-        dispatch(getAllCoupons(filters))
+        loadCoupons(filters)
+      } catch {
+        // El slice ya avisó el error (y marcó el campo si era de validación): el formulario sigue
+        // abierto para corregirlo. Antes el rechazo llegaba sin atrapar hasta el formulario.
       } finally {
         setIsSubmitting(false)
       }
     },
-    [dispatch, editingCoupon, filters],
+    [dispatch, editingCoupon, filters, loadCoupons],
   )
 
-  const handleDelete = useCallback(
-    async coupon => {
-      const id = coupon?.id || coupon?._id
-      if (
-        !window.confirm(
-          `¿Eliminar el cupón "${coupon.code}"?\nPodrás restaurarlo desde el filtro "Eliminados".`,
-        )
-      )
-        return
-      try {
+  const handleDelete = useCallback(coupon => setConfirming({ coupon, permanent: false }), [])
+
+  const handleHardDelete = useCallback(coupon => setConfirming({ coupon, permanent: true }), [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!confirming || confirmBusy) return
+
+    const { coupon, permanent } = confirming
+    const id = coupon?.id || coupon?._id
+
+    setConfirmBusy(true)
+
+    try {
+      if (permanent) {
+        await dispatch(permanentDeleteCoupon({ id })).unwrap()
+      } else {
         await dispatch(deleteCoupon(id)).unwrap()
-        dispatch(getAllCoupons(filters))
-      } catch (err) {
-        toast.error(err?.message || 'Error al eliminar')
       }
-    },
-    [dispatch, filters],
-  )
+      loadCoupons(filters)
+    } catch (err) {
+      toast.error(err?.message || (permanent ? 'Error en borrado permanente' : 'Error al eliminar'))
+    } finally {
+      setConfirmBusy(false)
+      setConfirming(null)
+    }
+  }, [confirming, confirmBusy, dispatch, filters, loadCoupons])
 
   const handleRestore = useCallback(
     async coupon => {
       try {
         await dispatch(restoreCoupon(coupon?.id || coupon?._id)).unwrap()
-        dispatch(getAllCoupons(filters))
+        loadCoupons(filters)
       } catch (err) {
         toast.error(err?.message || 'Error al restaurar')
       }
     },
-    [dispatch, filters],
-  )
-
-  const handleHardDelete = useCallback(
-    async coupon => {
-      const id = coupon?.id || coupon?._id
-      if (
-        !window.confirm(
-          `⚠ ELIMINACIÓN PERMANENTE: "${coupon.code}"\nEsta acción no se puede deshacer.`,
-        )
-      )
-        return
-      try {
-        await dispatch(permanentDeleteCoupon({ id })).unwrap()
-        dispatch(getAllCoupons(filters))
-      } catch (err) {
-        toast.error(err?.message || 'Error en borrado permanente')
-      }
-    },
-    [dispatch, filters],
+    [dispatch, filters, loadCoupons],
   )
 
   const handleClone = useCallback(
@@ -288,12 +317,12 @@ const CouponsPage = () => {
       try {
         const result = await dispatch(cloneCoupon(coupon?.id || coupon?._id)).unwrap()
         toast.success(`Clonado: ${result.code}`)
-        dispatch(getAllCoupons(filters))
+        loadCoupons(filters)
       } catch (err) {
         toast.error(err?.message || 'Error al clonar')
       }
     },
-    [dispatch, filters],
+    [dispatch, filters, loadCoupons],
   )
 
   const openEditModal = coupon => {
@@ -302,39 +331,61 @@ const CouponsPage = () => {
     setShowForm(true)
   }
 
+  const hayFiltros = Boolean(filters.search || filters.status !== 'all' || filters.discountType)
+
   // ======================================================
   // RENDER
   // ======================================================
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1280, mx: 'auto' }}>
       {/* Header */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-
-        spacing={2}
+      <Box
+        component="header"
         sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
           justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', sm: 'center' },
+          alignItems: { xs: 'stretch', sm: 'flex-end' },
+          gap: 2,
           mb: 4,
         }}
       >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: '800' }} color="primary.main" gutterBottom>
-            Gestión de Cupones
+          <Typography
+            variant="overline"
+            sx={{ color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+          >
+            PROMOCIONES
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            component="h1"
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontWeight: 800,
+              fontSize: { xs: 26, md: 34 },
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
+            }}
+          >
+            Cupones
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
             {pagination.total} cupones encontrados {filters.search && `para "${filters.search}"`}
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={2}>
+        <Stack direction="row" spacing={1.5}>
           <Button
             variant="outlined"
-            color="secondary"
             startIcon={<BoltIcon />}
             onClick={() => setShowBulk(true)}
-            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+            sx={{
+              borderRadius: 3,
+              textTransform: 'none',
+              fontWeight: 700,
+              flex: { xs: 1, sm: 'none' },
+            }}
           >
             Generar Masivo
           </Button>
@@ -347,31 +398,26 @@ const CouponsPage = () => {
               setShowForm(true)
             }}
             sx={{
-              borderRadius: 2,
+              borderRadius: 3,
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 700,
               px: 3,
+              background: GRADIENT,
+              flex: { xs: 1, sm: 'none' },
             }}
           >
             Nuevo Cupón
           </Button>
         </Stack>
-      </Stack>
+      </Box>
 
       {/* Barra de Filtros */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 2.5,
-          mb: 4,
-          borderRadius: 4,
-          border: '1px solid',
-          borderColor: 'divider',
-          bgcolor: alpha(theme.palette.background.paper, 0.8),
-          backdropFilter: 'blur(8px)',
-        }}
-      >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ alignItems: 'center' }}>
+      <Paper variant="outlined" sx={{ ...PANEL_SX, mb: 3, p: 2 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          sx={{ alignItems: { md: 'center' } }}
+        >
           <TextField
             fullWidth
             size="small"
@@ -386,18 +432,24 @@ const CouponsPage = () => {
                   </InputAdornment>
                 ),
                 endAdornment: filters.search && (
-                  <IconButton size="small" onClick={() => handleFilterChange('search', '')}>
+                  <IconButton
+                    size="small"
+                    aria-label="Borrar la búsqueda"
+                    onClick={() => handleFilterChange('search', '')}
+                  >
                     <ClearIcon fontSize="small" />
                   </IconButton>
                 ),
               },
+              htmlInput: { 'aria-label': 'Buscar cupones' },
             }}
-            sx={{ flex: 2 }}
+            sx={{ maxWidth: { md: 360 } }}
           />
 
-          <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
-            <InputLabel>Estado</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="cupones-estado-label">Estado</InputLabel>
             <Select
+              labelId="cupones-estado-label"
               value={filters.status}
               label="Estado"
               onChange={e => handleFilterChange('status', e.target.value)}
@@ -410,9 +462,10 @@ const CouponsPage = () => {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
-            <InputLabel>Tipo</InputLabel>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="cupones-tipo-label">Tipo</InputLabel>
             <Select
+              labelId="cupones-tipo-label"
               value={filters.discountType}
               label="Tipo"
               onChange={e => handleFilterChange('discountType', e.target.value)}
@@ -423,27 +476,44 @@ const CouponsPage = () => {
             </Select>
           </FormControl>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Tooltip title="Recargar">
-              <IconButton onClick={() => dispatch(getAllCoupons(filters))}>
+              <IconButton aria-label="Recargar" onClick={() => loadCoupons(filters)}>
                 <RefreshIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            {(filters.search || filters.status !== 'all' || filters.discountType) && (
+            {hayFiltros && (
               <Button
                 size="small"
+                startIcon={<FilterAltOffIcon />}
                 onClick={() => setLocalFilters(DEFAULT_FILTERS)}
-                sx={{ textTransform: 'none' }}
+                sx={{ textTransform: 'none', fontWeight: 700 }}
               >
-                Limpiar
+                Limpiar filtros
               </Button>
             )}
           </Stack>
         </Stack>
       </Paper>
 
+      {isLoading && coupons.length > 0 && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+
+      {loadFailed && coupons.length === 0 && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => loadCoupons(filters)}>
+              Reintentar
+            </Button>
+          }
+        >
+          No se pudieron cargar los cupones.
+        </Alert>
+      )}
+
       {/* Lista */}
-      <Box sx={{ minHeight: 400 }}>
+      <Box sx={{ minHeight: 300 }}>
         {isLoading && !coupons.length ? (
           <Stack sx={{ alignItems: 'center', py: 10 }}>
             <CircularProgress />
@@ -452,18 +522,20 @@ const CouponsPage = () => {
             </Typography>
           </Stack>
         ) : (
-          <CouponList
-            coupons={coupons}
-            loading={isLoading}
-            onEdit={openEditModal}
-            onSoftDelete={handleDelete}
-            onRestore={handleRestore}
-            onHardDelete={handleHardDelete}
-            onClone={handleClone}
-            showDeleted={filters.status === 'deleted'}
-            pagination={pagination}
-            onPageChange={page => handleFilterChange('page', page)}
-          />
+          !(loadFailed && coupons.length === 0) && (
+            <CouponList
+              coupons={coupons}
+              loading={isLoading}
+              onEdit={openEditModal}
+              onSoftDelete={handleDelete}
+              onRestore={handleRestore}
+              onHardDelete={handleHardDelete}
+              onClone={handleClone}
+              showDeleted={filters.status === 'deleted'}
+              pagination={pagination}
+              onPageChange={page => handleFilterChange('page', page)}
+            />
+          )
         )}
       </Box>
 
@@ -491,14 +563,51 @@ const CouponsPage = () => {
         size="medium"
       >
         <BulkGenerator
-          onSuccess={res => {
+          onSuccess={() => {
             setShowBulk(false)
-            dispatch(getAllCoupons(filters))
+            loadCoupons(filters)
           }}
           onCancel={() => setShowBulk(false)}
         />
       </Modal>
-    </Container>
+
+      {/* Confirmación de eliminación (antes era el cuadro nativo del navegador) */}
+      <Dialog
+        open={Boolean(confirming)}
+        onClose={() => !confirmBusy && setConfirming(null)}
+        fullWidth
+        maxWidth="xs"
+        aria-labelledby="cupones-confirmar-titulo"
+      >
+        <DialogTitle
+          id="cupones-confirmar-titulo"
+          sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800 }}
+        >
+          {confirming?.permanent ? 'Eliminación permanente' : 'Eliminar cupón'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {confirming?.permanent
+              ? `Vas a eliminar para siempre el cupón "${confirming?.coupon?.code}". Esta acción no se puede deshacer.`
+              : `¿Eliminar el cupón "${confirming?.coupon?.code}"? Podrás restaurarlo desde el filtro "Eliminados".`}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setConfirming(null)} color="inherit" disabled={confirmBusy}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            variant="contained"
+            color="error"
+            disabled={confirmBusy}
+            startIcon={confirmBusy ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {confirming?.permanent ? 'Eliminar para siempre' : 'Eliminar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   )
 }
 

@@ -747,7 +747,7 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
         fullWidth
         disabled={disabled || saving}
         sx={{ mb: 1.5 }}
-        inputProps={{ maxLength: 200 }}
+        slotProps={{ htmlInput: { maxLength: 200 } }}
       />
 
       <TextField
@@ -758,7 +758,7 @@ const ShipmentCard = memo(({ order, onSaveShipment, disabled = false }) => {
         fullWidth
         disabled={disabled || saving}
         sx={{ mb: 1.5 }}
-        inputProps={{ maxLength: 100 }}
+        slotProps={{ htmlInput: { maxLength: 100 } }}
       />
 
       {shipment.shippedAt && (

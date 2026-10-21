@@ -6,11 +6,8 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
-  Divider,
   FormControlLabel,
   Grid,
   Link,
@@ -30,9 +27,25 @@ import {
 } from '@mui/icons-material'
 import { getMetaPixelConfig, updateMetaPixelConfig } from '../services/metaPixelConfigService.js'
 
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+const GRADIENT = 'linear-gradient(100deg, #0b6bff 0%, #5b3dff 58%, #8a2cff 100%)'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
+
 const clean = value => String(value ?? '').trim()
 
-const toForm = data => {
+// Mismo criterio que el backend (metaPixelConfigCtrl): el ID de Pixel es solo números.
+const PIXEL_ID_REGEX = /^\d{6,20}$/
+
+export const toForm = data => {
   const meta = data?.meta || {}
   return {
     pixelId: meta.pixelId || '',
@@ -44,7 +57,7 @@ const toForm = data => {
   }
 }
 
-const toPayload = form => {
+export const toPayload = form => {
   const meta = {
     pixelId: clean(form.pixelId),
     isEnabled: form.isEnabled,
@@ -54,6 +67,44 @@ const toPayload = form => {
   }
   return { meta }
 }
+
+// Lo que el servidor va a rechazar con un 400, dicho antes de mandarlo: un ID que no es numérico y
+// activar el Pixel sin ID o sin token. Un ID vacío no borra el guardado (el servidor lo conserva),
+// así que cuenta como «hay ID» si ya había uno.
+export const getConfigProblems = (form, saved) => {
+  const problems = []
+  const pixelId = clean(form.pixelId)
+  const hasPixelId = Boolean(pixelId) || Boolean(clean(saved.pixelId))
+  const hasToken = saved.hasAccessToken || Boolean(clean(form.accessToken))
+
+  if (pixelId && !PIXEL_ID_REGEX.test(pixelId)) {
+    problems.push({
+      key: 'id-invalido',
+      field: 'pixelId',
+      text: 'El ID de Pixel tiene que ser numérico (de 6 a 20 dígitos). Lo encontrás en Events Manager.',
+    })
+  }
+
+  if (form.isEnabled && !hasPixelId) {
+    problems.push({
+      key: 'sin-id',
+      field: 'pixelId',
+      text: 'Para activar Meta Pixel falta el ID de Pixel.',
+    })
+  }
+
+  if (form.isEnabled && !hasToken) {
+    problems.push({
+      key: 'sin-token',
+      field: 'accessToken',
+      text: 'Para activar Meta Pixel falta el token de acceso de Conversions API.',
+    })
+  }
+
+  return problems
+}
+
+const formatDate = value => (value ? new Date(value).toLocaleDateString('es-AR') : '—')
 
 const GUIDE_STEPS = [
   {
@@ -156,27 +207,52 @@ const FAQ_ITEMS = [
 ]
 
 const SectionCard = ({ title, subtitle, icon, children }) => (
-  <Card variant="outlined" sx={{ borderRadius: 3 }}>
-    <CardContent>
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
-        {icon}
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          {title}
-        </Typography>
-      </Stack>
-      {subtitle && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {subtitle}
-        </Typography>
-      )}
-      <Divider sx={{ mb: 2.5 }} />
-      {children}
-    </CardContent>
-  </Card>
+  <Paper component="section" variant="outlined" sx={{ ...PANEL_SX, p: { xs: 2.5, md: 3.5 } }}>
+    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+      {icon}
+      <Typography component="h2" sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20 }}>
+        {title}
+      </Typography>
+    </Stack>
+    {subtitle && (
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+        {subtitle}
+      </Typography>
+    )}
+    {children}
+  </Paper>
+)
+
+const StatusTile = ({ title, value, ok, span }) => (
+  <Box sx={{ p: 2, minWidth: 0, gridColumn: span }}>
+    <Typography
+      component="span"
+      variant="caption"
+      sx={{ display: 'block', color: BRAND.muted, fontWeight: 700, letterSpacing: '0.04em' }}
+    >
+      {title}
+    </Typography>
+    <Typography
+      component="div"
+      sx={{
+        fontFamily: DISPLAY_FONT,
+        fontWeight: 800,
+        fontSize: 18,
+        lineHeight: 1.3,
+        overflowWrap: 'anywhere',
+        color: ok === undefined ? BRAND.ink : ok ? '#047857' : '#9a5b00',
+      }}
+    >
+      {value}
+    </Typography>
+  </Box>
 )
 
 const MetaPixelConfigPage = () => {
   const [form, setForm] = useState(null)
+  // Lo que está guardado en el servidor: el resumen de arriba muestra esto, no lo que se está
+  // escribiendo, para no decir «activado» antes de que se guarde.
+  const [saved, setSaved] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -191,7 +267,10 @@ const MetaPixelConfigPage = () => {
     setError('')
     try {
       const data = await getMetaPixelConfig()
-      setForm(toForm(data))
+      const next = toForm(data)
+
+      setForm(next)
+      setSaved(next)
     } catch (err) {
       console.error('[META_PIXEL_CONFIG_LOAD_ERROR]', err)
       setError(
@@ -210,13 +289,19 @@ const MetaPixelConfigPage = () => {
 
   const setField = useCallback((key, value) => setForm(prev => ({ ...prev, [key]: value })), [])
 
+  const problems = form && saved ? getConfigProblems(form, saved) : []
+  const canSave = problems.length === 0 && !saving
+
   const handleSave = useCallback(async () => {
-    if (!form) return
+    if (!form || !canSave) return
     setSaving(true)
     setError('')
     try {
       const data = await updateMetaPixelConfig(toPayload(form))
-      setForm(toForm(data))
+      const next = toForm(data)
+
+      setForm(next)
+      setSaved(next)
       setSnackbar({
         open: true,
         severity: 'success',
@@ -230,7 +315,7 @@ const MetaPixelConfigPage = () => {
     } finally {
       setSaving(false)
     }
-  }, [form])
+  }, [form, canSave])
 
   if (loading) {
     return (
@@ -256,48 +341,127 @@ const MetaPixelConfigPage = () => {
     ? 'Ya hay un token guardado. Dejá en blanco para no cambiarlo.'
     : 'Pegá el Access Token de Conversions API de tu Pixel.'
 
-  return (
-    <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 980, mx: 'auto' }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 3 }}
+  const problemFor = field => problems.find(problem => problem.field === field)
 
-        spacing={2}
+  const saveButton = (sx = {}) => (
+    <Button
+      variant="contained"
+      size="large"
+      startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
+      onClick={handleSave}
+      disabled={!canSave}
+      sx={{
+        borderRadius: 3,
+        textTransform: 'none',
+        fontWeight: 700,
+        px: 3,
+        background: canSave ? GRADIENT : undefined,
+        ...sx,
+      }}
+    >
+      {saving ? 'Guardando...' : 'Guardar cambios'}
+    </Button>
+  )
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 980, mx: 'auto' }}>
+      <Box
+        component="header"
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'flex-end' },
+          gap: 2,
+          mb: 4,
+        }}
       >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+          <Typography
+            variant="overline"
+            sx={{ color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+          >
+            MARKETING
+          </Typography>
+          <Typography
+            component="h1"
+            sx={{
+              fontFamily: DISPLAY_FONT,
+              fontWeight: 800,
+              fontSize: { xs: 26, md: 34 },
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
+            }}
+          >
             Meta Pixel
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
             Medí y optimizá campañas de Facebook e Instagram con datos reales de tu tienda.
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-          sx={{ borderRadius: 2, textTransform: 'none', px: 3 }}
+        {saveButton({ flexShrink: 0 })}
+      </Box>
+
+      <Paper
+        component="section"
+        aria-label="Estado de la conexión"
+        variant="outlined"
+        sx={{ ...PANEL_SX, mb: 3, overflow: 'hidden' }}
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+          }}
         >
-          {saving ? 'Guardando...' : 'Guardar cambios'}
-        </Button>
-      </Stack>
+          <StatusTile
+            title="Meta Pixel"
+            value={saved.isEnabled ? 'Activado' : 'Desactivado'}
+            ok={saved.isEnabled}
+          />
+          <StatusTile
+            title="ID de Pixel"
+            value={clean(saved.pixelId) || 'Sin ID'}
+            ok={Boolean(clean(saved.pixelId))}
+            span={{ xs: 'span 2', md: 'span 1' }}
+          />
+          <StatusTile
+            title="Access Token"
+            value={saved.hasAccessToken ? 'Configurado' : 'Falta'}
+            ok={saved.hasAccessToken}
+          />
+          <StatusTile title="Conectado" value={formatDate(saved.connectedAt)} />
+        </Box>
+      </Paper>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 3 }}>
           {error}
         </Alert>
+      )}
+
+      {problems.length > 0 && (
+        <Stack spacing={1.5} sx={{ mb: 3 }}>
+          {problems.map(problem => (
+            <Alert key={problem.key} severity="warning" sx={{ borderRadius: 3 }}>
+              {problem.text}
+            </Alert>
+          ))}
+        </Stack>
       )}
 
       <Stack spacing={3}>
         <SectionCard
           title="Meta Pixel + Conversions API"
           subtitle="El Pixel mide desde el navegador del comprador; Conversions API manda el mismo evento desde nuestro servidor para que no se pierda por bloqueadores de anuncios o Safari. Los dos juntos dan la medición más completa."
-          icon={<InsightsIcon color="primary" />}
+          icon={<InsightsIcon sx={{ color: BRAND.blue }} />}
         >
           <Stack spacing={2.5}>
-            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <Stack
+              direction="row"
+              spacing={2}
+              sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}
+            >
               <FormControlLabel
                 control={
                   <Switch
@@ -331,8 +495,6 @@ const MetaPixelConfigPage = () => {
               )}
             </Stack>
 
-            <Divider />
-
             <Grid container spacing={2.5}>
               <Grid size={{ xs: 12, sm: 5 }}>
                 <TextField
@@ -341,7 +503,8 @@ const MetaPixelConfigPage = () => {
                   value={form.pixelId}
                   onChange={e => setField('pixelId', e.target.value)}
                   placeholder="123456789012345"
-                  inputProps={{ maxLength: 20 }}
+                  error={Boolean(problemFor('pixelId'))}
+                  slotProps={{ htmlInput: { maxLength: 20 } }}
                 />
               </Grid>
               <Grid size={{ xs: 12, sm: 7 }}>
@@ -352,6 +515,7 @@ const MetaPixelConfigPage = () => {
                   value={form.accessToken}
                   onChange={e => setField('accessToken', e.target.value)}
                   placeholder="••••••••"
+                  error={Boolean(problemFor('accessToken'))}
                   helperText={secretHelp}
                   autoComplete="new-password"
                 />
@@ -372,14 +536,18 @@ const MetaPixelConfigPage = () => {
                 sx={{
                   py: 2,
                   borderBottom: index < GUIDE_STEPS.length - 1 ? '1px solid' : 'none',
-                  borderColor: 'divider',
+                  borderColor: BRAND.line,
                 }}
               >
                 <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
                   <Typography
-                    variant="h6"
-                    color="text.disabled"
-                    sx={{ minWidth: 28, fontWeight: 600 }}
+                    sx={{
+                      minWidth: 28,
+                      fontFamily: DISPLAY_FONT,
+                      fontWeight: 800,
+                      fontSize: 20,
+                      color: BRAND.blue,
+                    }}
                   >
                     {index + 1}
                   </Typography>
@@ -394,11 +562,11 @@ const MetaPixelConfigPage = () => {
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
                       {step.title}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" color="text.secondary" component="div">
                       {step.body}
                     </Typography>
                     {step.warning && (
-                      <Alert severity="warning" sx={{ mt: 1.5 }}>
+                      <Alert severity="warning" sx={{ mt: 1.5, borderRadius: 3 }}>
                         {step.warning}
                       </Alert>
                     )}
@@ -421,7 +589,11 @@ const MetaPixelConfigPage = () => {
                 disableGutters
                 elevation={0}
                 variant="outlined"
-                sx={{ borderRadius: 2, '&:before': { display: 'none' } }}
+                sx={{
+                  borderRadius: 3,
+                  borderColor: BRAND.line,
+                  '&:before': { display: 'none' },
+                }}
               >
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
@@ -441,23 +613,14 @@ const MetaPixelConfigPage = () => {
         <Paper
           variant="outlined"
           sx={{
+            ...PANEL_SX,
             p: 2,
-            borderRadius: 3,
             position: 'sticky',
             bottom: 16,
             textAlign: 'right',
           }}
         >
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
-            onClick={handleSave}
-            disabled={saving}
-            sx={{ borderRadius: 2, textTransform: 'none', px: 4 }}
-          >
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </Button>
+          {saveButton({ px: 4, width: { xs: '100%', sm: 'auto' } })}
         </Paper>
       </Stack>
 

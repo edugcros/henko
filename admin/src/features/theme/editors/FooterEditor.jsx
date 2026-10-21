@@ -139,7 +139,7 @@ const FooterEditor = ({ value, onChange, onLogoUpload }) => {
         </Typography>
         <TextField
           type="number"
-          inputProps={{ min: 1, max: 6 }}
+          slotProps={{ htmlInput: { min: 1, max: 6 } }}
           value={footer.columns ?? 4}
           onChange={e => handleChange('columns', Number(e.target.value))}
           size="small"
