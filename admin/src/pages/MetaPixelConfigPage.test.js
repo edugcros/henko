@@ -22,7 +22,12 @@ jest.unstable_mockModule('../services/metaPixelConfigService.js', () => ({
   updateMetaPixelConfig: mockUpdate,
 }))
 
-const { default: MetaPixelConfigPage } = await import('./MetaPixelConfigPage.jsx')
+const {
+  default: MetaPixelConfigPage,
+  toForm,
+  toPayload,
+  getConfigProblems,
+} = await import('./MetaPixelConfigPage.jsx')
 
 const CONFIG = {
   meta: {
@@ -297,5 +302,189 @@ describe('Meta Pixel · guía y preguntas frecuentes', () => {
     await userEvent.click(screen.getByRole('button', { name: /usar Gmail o Hotmail/i }))
 
     expect(await screen.findByText(/dominio de envío de correo de la tienda/)).toBeTruthy()
+  })
+})
+
+describe('Meta Pixel · funciones', () => {
+  test('toForm vacía el token y arranca desactivado', () => {
+    expect(toForm(undefined)).toMatchObject({
+      pixelId: '',
+      accessToken: '',
+      isEnabled: false,
+      hasAccessToken: false,
+    })
+    expect(toForm(CONFIG)).toMatchObject({ pixelId: '123456789012345', hasAccessToken: true })
+  })
+
+  test('toPayload manda el token solo si hay algo escrito, sin espacios', () => {
+    const base = { pixelId: ' 123456 ', isEnabled: true }
+
+    expect(toPayload({ ...base, accessToken: '   ' })).toEqual({
+      meta: { pixelId: '123456', isEnabled: true },
+    })
+    expect(toPayload({ ...base, accessToken: ' tok ' })).toEqual({
+      meta: { pixelId: '123456', isEnabled: true, accessToken: 'tok' },
+    })
+  })
+
+  const guardado = { pixelId: '123456789012345', hasAccessToken: true }
+
+  test('sin problemas cuando todo está en orden', () => {
+    expect(
+      getConfigProblems({ pixelId: '123456789012345', isEnabled: true, accessToken: '' }, guardado),
+    ).toEqual([])
+  })
+
+  test('un ID que no es numérico es un problema (el servidor lo rechaza)', () => {
+    const form = { isEnabled: false, accessToken: '' }
+
+    expect(getConfigProblems({ ...form, pixelId: 'abc123' }, guardado).map(p => p.key)).toEqual([
+      'id-invalido',
+    ])
+    expect(getConfigProblems({ ...form, pixelId: '12345' }, guardado).map(p => p.key)).toEqual([
+      'id-invalido',
+    ])
+    expect(getConfigProblems({ ...form, pixelId: '1'.repeat(21) }, guardado)).toHaveLength(1)
+    expect(getConfigProblems({ ...form, pixelId: '123456' }, guardado)).toEqual([])
+    expect(getConfigProblems({ ...form, pixelId: '1'.repeat(20) }, guardado)).toEqual([])
+  })
+
+  test('un ID vacío está bien si el Pixel está desactivado', () => {
+    expect(
+      getConfigProblems(
+        { pixelId: '', isEnabled: false, accessToken: '' },
+        { hasAccessToken: false },
+      ),
+    ).toEqual([])
+  })
+
+  test('activar sin ID es un problema, salvo que ya haya uno guardado', () => {
+    const form = { pixelId: '', isEnabled: true, accessToken: '' }
+
+    expect(getConfigProblems(form, { pixelId: '', hasAccessToken: true }).map(p => p.key)).toEqual([
+      'sin-id',
+    ])
+    expect(getConfigProblems(form, { pixelId: '123456789', hasAccessToken: true })).toEqual([])
+  })
+
+  test('activar sin token es un problema, salvo que ya haya uno guardado o se escriba uno', () => {
+    const form = { pixelId: '123456789', isEnabled: true, accessToken: '' }
+
+    expect(
+      getConfigProblems(form, { pixelId: '123456789', hasAccessToken: false }).map(p => p.key),
+    ).toEqual(['sin-token'])
+    expect(
+      getConfigProblems(
+        { ...form, accessToken: 'EAAB' },
+        { pixelId: '123456789', hasAccessToken: false },
+      ),
+    ).toEqual([])
+    expect(
+      getConfigProblems(
+        { ...form, accessToken: '   ' },
+        { pixelId: '123456789', hasAccessToken: false },
+      ),
+    ).toHaveLength(1)
+    expect(getConfigProblems(form, { pixelId: '123456789', hasAccessToken: true })).toEqual([])
+  })
+
+  test('puede haber dos problemas a la vez', () => {
+    expect(
+      getConfigProblems(
+        { pixelId: '', isEnabled: true, accessToken: '' },
+        { pixelId: '', hasAccessToken: false },
+      ).map(p => p.key),
+    ).toEqual(['sin-id', 'sin-token'])
+  })
+})
+
+describe('Meta Pixel · resumen y avisos en pantalla', () => {
+  const resumen = () => screen.getByRole('region', { name: /estado de la conexión/i })
+
+  test('el resumen muestra lo que está guardado', async () => {
+    await montar()
+
+    expect(within(resumen()).getByText('Activado')).toBeTruthy()
+    expect(within(resumen()).getByText('123456789012345')).toBeTruthy()
+    expect(within(resumen()).getByText('Configurado')).toBeTruthy()
+    expect(within(resumen()).getByText('10/10/2026')).toBeTruthy()
+  })
+
+  test('el resumen no cambia mientras se escribe: solo cuando se guarda', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('switch', { name: /meta pixel activado/i }))
+
+    expect(within(resumen()).getByText('Activado')).toBeTruthy()
+
+    await userEvent.click(guardar())
+
+    await waitFor(() => expect(within(resumen()).getByText('Desactivado')).toBeTruthy())
+  })
+
+  test('una cuenta sin configurar muestra «Sin ID», «Falta» y un guion', async () => {
+    await montar({})
+
+    expect(within(resumen()).getByText('Sin ID')).toBeTruthy()
+    expect(within(resumen()).getByText('Falta')).toBeTruthy()
+    expect(within(resumen()).getByText('—')).toBeTruthy()
+    expect(within(resumen()).getByText('Desactivado')).toBeTruthy()
+  })
+
+  test('el ID de Pixel acepta hasta 20 caracteres', async () => {
+    await montar()
+
+    expect(campo('ID de Pixel').getAttribute('maxlength')).toBe('20')
+  })
+
+  test('activar sin token avisa en el momento y bloquea el guardado', async () => {
+    await montar({ meta: { ...CONFIG.meta, isEnabled: false, hasAccessToken: false } })
+
+    expect(guardar().disabled).toBe(false)
+
+    await userEvent.click(screen.getByRole('switch', { name: /meta pixel desactivado/i }))
+
+    expect(await screen.findByText(/falta el token de acceso de Conversions API/)).toBeTruthy()
+    expect(guardar().disabled).toBe(true)
+
+    await userEvent.type(campo('Conversions API Access Token'), 'EAAB-secreto')
+
+    await waitFor(() => expect(guardar().disabled).toBe(false))
+    expect(screen.queryByText(/falta el token de acceso/)).toBeNull()
+  })
+
+  test('un ID mal escrito se marca y bloquea el guardado', async () => {
+    await montar()
+
+    await userEvent.clear(campo('ID de Pixel'))
+    await userEvent.type(campo('ID de Pixel'), 'pixel-123')
+
+    expect(await screen.findByText(/tiene que ser numérico/)).toBeTruthy()
+    expect(campo('ID de Pixel').getAttribute('aria-invalid')).toBe('true')
+    expect(guardar().disabled).toBe(true)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  test('un ID vacío con el Pixel activado y uno ya guardado no es problema', async () => {
+    await montar()
+
+    await userEvent.clear(campo('ID de Pixel'))
+
+    expect(guardar().disabled).toBe(false)
+  })
+
+  test('los dos botones de guardar se bloquean juntos cuando hay un problema', async () => {
+    await montar({ meta: { ...CONFIG.meta, hasAccessToken: false } })
+
+    const botones = screen.getAllByRole('button', { name: /guardar cambios/i })
+
+    expect(botones).toHaveLength(2)
+    botones.forEach(boton => expect(boton.disabled).toBe(true))
+  })
+
+  test('el título es un h1', async () => {
+    await montar()
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Meta Pixel' })).toBeTruthy()
   })
 })
