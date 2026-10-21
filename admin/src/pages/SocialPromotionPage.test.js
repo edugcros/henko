@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockDispatch = jest.fn()
@@ -38,7 +38,13 @@ jest.unstable_mockModule('react-toastify', () => ({
   toast: { success: mockToastSuccess, error: mockToastError },
 }))
 
-const { default: SocialPromotionPage } = await import('./SocialPromotionPage.jsx')
+const {
+  default: SocialPromotionPage,
+  getMainImage,
+  formatMoney,
+  CAPTION_MAX,
+  HASHTAGS_MAX,
+} = await import('./SocialPromotionPage.jsx')
 
 const CASCO = {
   _id: 'p1',
@@ -67,7 +73,7 @@ const elegir = async titulo => {
 }
 
 const generar = async () => {
-  await userEvent.click(screen.getByRole('button', { name: /generar contenido|regenerar/i }))
+  await userEvent.click(screen.getByRole('button', { name: /^(generar contenido|regenerar)$/i }))
 }
 
 beforeEach(() => {
@@ -197,7 +203,7 @@ describe('Redes · generar', () => {
     expect(screen.getByRole('button', { name: 'Generar contenido' })).toBeTruthy()
   })
 
-  test('regenerar reemplaza el texto, aunque se lo haya editado', async () => {
+  test('regenerar un texto sin editar lo reemplaza directamente', async () => {
     mockGenerate
       .mockResolvedValueOnce(CONTENIDO)
       .mockResolvedValueOnce({ ...CONTENIDO, caption: 'Otro texto distinto.' })
@@ -205,13 +211,11 @@ describe('Redes · generar', () => {
 
     await elegir('Casco AGV K1')
     await generar()
-
-    const campo = await screen.findByDisplayValue('Protegé tu cabeza con estilo.')
-
-    await userEvent.type(campo, ' Editado.')
+    await screen.findByDisplayValue('Protegé tu cabeza con estilo.')
     await generar()
 
     expect(await screen.findByDisplayValue('Otro texto distinto.')).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
 
@@ -299,5 +303,177 @@ describe('Redes · copiar', () => {
         /Descargá la imagen desde la ficha del producto/,
       ),
     ).toBeTruthy()
+  })
+})
+
+describe('Redes · funciones', () => {
+  test('getMainImage prefiere la imagen principal y si no, la primera', () => {
+    expect(getMainImage(CASCO)).toBe('casco.jpg')
+    expect(getMainImage({ images: [{ url: 'a.jpg' }, { url: 'b.jpg' }] })).toBe('a.jpg')
+    expect(getMainImage(GUANTES)).toBe('')
+    expect(getMainImage(null)).toBe('')
+  })
+
+  test('formatMoney escribe pesos argentinos sin centavos', () => {
+    expect(formatMoney(285000)).toMatch(/\$\s?285\.000/)
+    expect(formatMoney(undefined)).toMatch(/\$\s?0/)
+    expect(formatMoney('abc')).toMatch(/\$\s?0/)
+  })
+
+  test('los límites son los de Instagram', () => {
+    expect(CAPTION_MAX).toBe(2200)
+    expect(HASHTAGS_MAX).toBe(30)
+  })
+})
+
+describe('Redes · buscar en todo el catálogo', () => {
+  const buscar = async texto => {
+    await userEvent.type(screen.getByRole('combobox', { name: /buscar producto/i }), texto)
+  }
+
+  test('al escribir pide al servidor los productos que coinciden, con una pequeña espera', async () => {
+    montar()
+    mockGetAdminProducts.mockClear()
+
+    await buscar('casco')
+
+    await waitFor(() => expect(mockGetAdminProducts).toHaveBeenCalled(), { timeout: 2000 })
+    expect(mockGetAdminProducts).toHaveBeenLastCalledWith({ q: 'casco', limit: 20 })
+    expect(mockGetAdminProducts).toHaveBeenCalledTimes(1)
+  })
+
+  test('no pide nada al elegir un producto', async () => {
+    montar()
+    await elegir('Casco AGV K1')
+    mockGetAdminProducts.mockClear()
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 500))
+    })
+
+    expect(mockGetAdminProducts).not.toHaveBeenCalled()
+  })
+
+  test('muestra lo que devolvió el servidor sin volver a filtrarlo en pantalla', async () => {
+    montar({ adminProducts: [CASCO] })
+
+    await buscar('zzz')
+
+    await userEvent.click(screen.getByRole('combobox', { name: /buscar producto/i }))
+
+    expect(await screen.findByRole('option', { name: 'Casco AGV K1' })).toBeTruthy()
+  })
+
+  test('sin coincidencias lo dice', async () => {
+    montar({ adminProducts: [] })
+
+    await userEvent.click(screen.getByRole('combobox', { name: /buscar producto/i }))
+
+    expect(await screen.findByText('Ningún producto coincide con la búsqueda')).toBeTruthy()
+  })
+})
+
+describe('Redes · regenerar y límites', () => {
+  const conContenido = async (contenido = CONTENIDO) => {
+    mockGenerate.mockResolvedValue(contenido)
+    montar()
+    await elegir('Casco AGV K1')
+    await generar()
+    await screen.findByDisplayValue(contenido.caption)
+  }
+
+  test('regenerar un texto editado pide confirmación antes de perderlo', async () => {
+    await conContenido()
+    mockGenerate.mockClear()
+
+    await userEvent.type(screen.getByDisplayValue(CONTENIDO.caption), ' Editado.')
+    await generar()
+
+    const dialogo = await screen.findByRole('dialog', { name: '¿Regenerar el contenido?' })
+
+    expect(within(dialogo).getByText(/vas a perder tus cambios/)).toBeTruthy()
+    expect(mockGenerate).not.toHaveBeenCalled()
+  })
+
+  test('«Seguir editando» conserva el texto y no regenera', async () => {
+    await conContenido()
+    mockGenerate.mockClear()
+
+    await userEvent.type(screen.getByDisplayValue(CONTENIDO.caption), ' Editado.')
+    await generar()
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Seguir editando' }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockGenerate).not.toHaveBeenCalled()
+    expect(screen.getByDisplayValue(CONTENIDO.caption + ' Editado.')).toBeTruthy()
+  })
+
+  test('confirmar regenera y reemplaza el texto', async () => {
+    await conContenido()
+    mockGenerate.mockResolvedValue({ ...CONTENIDO, caption: 'Texto nuevo.' })
+
+    await userEvent.type(screen.getByDisplayValue(CONTENIDO.caption), ' Editado.')
+    await generar()
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Regenerar' }),
+    )
+
+    expect(await screen.findByDisplayValue('Texto nuevo.')).toBeTruthy()
+  })
+
+  test('el botón de regenerar del encabezado tiene nombre y hace lo mismo', async () => {
+    await conContenido()
+    mockGenerate.mockClear()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerar el contenido' }))
+
+    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith('p1'))
+  })
+
+  test('el contador del texto avisa cuando se pasa del límite de Instagram', async () => {
+    await conContenido({ ...CONTENIDO, caption: 'a'.repeat(2201) })
+
+    expect(screen.getByText(/2201\/2200 — Instagram no admite más de 2200 caracteres/)).toBeTruthy()
+  })
+
+  test('dentro del límite solo muestra el contador', async () => {
+    await conContenido()
+
+    expect(screen.getByText('29/2200')).toBeTruthy()
+    expect(screen.queryByText(/Instagram no admite/)).toBeNull()
+  })
+
+  test('más de 30 hashtags avisa; hasta 30 no', async () => {
+    await conContenido({
+      ...CONTENIDO,
+      hashtags: Array.from({ length: 31 }, (_, i) => 'tag' + i),
+    })
+
+    expect(screen.getByText(/Son 31 hashtags y Instagram admite hasta 30/)).toBeTruthy()
+  })
+
+  test('con pocos hashtags no avisa', async () => {
+    await conContenido()
+
+    expect(screen.queryByText(/Instagram admite hasta 30/)).toBeNull()
+  })
+
+  test('un error sin mensaje muestra uno genérico', async () => {
+    mockGenerate.mockRejectedValue({})
+    montar()
+
+    await elegir('Casco AGV K1')
+    await generar()
+
+    expect(await screen.findByText(/No se pudo generar el contenido/)).toBeTruthy()
+  })
+
+  test('el título es un h1 y el caption tiene nombre', async () => {
+    await conContenido()
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Redes sociales' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Caption' })).toBeTruthy()
   })
 })
