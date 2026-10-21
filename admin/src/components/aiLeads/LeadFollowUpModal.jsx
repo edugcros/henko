@@ -7,6 +7,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import Stack from '@mui/material/Stack'
+import Alert from '@mui/material/Alert'
 
 const toDatetimeLocalValue = value => {
   if (!value) return ''
@@ -16,7 +17,7 @@ const toDatetimeLocalValue = value => {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
-const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading }) => {
+const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading, error = '' }) => {
   const [value, setValue] = useState(toDatetimeLocalValue(lead?.nextFollowUpAt))
 
   React.useEffect(() => {
@@ -28,6 +29,7 @@ const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading }) => {
       <DialogTitle>Programar seguimiento</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
+          {error && <Alert severity="error">{error}</Alert>}
           <TextField
             label="Fecha y hora"
             type="datetime-local"
