@@ -519,3 +519,18 @@ describe('Comercio · lo que se mejoró', () => {
     expect(screen.queryByText(/Tiene que empezar con https/)).toBeNull()
   })
 })
+
+describe('Comercio · largo máximo de los campos', () => {
+  // Los mismos topes que recorta el backend (tenantSettingsCtrl): descripción 300, teléfono 30 y
+  // dirección 200. En MUI 9 `inputProps` se ignora sin avisar, así que el atributo tiene que estar
+  // en el <input> real o el tope no existe.
+  test.each([
+    ['Descripción', '300'],
+    ['Teléfono', '30'],
+    ['Dirección', '200'],
+  ])('%s limita a %s caracteres', (nombre, maximo) => {
+    montar()
+
+    expect(campo(nombre).getAttribute('maxlength')).toBe(maximo)
+  })
+})

@@ -1191,6 +1191,28 @@ describe('techo en plata por comercio', () => {
   })
 })
 
+describe('límites de los campos numéricos', () => {
+  // En MUI 9 `inputProps` se ignora sin avisar, así que min, max y step tienen que estar en el
+  // <input> real. Los rangos son los que valida platformCtrl: la fracción entre 0.01 y 1, y el
+  // techo en dólares cualquier número mayor a cero (admite decimales, por eso step "any").
+  test('la parte del techo y el techo en dólares llevan el rango del backend', async () => {
+    const user = userEvent.setup()
+    load({ byTenant: [{ ...UN_COMERCIO[0], usdCap: 20, percentOfUsdCap: 62.5 }] })
+
+    await waitFor(() => expect(screen.getByText('62.5%')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /gobernar/i }))
+
+    const parte = screen.getByLabelText(/su parte del techo/i)
+    expect(parte.getAttribute('min')).toBe('0.01')
+    expect(parte.getAttribute('max')).toBe('1')
+    expect(parte.getAttribute('step')).toBe('0.01')
+
+    const techo = screen.getByLabelText(/techo en dólares/i)
+    expect(techo.getAttribute('min')).toBe('0.01')
+    expect(techo.getAttribute('step')).toBe('any')
+  })
+})
+
 // ─── CONTRA EL MES ANTERIOR ──────────────────────────────────────────────────
 //
 // Todas las demás columnas comparan contra un TECHO, y eso deja ciego al caso

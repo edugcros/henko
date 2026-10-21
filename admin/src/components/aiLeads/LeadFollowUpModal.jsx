@@ -33,7 +33,7 @@ const LeadFollowUpModal = ({ open, lead, onClose, onSubmit, loading }) => {
             type="datetime-local"
             value={value}
             onChange={event => setValue(event.target.value)}
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             fullWidth
           />
         </Stack>

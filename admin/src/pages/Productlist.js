@@ -1334,7 +1334,7 @@ const Productlist = () => {
                   stockValue: e.target.value,
                 }))
               }
-              inputProps={{ min: 0 }}
+              slotProps={{ htmlInput: { min: 0 } }}
             />
 
             <TextField
@@ -1350,7 +1350,7 @@ const Productlist = () => {
                   thresholdValue: e.target.value,
                 }))
               }
-              inputProps={{ min: 0 }}
+              slotProps={{ htmlInput: { min: 0 } }}
             />
           </Stack>
         </DialogContent>

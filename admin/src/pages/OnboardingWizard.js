@@ -63,7 +63,7 @@ const StoreStep = ({ form, setForm, errors }) => (
       multiline
       rows={2}
       fullWidth
-      inputProps={{ maxLength: 300 }}
+      slotProps={{ htmlInput: { maxLength: 300 } }}
       helperText={`${form.description.length}/300`}
     />
     <TextField

@@ -410,7 +410,7 @@ const AiCampaignRulesPage = () => {
               fullWidth
               value={formData.name}
               onChange={e => setField('name', e.target.value)}
-              inputProps={{ maxLength: 150 }}
+              slotProps={{ htmlInput: { maxLength: 150 } }}
             />
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -459,7 +459,7 @@ const AiCampaignRulesPage = () => {
               maxRows={8}
               value={formData.messageTemplate}
               onChange={e => setField('messageTemplate', e.target.value)}
-              inputProps={{ maxLength: 2000 }}
+              slotProps={{ htmlInput: { maxLength: 2000 } }}
               helperText="Variables: {{customerName}}, {{productName}}, {{cartTotal}}, {{checkoutUrl}}"
             />
 
@@ -486,7 +486,7 @@ const AiCampaignRulesPage = () => {
                   fullWidth
                   value={formData.trigger.delayMinutes}
                   onChange={e => setField('trigger.delayMinutes', Number(e.target.value))}
-                  inputProps={{ min: 1, max: 43200 }}
+                  slotProps={{ htmlInput: { min: 1, max: 43200 } }}
                 />
               </Grid>
               <Grid size={{ xs: 6, sm: 4 }}>
@@ -496,7 +496,7 @@ const AiCampaignRulesPage = () => {
                   fullWidth
                   value={formData.trigger.maxAttempts}
                   onChange={e => setField('trigger.maxAttempts', Number(e.target.value))}
-                  inputProps={{ min: 1, max: 5 }}
+                  slotProps={{ htmlInput: { min: 1, max: 5 } }}
                 />
               </Grid>
               <Grid size={{ xs: 6, sm: 4 }}>
@@ -508,7 +508,7 @@ const AiCampaignRulesPage = () => {
                   onChange={e =>
                     setField('trigger.minHoursBetweenContacts', Number(e.target.value))
                   }
-                  inputProps={{ min: 1, max: 168 }}
+                  slotProps={{ htmlInput: { min: 1, max: 168 } }}
                 />
               </Grid>
               <Grid size={{ xs: 6, sm: 4 }}>
@@ -529,7 +529,7 @@ const AiCampaignRulesPage = () => {
                       Math.max(0, Math.round(Number(e.target.value) * 100)),
                     )
                   }
-                  inputProps={{ min: 0 }}
+                  slotProps={{ htmlInput: { min: 0 } }}
                   helperText="0 = sin mínimo"
                 />
               </Grid>
@@ -585,13 +585,13 @@ const AiCampaignRulesPage = () => {
                   fullWidth
                   value={formData.whatsappTemplate.name}
                   onChange={e => setField('whatsappTemplate.name', e.target.value)}
-                  inputProps={{ maxLength: 120 }}
+                  slotProps={{ htmlInput: { maxLength: 120 } }}
                 />
                 <TextField
                   label="Idioma"
                   value={formData.whatsappTemplate.languageCode}
                   onChange={e => setField('whatsappTemplate.languageCode', e.target.value)}
-                  inputProps={{ maxLength: 20 }}
+                  slotProps={{ htmlInput: { maxLength: 20 } }}
                   sx={{ minWidth: 120 }}
                 />
               </Stack>
@@ -617,7 +617,7 @@ const AiCampaignRulesPage = () => {
                 label="Código de cupón"
                 value={formData.offer.couponCode}
                 onChange={e => setField('offer.couponCode', e.target.value)}
-                inputProps={{ maxLength: 80 }}
+                slotProps={{ htmlInput: { maxLength: 80 } }}
                 sx={{ maxWidth: 300 }}
               />
             )}

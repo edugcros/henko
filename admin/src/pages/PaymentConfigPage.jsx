@@ -425,7 +425,7 @@ const PaymentConfigPage = () => {
                       ? 'TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
                       : 'APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
                   }
-                  inputProps={{ maxLength: 300 }}
+                  slotProps={{ htmlInput: { maxLength: 300 } }}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>

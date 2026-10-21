@@ -714,7 +714,7 @@ const AiInsightsPage = () => {
             label="Motivo (opcional)"
             value={dismissDialog?.reason || ''}
             onChange={e => setDismissDialog(prev => ({ ...prev, reason: e.target.value }))}
-            inputProps={{ maxLength: 500 }}
+            slotProps={{ htmlInput: { maxLength: 500 } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -754,7 +754,7 @@ const AiInsightsPage = () => {
                     prev ? { ...prev, message: e.target.value } : prev,
                   )
                 }
-                inputProps={{ maxLength: 2000 }}
+                slotProps={{ htmlInput: { maxLength: 2000 } }}
                 disabled={reactivationDialog?.sending}
               />
               {reactivationDialog?.error && (
@@ -927,7 +927,7 @@ const AiInsightsPage = () => {
                     prev ? { ...prev, newPrice: e.target.value } : prev,
                   )
                 }
-                inputProps={{ min: 0, step: '0.01' }}
+                slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
                 disabled={priceReductionDialog.applying}
               />
 

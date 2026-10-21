@@ -382,7 +382,7 @@ const AiAgentConfigPage = () => {
                 label="Nombre del asistente"
                 value={form.name}
                 onChange={e => setField('name', e.target.value)}
-                inputProps={{ maxLength: 100 }}
+                slotProps={{ htmlInput: { maxLength: 100 } }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 5 }} sx={{ display: 'flex', alignItems: 'center' }}>
@@ -499,7 +499,7 @@ const AiAgentConfigPage = () => {
                         size="small"
                         label="URL de devolución de llamada"
                         value={WEBHOOK_URL}
-                        InputProps={{ readOnly: true }}
+                        slotProps={{ input: { readOnly: true } }}
                         onFocus={event => event.target.select()}
                       />
                       <Tooltip title={copied === 'url' ? 'Copiada' : 'Copiar'}>
@@ -521,7 +521,7 @@ const AiAgentConfigPage = () => {
                         value={
                           connection?.verifyToken || 'Tocá "Probar la conexión" para generarlo'
                         }
-                        InputProps={{ readOnly: true }}
+                        slotProps={{ input: { readOnly: true } }}
                         onFocus={event => event.target.select()}
                       />
                       <Tooltip title={copied === 'token' ? 'Copiado' : 'Copiar'}>
@@ -604,7 +604,7 @@ const AiAgentConfigPage = () => {
                   label="Phone Number ID"
                   value={form.phoneNumberId}
                   onChange={e => setField('phoneNumberId', e.target.value)}
-                  inputProps={{ maxLength: 300 }}
+                  slotProps={{ htmlInput: { maxLength: 300 } }}
                 />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
@@ -613,7 +613,7 @@ const AiAgentConfigPage = () => {
                   label="Business Account ID"
                   value={form.businessAccountId}
                   onChange={e => setField('businessAccountId', e.target.value)}
-                  inputProps={{ maxLength: 300 }}
+                  slotProps={{ htmlInput: { maxLength: 300 } }}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
@@ -667,7 +667,7 @@ const AiAgentConfigPage = () => {
                 label="Idioma"
                 value={form.language}
                 onChange={e => setField('language', e.target.value)}
-                inputProps={{ maxLength: 20 }}
+                slotProps={{ htmlInput: { maxLength: 20 } }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 4 }}>
@@ -676,7 +676,7 @@ const AiAgentConfigPage = () => {
                 label="Firma"
                 value={form.signature}
                 onChange={e => setField('signature', e.target.value)}
-                inputProps={{ maxLength: 250 }}
+                slotProps={{ htmlInput: { maxLength: 250 } }}
               />
             </Grid>
           </Grid>
@@ -710,7 +710,7 @@ const AiAgentConfigPage = () => {
                 label="Máx. mensajes antes de derivar"
                 value={form.maxMessagesBeforeHuman}
                 onChange={e => setField('maxMessagesBeforeHuman', e.target.value)}
-                inputProps={{ min: 1, max: 80 }}
+                slotProps={{ htmlInput: { min: 1, max: 80 } }}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -720,7 +720,7 @@ const AiAgentConfigPage = () => {
                 label="Confianza mínima para responder"
                 value={form.minConfidenceToAnswer}
                 onChange={e => setField('minConfidenceToAnswer', e.target.value)}
-                inputProps={{ min: 0, max: 1, step: 0.05 }}
+                slotProps={{ htmlInput: { min: 0, max: 1, step: 0.05 } }}
                 helperText="Entre 0 y 1"
               />
             </Grid>
@@ -739,7 +739,7 @@ const AiAgentConfigPage = () => {
               label="Descripción del comercio"
               value={form.description}
               onChange={e => setField('description', e.target.value)}
-              inputProps={{ maxLength: 5000 }}
+              slotProps={{ htmlInput: { maxLength: 5000 } }}
             />
             <Grid container spacing={2.5}>
               {[
@@ -757,7 +757,7 @@ const AiAgentConfigPage = () => {
                     label={label}
                     value={form[key]}
                     onChange={e => setField(key, e.target.value)}
-                    inputProps={{ maxLength: 4000 }}
+                    slotProps={{ htmlInput: { maxLength: 4000 } }}
                   />
                 </Grid>
               ))}
@@ -843,7 +843,7 @@ const AiAgentConfigPage = () => {
                 label="Autolímite de mensajes por mes"
                 value={form.monthlyMessageLimit}
                 onChange={e => setField('monthlyMessageLimit', e.target.value)}
-                inputProps={{ min: 0 }}
+                slotProps={{ htmlInput: { min: 0 } }}
                 helperText="0 = sin autolímite (usa el tope del plan)"
               />
             </Grid>
@@ -854,9 +854,9 @@ const AiAgentConfigPage = () => {
                 label="Autolímite de tokens por mes"
                 value={form.monthlyAiTokenLimit}
                 onChange={e => setField('monthlyAiTokenLimit', e.target.value)}
-                inputProps={{ min: 0 }}
                 helperText="0 = sin autolímite (usa el tope del plan)"
                 slotProps={{
+                  htmlInput: { min: 0 },
                   input: { endAdornment: <InputAdornment position="end">tokens</InputAdornment> },
                 }}
               />
