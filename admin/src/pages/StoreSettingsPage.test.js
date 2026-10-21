@@ -13,7 +13,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockDispatch = jest.fn()
@@ -46,7 +46,12 @@ jest.unstable_mockModule('../components/domains/StoreDomainSection.jsx', () => (
   default: () => <div data-testid="direccion-tienda" />,
 }))
 
-const { default: StoreSettingsPage } = await import('./StoreSettingsPage.jsx')
+const {
+  default: StoreSettingsPage,
+  toForm,
+  sameForm,
+  looksLikeUrl,
+} = await import('./StoreSettingsPage.jsx')
 
 const DATOS = {
   name: 'Kiosco Lucía',
@@ -321,5 +326,196 @@ describe('Comercio · guardar', () => {
     expect(within(document.body).getAllByRole('button', { name: /guardar cambios/i })).toHaveLength(
       1,
     )
+  })
+})
+
+describe('Comercio · funciones', () => {
+  test('toForm arma el formulario con campos vacíos donde no hay dato', () => {
+    expect(toForm(undefined)).toEqual({
+      name: '',
+      description: '',
+      contactEmail: '',
+      contactPhone: '',
+      address: '',
+      logoUrl: '',
+      faviconUrl: '',
+    })
+    expect(toForm(DATOS).contactEmail).toBe('hola@kiosco.com')
+  })
+
+  test('sameForm dice si dos formularios son iguales', () => {
+    expect(sameForm(toForm(DATOS), toForm(DATOS))).toBe(true)
+    expect(sameForm(toForm(DATOS), { ...toForm(DATOS), name: 'Otro' })).toBe(false)
+    expect(sameForm(null, toForm(DATOS))).toBe(false)
+    expect(sameForm(toForm(DATOS), undefined)).toBe(false)
+  })
+
+  test('looksLikeUrl pide http:// o https://', () => {
+    expect(looksLikeUrl('https://kiosco.com/logo.png')).toBe(true)
+    expect(looksLikeUrl(' HTTP://kiosco.com ')).toBe(true)
+    expect(looksLikeUrl('kiosco.com/logo.png')).toBe(false)
+    expect(looksLikeUrl('/logo.png')).toBe(false)
+    expect(looksLikeUrl('')).toBe(false)
+    expect(looksLikeUrl(undefined)).toBe(false)
+  })
+})
+
+describe('Comercio · cambios sin guardar', () => {
+  const refrescarDesdeElServidor = (rerender, cambios = {}) => {
+    estado.tenant = { ...estado.tenant, data: { ...DATOS, ...cambios } }
+    rerender(<StoreSettingsPage />)
+  }
+
+  test('lo que se está escribiendo no se pisa cuando otra sección vuelve a pedir la configuración', async () => {
+    const { rerender } = montar()
+
+    await userEvent.clear(campo('Nombre del comercio'))
+    await userEvent.type(campo('Nombre del comercio'), 'Estoy escribiendo')
+
+    refrescarDesdeElServidor(rerender)
+
+    expect(campo('Nombre del comercio').value).toBe('Estoy escribiendo')
+  })
+
+  test('sin cambios escritos, el formulario sí sigue al servidor', () => {
+    const { rerender } = montar()
+
+    refrescarDesdeElServidor(rerender, { name: 'Nombre nuevo' })
+
+    expect(campo('Nombre del comercio').value).toBe('Nombre nuevo')
+  })
+
+  test('después de guardar, el formulario muestra lo que devolvió el servidor', async () => {
+    const { rerender } = montar()
+
+    await userEvent.clear(campo('Nombre del comercio'))
+    await userEvent.type(campo('Nombre del comercio'), 'kiosco  nuevo')
+    await userEvent.click(guardar())
+    await screen.findByText('Datos del comercio guardados.')
+
+    refrescarDesdeElServidor(rerender, { name: 'Kiosco Nuevo' })
+
+    expect(campo('Nombre del comercio').value).toBe('Kiosco Nuevo')
+  })
+
+  test('si se vuelve a escribir después de guardar, el próximo refresco tampoco pisa lo escrito', async () => {
+    const { rerender } = montar()
+
+    await userEvent.click(guardar())
+    await screen.findByText('Datos del comercio guardados.')
+
+    await userEvent.type(campo('Teléfono'), '9')
+
+    refrescarDesdeElServidor(rerender)
+
+    expect(campo('Teléfono').value).toBe('35851327699')
+  })
+
+  test('si falla guardar, lo escrito queda y un refresco posterior no lo pisa', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () =>
+        action.type === 'saveSettings' ? Promise.reject('Error') : Promise.resolve({}),
+    }))
+    const { rerender } = montar()
+
+    await userEvent.clear(campo('Nombre del comercio'))
+    await userEvent.type(campo('Nombre del comercio'), 'Sin guardar')
+    await userEvent.click(guardar())
+    await screen.findByText('Error')
+
+    refrescarDesdeElServidor(rerender)
+
+    expect(campo('Nombre del comercio').value).toBe('Sin guardar')
+  })
+
+  test('avisa cuando hay cambios sin guardar y cuando está todo guardado', async () => {
+    montar()
+
+    expect(screen.getByText('Todo está guardado.')).toBeTruthy()
+
+    await userEvent.type(campo('Teléfono'), '1')
+
+    expect(screen.getByText('Hay cambios sin guardar.')).toBeTruthy()
+
+    await userEvent.type(campo('Teléfono'), '{Backspace}')
+
+    expect(screen.getByText('Todo está guardado.')).toBeTruthy()
+  })
+})
+
+describe('Comercio · lo que se mejoró', () => {
+  test('el título es un h1', () => {
+    montar()
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Configuración del comercio' }),
+    ).toBeTruthy()
+  })
+
+  test('«Reintentar» vuelve a pedir la configuración', async () => {
+    montar({ data: null, isError: true, message: 'Sin conexión' })
+    mockFetchSettings.mockClear()
+
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+
+    expect(mockFetchSettings).toHaveBeenCalledTimes(1)
+  })
+
+  test('sin remitente informado no se muestra un <> vacío en la vista previa', () => {
+    montar()
+
+    expect(screen.getByText(/De:/).parentElement.textContent).not.toContain('<>')
+  })
+
+  test('muestra el logo cuando la dirección es válida', () => {
+    montar()
+
+    expect(screen.getByRole('img', { name: 'Logo de la tienda' }).getAttribute('src')).toBe(
+      'https://kiosco.com/logo.png',
+    )
+  })
+
+  test('si la imagen del logo no carga, lo dice', () => {
+    montar()
+
+    fireEvent.error(screen.getByRole('img', { name: 'Logo de la tienda' }))
+
+    expect(screen.getByText('No se pudo cargar la imagen: revisá la dirección.')).toBeTruthy()
+  })
+
+  test('sin logo no se muestra la vista previa', () => {
+    montar({ data: { ...DATOS, settings: { ...DATOS.settings, branding: {} } } })
+
+    expect(screen.queryByRole('img', { name: 'Logo de la tienda' })).toBeNull()
+  })
+
+  test('una dirección de logo sin https:// avisa, no muestra vista previa y no impide guardar', async () => {
+    montar()
+
+    await userEvent.clear(campo('URL del logo'))
+    await userEvent.type(campo('URL del logo'), 'kiosco.com/logo.png')
+
+    expect(
+      screen.getByText(/Tiene que empezar con https:\/\/ para que se vea en la tienda/),
+    ).toBeTruthy()
+    expect(screen.queryByRole('img', { name: 'Logo de la tienda' })).toBeNull()
+    expect(guardar().disabled).toBe(false)
+  })
+
+  test('una dirección de favicon sin https:// también avisa', async () => {
+    montar()
+
+    await userEvent.clear(campo('URL del favicon'))
+    await userEvent.type(campo('URL del favicon'), 'favicon.ico')
+
+    expect(
+      screen.getByText(/Tiene que empezar con https:\/\/ para que se vea en la pestaña/),
+    ).toBeTruthy()
+  })
+
+  test('con direcciones válidas no hay avisos', () => {
+    montar()
+
+    expect(screen.queryByText(/Tiene que empezar con https/)).toBeNull()
   })
 })
