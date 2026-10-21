@@ -74,6 +74,11 @@ updates:
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
 
+  # /website sigue en MUI 5 (el panel ya está en 9). Dependabot propone el salto a 9
+  # como DOS PRs sueltos, @mui/material y @mui/icons-material, y cada uno exige al otro
+  # en 9.x: `npm install` falla con ERESOLVE a los 5 segundos y Vercel marca Error en
+  # cada push (PR #347/#348, tres veces). Subir MUI de mayor en la tienda es una
+  # migración, no un bump: se hace a mano y con los dos paquetes juntos.
   - package-ecosystem: "npm"
     directory: "/website"
     schedule:
@@ -87,6 +92,8 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      - dependency-name: "@mui/*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
