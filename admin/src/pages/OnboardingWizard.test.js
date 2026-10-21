@@ -36,7 +36,7 @@ jest.unstable_mockModule('../features/tenant/tenantSlice', () => ({
   advanceOnboarding: mockAdvance,
 }))
 
-const { default: OnboardingWizard } = await import('./OnboardingWizard.js')
+const { default: OnboardingWizard, stepIndex } = await import('./OnboardingWizard.js')
 
 const COMERCIO = {
   name: 'Kiosco Lucía',
@@ -78,13 +78,13 @@ describe('Onboarding · arranque', () => {
     montar({ isLoading: true })
 
     expect(screen.getByRole('progressbar')).toBeTruthy()
-    expect(screen.queryByText('Configura tu tienda')).toBeNull()
+    expect(screen.queryByText('Configurá tu tienda')).toBeNull()
   })
 
   test('muestra el título y los cuatro pasos', () => {
     montar()
 
-    expect(screen.getByText('Configura tu tienda')).toBeTruthy()
+    expect(screen.getByText('Configurá tu tienda')).toBeTruthy()
 
     for (const paso of ['Tu tienda', 'Apariencia', 'Productos', 'Pagos']) {
       expect(screen.getByText(paso)).toBeTruthy()
@@ -102,7 +102,7 @@ describe('Onboarding · arranque', () => {
   test('arranca en el paso que el servidor recuerda', () => {
     montar({}, { ...COMERCIO, onboarding: { step: 'products' } })
 
-    expect(screen.getByText('Agrega tu primer producto')).toBeTruthy()
+    expect(screen.getByText('Agregá tu primer producto')).toBeTruthy()
     expect(screen.getAllByRole('progressbar')[0].getAttribute('aria-valuenow')).toBe('75')
   })
 
@@ -116,10 +116,10 @@ describe('Onboarding · arranque', () => {
     montar()
 
     expect(campo('Nombre de la tienda').value).toBe('Kiosco Lucía')
-    expect(campo('Descripcion').value).toBe('Kiosco de barrio')
+    expect(campo('Descripción').value).toBe('Kiosco de barrio')
     expect(campo('Email de contacto').value).toBe('hola@kiosco.com')
-    expect(campo('Telefono de contacto').value).toBe('3585132769')
-    expect(campo('Direccion').value).toBe('Calle 1 123')
+    expect(campo('Teléfono de contacto').value).toBe('3585132769')
+    expect(campo('Dirección').value).toBe('Calle 1 123')
   })
 })
 
@@ -131,7 +131,7 @@ describe('Onboarding · paso «Tu tienda»', () => {
     await userEvent.type(campo('Nombre de la tienda'), 'ab')
     await userEvent.click(siguiente())
 
-    expect(await screen.findByText('Minimo 3 caracteres')).toBeTruthy()
+    expect(await screen.findByText('Mínimo 3 caracteres')).toBeTruthy()
     expect(mockSaveSettings).not.toHaveBeenCalled()
     expect(mockAdvance).not.toHaveBeenCalled()
   })
@@ -143,7 +143,7 @@ describe('Onboarding · paso «Tu tienda»', () => {
     await userEvent.type(campo('Nombre de la tienda'), '     ')
     await userEvent.click(siguiente())
 
-    expect(await screen.findByText('Minimo 3 caracteres')).toBeTruthy()
+    expect(await screen.findByText('Mínimo 3 caracteres')).toBeTruthy()
   })
 
   test('un email mal escrito se marca y no se guarda', async () => {
@@ -153,7 +153,7 @@ describe('Onboarding · paso «Tu tienda»', () => {
     await userEvent.type(campo('Email de contacto'), 'hola@')
     await userEvent.click(siguiente())
 
-    expect(await screen.findByText('Email invalido')).toBeTruthy()
+    expect(await screen.findByText('Email inválido')).toBeTruthy()
     expect(mockSaveSettings).not.toHaveBeenCalled()
   })
 
@@ -189,7 +189,7 @@ describe('Onboarding · paso «Tu tienda»', () => {
     await waitFor(() => expect(mockAdvance).toHaveBeenCalledWith('theme'))
     expect(
       await screen.findByText(
-        'Configura el logo de tu tienda. Podes cambiarlo despues desde Diseno Web.',
+        'Configurá el logo de tu tienda. Podés cambiarlo después desde Diseño Web.',
       ),
     ).toBeTruthy()
   })
@@ -250,7 +250,7 @@ describe('Onboarding · paso «Apariencia»', () => {
   test('muestra una vista previa del logo', () => {
     enApariencia()
 
-    expect(screen.getByRole('img', { name: 'Logo preview' }).getAttribute('src')).toBe(
+    expect(screen.getByRole('img', { name: 'Vista previa del logo' }).getAttribute('src')).toBe(
       'https://kiosco.com/logo.png',
     )
   })
@@ -319,7 +319,9 @@ describe('Onboarding · productos, pagos y final', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Finalizar' }))
 
     await waitFor(() => expect(mockAdvance).toHaveBeenCalledWith('completed'))
-    expect(await screen.findByText('Onboarding completado')).toBeTruthy()
+    expect(
+      await screen.findByText('¡Listo! Terminaste la configuración inicial de tu tienda.'),
+    ).toBeTruthy()
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin'), { timeout: 3000 })
   })
 
@@ -332,18 +334,163 @@ describe('Onboarding · productos, pagos y final', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Finalizar' }))
 
     await waitFor(() => expect(mockAdvance).toHaveBeenCalledWith('completed'))
-    expect(screen.queryByText('Onboarding completado')).toBeNull()
+    expect(
+      screen.queryByText('¡Listo! Terminaste la configuración inicial de tu tienda.'),
+    ).toBeNull()
     expect(mockNavigate).not.toHaveBeenCalled()
   })
+})
 
-  test('la vista previa del logo se esconde si la imagen no carga', () => {
+describe('Onboarding · lo que se mejoró', () => {
+  test('el título es un h1 y dice en qué paso está', () => {
+    montar()
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Configurá tu tienda' })).toBeTruthy()
+    expect(screen.getByText('Paso 1 de 4')).toBeTruthy()
+  })
+
+  test('el número de paso sigue al paso en el que se está', () => {
+    montar({}, { ...COMERCIO, onboarding: { step: 'payments' } })
+
+    expect(screen.getByText('Paso 4 de 4')).toBeTruthy()
+  })
+
+  test('stepIndex devuelve el paso, o el primero si no lo conoce', () => {
+    expect(stepIndex('store')).toBe(0)
+    expect(stepIndex('theme')).toBe(1)
+    expect(stepIndex('products')).toBe(2)
+    expect(stepIndex('payments')).toBe(3)
+    expect(stepIndex('otro')).toBe(0)
+    expect(stepIndex(undefined)).toBe(0)
+  })
+
+  test('si guardar falla, dice por qué y no avanza', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () =>
+        action.type === 'saveSettings'
+          ? Promise.reject('El nombre ya está en uso')
+          : Promise.resolve({}),
+    }))
+    montar()
+
+    await userEvent.click(siguiente())
+
+    expect(await screen.findByText('El nombre ya está en uso')).toBeTruthy()
+    expect(mockAdvance).not.toHaveBeenCalled()
+    expect(screen.getByText('Datos de tu tienda')).toBeTruthy()
+  })
+
+  test('si guardar falla sin mensaje, el aviso es genérico', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === 'saveSettings' ? Promise.reject('') : Promise.resolve({})),
+    }))
+    montar()
+
+    await userEvent.click(siguiente())
+
+    expect(await screen.findByText(/No se pudieron guardar los datos/)).toBeTruthy()
+  })
+
+  test('también avisa si falla guardar la apariencia', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () =>
+        action.type === 'saveSettings' ? Promise.reject('Sin conexión') : Promise.resolve({}),
+    }))
     montar({}, { ...COMERCIO, onboarding: { step: 'theme' } })
 
-    const logo = screen.getByRole('img', { name: 'Logo preview' })
+    await userEvent.click(siguiente())
 
-    fireEvent.error(logo)
+    expect(await screen.findByText('Sin conexión')).toBeTruthy()
+    expect(mockAdvance).not.toHaveBeenCalled()
+  })
 
-    expect(logo.style.display).toBe('none')
-    expect(within(document.body).queryByText('Vista previa')).toBeTruthy()
+  test('el aviso de error se quita al volver a intentar con éxito', async () => {
+    let fallar = true
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () =>
+        action.type === 'saveSettings' && fallar
+          ? Promise.reject('Sin conexión')
+          : Promise.resolve({}),
+    }))
+    montar()
+
+    await userEvent.click(siguiente())
+    await screen.findByText('Sin conexión')
+
+    fallar = false
+    await userEvent.click(siguiente())
+
+    await waitFor(() => expect(screen.queryByText('Sin conexión')).toBeNull())
+    await waitFor(() => expect(mockAdvance).toHaveBeenCalledWith('theme'))
+  })
+
+  test('si finalizar falla, lo dice', async () => {
+    mockDispatch.mockImplementation(action => ({
+      unwrap: () => (action.type === 'advance' ? Promise.reject('Error') : Promise.resolve({})),
+    }))
+    montar({}, { ...COMERCIO, onboarding: { step: 'payments' } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalizar' }))
+
+    expect(
+      await screen.findByText('No se pudo terminar la configuración. Probá de nuevo.'),
+    ).toBeTruthy()
+  })
+
+  test('el aviso de «Listo» se muestra al finalizar y no queda error', async () => {
+    montar({}, { ...COMERCIO, onboarding: { step: 'payments' } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finalizar' }))
+
+    expect(await screen.findByText(/¡Listo! Terminaste la configuración inicial/)).toBeTruthy()
+    expect(screen.queryByText(/No se pudo terminar/)).toBeNull()
+  })
+
+  test('el límite de 300 caracteres de la descripción se aplica de verdad', () => {
+    montar()
+
+    expect(campo('Descripción').getAttribute('maxlength')).toBe('300')
+  })
+})
+
+describe('Onboarding · vista previa del logo', () => {
+  const enApariencia = (logoUrl = 'https://kiosco.com/logo.png') =>
+    montar(
+      {},
+      {
+        ...COMERCIO,
+        onboarding: { step: 'theme' },
+        settings: { ...COMERCIO.settings, branding: { logoUrl, faviconUrl: '' } },
+      },
+    )
+
+  test('si la imagen no carga, lo dice', () => {
+    enApariencia()
+
+    fireEvent.error(screen.getByRole('img', { name: 'Vista previa del logo' }))
+
+    expect(screen.getByText('No se pudo cargar la imagen: revisá la dirección.')).toBeTruthy()
+    expect(screen.queryByRole('img', { name: 'Vista previa del logo' })).toBeNull()
+  })
+
+  test('al corregir la dirección, la vista previa vuelve a intentar con la nueva', async () => {
+    enApariencia()
+
+    fireEvent.error(screen.getByRole('img', { name: 'Vista previa del logo' }))
+    expect(screen.queryByRole('img', { name: 'Vista previa del logo' })).toBeNull()
+
+    await userEvent.clear(campo('URL del logo'))
+    await userEvent.type(campo('URL del logo'), 'https://otro.com/logo.png')
+
+    expect(screen.getByRole('img', { name: 'Vista previa del logo' }).getAttribute('src')).toBe(
+      'https://otro.com/logo.png',
+    )
+    expect(screen.queryByText(/No se pudo cargar la imagen/)).toBeNull()
+  })
+
+  test('una dirección que no empieza con http no muestra vista previa', () => {
+    enApariencia('mi-logo.png')
+
+    expect(screen.queryByRole('img')).toBeNull()
   })
 })
