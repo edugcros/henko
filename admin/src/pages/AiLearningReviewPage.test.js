@@ -11,7 +11,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockList = jest.fn()
@@ -26,7 +26,11 @@ jest.unstable_mockModule('../services/aiLearningSuggestionService.js', () => ({
   archiveLearningSuggestion: mockArchive,
 }))
 
-const { default: AiLearningReviewPage } = await import('./AiLearningReviewPage.jsx')
+const {
+  default: AiLearningReviewPage,
+  bulkMessage,
+  parseTags,
+} = await import('./AiLearningReviewPage.jsx')
 
 const ENVIO = {
   _id: 's1',
@@ -84,7 +88,7 @@ const tarjeta = titulo => screen.getByText(titulo).closest('.MuiPaper-root')
 const escribir = (input, valor) => fireEvent.change(input, { target: { value: valor } })
 
 const barraDeLote = () =>
-  screen.getByText(/seleccionada\(s\)|pendiente\(s\) visibles/).closest('.MuiPaper-root')
+  screen.getByText(/seleccionadas?$|pendientes? visibles?$/).closest('.MuiPaper-root')
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -109,15 +113,14 @@ describe('Aprendizaje · consulta', () => {
   test('cambiar el estado, el tipo o la búsqueda vuelve a pedir con ese filtro', async () => {
     await montar()
 
-    await userEvent.click(screen.getByRole('combobox', { name: /estado/i }))
-    await userEvent.click(await screen.findByRole('option', { name: /Aprobadas/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Aprobadas/ }))
     await waitFor(() => expect(ultimaConsulta().status).toBe('approved'))
 
     await userEvent.click(screen.getByRole('combobox', { name: /tipo/i }))
     await userEvent.click(await screen.findByRole('option', { name: 'FAQ' }))
     await waitFor(() => expect(ultimaConsulta().type).toBe('faq_suggestion'))
 
-    escribir(screen.getByLabelText('Buscar'), 'envio')
+    escribir(screen.getByRole('textbox', { name: 'Buscar sugerencias' }), 'envio')
     await waitFor(() => expect(ultimaConsulta().search).toBe('envio'))
   })
 
@@ -133,17 +136,28 @@ describe('Aprendizaje · consulta', () => {
     await waitFor(() => expect(ultimaConsulta().type).toBeUndefined())
   })
 
-  test('el estado trae cuántas sugerencias hay en cada uno, y el subtítulo cuántas esperan revisión', async () => {
+  test('el resumen trae cuántas sugerencias hay en cada estado, marca el elegido, y el subtítulo dice cuántas esperan revisión', async () => {
     await montar()
 
-    expect(screen.getByText(/2 pendiente\(s\) de revisión\./)).toBeTruthy()
+    expect(screen.getByText(/2 pendientes de revisión\./)).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('combobox', { name: /estado/i }))
+    const resumen = within(
+      screen.getByRole('region', { name: 'Resumen del aprendizaje del agente' }),
+    )
 
-    expect(await screen.findByRole('option', { name: 'Pendientes (2)' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Aprobadas (7)' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Rechazadas (1)' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Archivadas (4)' })).toBeTruthy()
+    expect(resumen.getByRole('button', { name: 'Pendientes 2' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(resumen.getByRole('button', { name: 'Aprobadas 7' })).toBeTruthy()
+    expect(resumen.getByRole('button', { name: 'Rechazadas 1' })).toBeTruthy()
+    expect(resumen.getByRole('button', { name: 'Archivadas 4' })).toBeTruthy()
+    expect(resumen.getByRole('button', { name: 'Todas 14' })).toBeTruthy()
+  })
+
+  test('con una sola pendiente el subtítulo va en singular', async () => {
+    await montar({ ...RESPUESTA, items: [ENVIO], counters: { pending_review: 1 } })
+
+    expect(screen.getByText(/ 1 pendiente de revisión\./)).toBeTruthy()
   })
 
   test('«Actualizar» vuelve a pedir lo mismo', async () => {
@@ -163,7 +177,8 @@ describe('Aprendizaje · lo que se ve', () => {
     const envio = within(tarjeta('Cuánto tarda el envío a Córdoba'))
 
     expect(envio.getByText('FAQ')).toBeTruthy()
-    expect(envio.getByText('Prioridad: high')).toBeTruthy()
+    expect(envio.getByText('Prioridad alta')).toBeTruthy()
+    expect(envio.getByText('Pendiente')).toBeTruthy()
     expect(envio.getByText('Confianza 82%')).toBeTruthy()
     expect(envio.getByText('shipping_time')).toBeTruthy()
     expect(envio.getByText('¿Cuánto tarda el envío a Córdoba?')).toBeTruthy()
@@ -191,10 +206,38 @@ describe('Aprendizaje · lo que se ve', () => {
     expect(screen.getByText('Rechazada: Ya está en las políticas')).toBeTruthy()
   })
 
-  test('sin sugerencias lo dice', async () => {
+  test('si el agente nunca propuso nada, lo explica', async () => {
     await montar({ items: [], counters: {} })
 
+    expect(screen.getByText('Todavía no hay nada para revisar')).toBeTruthy()
+  })
+
+  test('si hay sugerencias pero no en este filtro, lo dice sin explicar de más', async () => {
+    await montar({ items: [], counters: { approved: 3 } })
+
     expect(screen.getByText('No hay sugerencias para este filtro.')).toBeTruthy()
+    expect(screen.queryByText('Todavía no hay nada para revisar')).toBeNull()
+  })
+
+  test('la prioridad crítica se distingue y se dice en español', async () => {
+    await montar({
+      ...RESPUESTA,
+      items: [
+        { ...ENVIO, _id: 'c', title: 'Urgente', priority: 'critical' },
+        { ...GARANTIA, _id: 'l', title: 'Menor', priority: 'low' },
+      ],
+    })
+
+    expect(within(tarjeta('Urgente')).getByText('Prioridad crítica')).toBeTruthy()
+    expect(within(tarjeta('Menor')).getByText('Prioridad baja')).toBeTruthy()
+  })
+
+  test('cada sugerencia dice en qué estado está', async () => {
+    await montar({ ...RESPUESTA, status: 'all', items: [ENVIO, VIEJA, ARCHIVADA] })
+
+    expect(within(tarjeta('Cuánto tarda el envío a Córdoba')).getByText('Pendiente')).toBeTruthy()
+    expect(within(tarjeta('Pedido de factura A')).getByText('Rechazada')).toBeTruthy()
+    expect(within(tarjeta('Promo vieja')).getByText('Archivada')).toBeTruthy()
   })
 
   test('mientras carga muestra un indicador', async () => {
@@ -221,7 +264,7 @@ describe('Aprendizaje · lo que se ve', () => {
 })
 
 describe('Aprendizaje · acciones según el estado', () => {
-  test('las pendientes tienen Aprobar, Rechazar y Archivar; las demás no tienen ninguna acción', async () => {
+  test('las pendientes tienen Aprobar, Rechazar y Archivar; las rechazadas ninguna acción; las archivadas solo Aprobar', async () => {
     await montar({ ...RESPUESTA, items: [ENVIO, VIEJA, ARCHIVADA] })
 
     const pendiente = within(tarjeta('Cuánto tarda el envío a Córdoba'))
@@ -229,9 +272,23 @@ describe('Aprendizaje · acciones según el estado', () => {
     expect(pendiente.getByRole('button', { name: 'Rechazar' })).toBeTruthy()
     expect(pendiente.getByRole('button', { name: 'Archivar' })).toBeTruthy()
 
-    for (const titulo of ['Pedido de factura A', 'Promo vieja']) {
-      expect(within(tarjeta(titulo)).queryByRole('button')).toBeNull()
-    }
+    expect(within(tarjeta('Pedido de factura A')).queryByRole('button')).toBeNull()
+
+    const archivada = within(tarjeta('Promo vieja'))
+    expect(archivada.getByRole('button', { name: 'Aprobar' })).toBeTruthy()
+    expect(archivada.queryByRole('button', { name: 'Rechazar' })).toBeNull()
+    expect(archivada.queryByRole('button', { name: 'Archivar' })).toBeNull()
+  })
+
+  test('una archivada se puede rescatar: Aprobar abre el mismo diálogo y manda su id', async () => {
+    await montar({ ...RESPUESTA, items: [ARCHIVADA] })
+
+    await userEvent.click(within(tarjeta('Promo vieja')).getByRole('button', { name: 'Aprobar' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Aprobar' }),
+    )
+
+    await waitFor(() => expect(mockApprove).toHaveBeenCalledWith('s4', expect.any(Object)))
   })
 
   test('archivar manda el id, sin pedir confirmación, y avisa', async () => {
@@ -362,46 +419,94 @@ describe('Aprendizaje · en lote', () => {
   test('la barra de lote solo aparece si hay pendientes a la vista', async () => {
     await montar({ ...RESPUESTA, items: [VIEJA] })
 
-    expect(screen.queryByText(/pendiente\(s\) visibles/)).toBeNull()
+    expect(screen.queryByText(/pendientes? visibles?/)).toBeNull()
   })
 
   test('seleccionar todas cuenta cuántas hay y muestra las acciones; cancelar las suelta', async () => {
     await montar()
 
-    expect(screen.getByText('Seleccionar las 2 pendiente(s) visibles')).toBeTruthy()
+    expect(screen.getByText('Seleccionar las 2 pendientes visibles')).toBeTruthy()
     expect(within(barraDeLote()).queryByRole('button', { name: 'Aprobar' })).toBeNull()
 
     await seleccionarTodas()
 
-    expect(screen.getByText('2 seleccionada(s)')).toBeTruthy()
+    expect(screen.getByText('2 seleccionadas')).toBeTruthy()
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Cancelar' }))
 
-    expect(screen.getByText('Seleccionar las 2 pendiente(s) visibles')).toBeTruthy()
+    expect(screen.getByText('Seleccionar las 2 pendientes visibles')).toBeTruthy()
   })
 
-  test('aprobar en lote manda cada id, sin editar nada, y avisa', async () => {
+  test('con una sola pendiente el texto va en singular', async () => {
+    await montar({ ...RESPUESTA, items: [ENVIO] })
+
+    expect(screen.getByText('Seleccionar la pendiente visible')).toBeTruthy()
+
+    await userEvent.click(within(barraDeLote()).getByRole('checkbox'))
+
+    expect(screen.getByText('1 seleccionada')).toBeTruthy()
+  })
+
+  test('cada casilla dice de qué sugerencia es, para quien usa lector de pantalla', async () => {
+    await montar()
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Seleccionar «Cuánto tarda el envío a Córdoba»' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('checkbox', { name: 'Seleccionar todas las pendientes visibles' }),
+    ).toBeTruthy()
+  })
+
+  test('aprobar en lote pide confirmar antes de mandar nada, porque publica sin editar', async () => {
     await montar()
     await seleccionarTodas()
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Aprobar' }))
 
+    const confirmacion = within(screen.getByRole('dialog'))
+    expect(confirmacion.getByText('¿Aprobar 2 sugerencias?')).toBeTruthy()
+    expect(confirmacion.getByText(/sin que las edites/)).toBeTruthy()
+    expect(mockApprove).not.toHaveBeenCalled()
+
+    await userEvent.click(confirmacion.getByRole('button', { name: 'Cancelar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockApprove).not.toHaveBeenCalled()
+    expect(screen.getByText('2 seleccionadas')).toBeTruthy()
+  })
+
+  test('aprobar en lote, ya confirmado, manda cada id sin editar nada y avisa', async () => {
+    await montar()
+    await seleccionarTodas()
+
+    await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Aprobar' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Aprobar' }),
+    )
+
     await waitFor(() => expect(mockApprove).toHaveBeenCalledTimes(2))
     expect(mockApprove).toHaveBeenCalledWith('s1')
     expect(mockApprove).toHaveBeenCalledWith('s2')
     expect(
-      await screen.findByText('2 sugerencia(s) aprobada(s) y convertida(s) en conocimiento.'),
+      await screen.findByText('2 sugerencias aprobadas y convertidas en conocimiento.'),
     ).toBeTruthy()
   })
 
-  test('archivar en lote manda cada id', async () => {
+  test('archivar en lote también pide confirmar, y después manda cada id', async () => {
     await montar()
     await seleccionarTodas()
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Archivar' }))
 
+    const confirmacion = within(screen.getByRole('dialog'))
+    expect(confirmacion.getByText('¿Archivar 2 sugerencias?')).toBeTruthy()
+    expect(mockArchive).not.toHaveBeenCalled()
+
+    await userEvent.click(confirmacion.getByRole('button', { name: 'Archivar' }))
+
     await waitFor(() => expect(mockArchive).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('2 sugerencia(s) archivada(s).')).toBeTruthy()
+    expect(await screen.findByText('2 sugerencias archivadas.')).toBeTruthy()
   })
 
   test('rechazar en lote comparte un mismo motivo', async () => {
@@ -410,7 +515,7 @@ describe('Aprendizaje · en lote', () => {
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Rechazar' }))
     const dialogo = within(screen.getByRole('dialog'))
-    expect(dialogo.getByText('Rechazar 2 sugerencia(s)')).toBeTruthy()
+    expect(dialogo.getByText('Rechazar 2 sugerencias')).toBeTruthy()
     escribir(dialogo.getByLabelText(/Motivo/), 'Duplicadas')
     await userEvent.click(dialogo.getByRole('button', { name: 'Rechazar 2' }))
 
@@ -419,15 +524,30 @@ describe('Aprendizaje · en lote', () => {
     expect(mockReject).toHaveBeenCalledWith('s2', 'Duplicadas')
   })
 
-  test('si una falla, el resto se aplica y avisa cuántas salieron bien y cuántas no', async () => {
+  test('si una falla, el resto se aplica, avisa cuántas salieron bien y deja seleccionada la que falló', async () => {
     await montar()
     mockArchive.mockResolvedValueOnce({})
     mockArchive.mockRejectedValueOnce(new Error('x'))
     await seleccionarTodas()
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Archivar' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Archivar' }),
+    )
 
-    expect(await screen.findByText(/1 archivada\(s\), 1 falló\(aron\)/)).toBeTruthy()
+    expect(
+      await screen.findByText('1 archivada, 1 falló. Quedaron seleccionadas para reintentar.'),
+    ).toBeTruthy()
+    expect(await screen.findByText('1 seleccionada')).toBeTruthy()
+    // El diálogo de confirmación todavía se está cerrando: hasta que termina, lo de atrás no es accesible.
+    const fallida = await screen.findByRole('checkbox', {
+      name: 'Seleccionar «Garantía de productos usados»',
+    })
+    expect(fallida.checked).toBe(true)
+    expect(
+      screen.getByRole('checkbox', { name: 'Seleccionar «Cuánto tarda el envío a Córdoba»' })
+        .checked,
+    ).toBe(false)
   })
 
   test('si fallan todas, avisa que no se pudo con ninguna', async () => {
@@ -436,18 +556,299 @@ describe('Aprendizaje · en lote', () => {
     await seleccionarTodas()
 
     await userEvent.click(within(barraDeLote()).getByRole('button', { name: 'Archivar' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Archivar' }),
+    )
 
-    expect(await screen.findByText('No se pudo completar la acción en ninguna (2).')).toBeTruthy()
+    expect(
+      await screen.findByText('No se pudo completar la acción en ninguna de las 2 sugerencias.'),
+    ).toBeTruthy()
   })
 
   test('cambiar de filtro suelta la selección', async () => {
     await montar()
     await seleccionarTodas()
-    expect(screen.getByText('2 seleccionada(s)')).toBeTruthy()
+    expect(screen.getByText('2 seleccionadas')).toBeTruthy()
 
     await userEvent.click(screen.getByRole('combobox', { name: /tipo/i }))
     await userEvent.click(await screen.findByRole('option', { name: 'FAQ' }))
 
-    await waitFor(() => expect(screen.queryByText('2 seleccionada(s)')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('2 seleccionadas')).toBeNull())
+  })
+})
+
+describe('Aprendizaje · los diálogos no pierden lo escrito', () => {
+  const abrirAprobar = () =>
+    userEvent.click(
+      within(tarjeta('Cuánto tarda el envío a Córdoba')).getByRole('button', { name: 'Aprobar' }),
+    )
+
+  test('si falla aprobar, el diálogo sigue abierto con el motivo y con lo que se editó', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    await montar()
+    mockApprove.mockRejectedValueOnce({ response: { data: { message: 'Ya fue aprobada' } } })
+
+    await abrirAprobar()
+    escribir(
+      within(screen.getByRole('dialog')).getByLabelText('Contenido'),
+      'Texto que costó escribir',
+    )
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Aprobar' }),
+    )
+
+    const dialogo = within(await screen.findByRole('dialog'))
+    expect(await dialogo.findByText('Ya fue aprobada')).toBeTruthy()
+    expect(dialogo.getByLabelText('Contenido').value).toBe('Texto que costó escribir')
+
+    mockApprove.mockResolvedValueOnce({})
+    await userEvent.click(dialogo.getByRole('button', { name: 'Aprobar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockApprove).toHaveBeenLastCalledWith(
+      's1',
+      expect.objectContaining({ content: 'Texto que costó escribir' }),
+    )
+    console.error.mockRestore()
+  })
+
+  test('si falla rechazar, el diálogo sigue abierto con el motivo escrito', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    await montar()
+    mockReject.mockRejectedValueOnce(new Error(''))
+
+    await userEvent.click(
+      within(tarjeta('Cuánto tarda el envío a Córdoba')).getByRole('button', { name: 'Rechazar' }),
+    )
+    escribir(within(screen.getByRole('dialog')).getByLabelText(/Motivo/), 'Es una duda aparte')
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Rechazar' }),
+    )
+
+    const dialogo = within(await screen.findByRole('dialog'))
+    expect(await dialogo.findByText('No se pudo completar la acción.')).toBeTruthy()
+    expect(dialogo.getByLabelText(/Motivo/).value).toBe('Es una duda aparte')
+    console.error.mockRestore()
+  })
+
+  test('el error se quita al seguir escribiendo', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    await montar()
+    mockApprove.mockRejectedValueOnce(new Error('Falló'))
+
+    await abrirAprobar()
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Aprobar' }),
+    )
+    const dialogo = within(await screen.findByRole('dialog'))
+    await dialogo.findByText('Falló')
+
+    escribir(dialogo.getByLabelText('Título'), 'Otro título')
+
+    expect(dialogo.queryByText('Falló')).toBeNull()
+    console.error.mockRestore()
+  })
+
+  test('cancelar cierra el diálogo sin mandar nada', async () => {
+    await montar()
+
+    await abrirAprobar()
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancelar' }),
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockApprove).not.toHaveBeenCalled()
+  })
+
+  test('el título y el contenido cuentan los caracteres que van usando', async () => {
+    await montar()
+
+    await abrirAprobar()
+    const dialogo = within(screen.getByRole('dialog'))
+
+    expect(dialogo.getByText('31/200')).toBeTruthy()
+    expect(dialogo.getByText('25/10000')).toBeTruthy()
+  })
+})
+
+describe('Aprendizaje · búsqueda, páginas y recarga', () => {
+  test('la búsqueda espera a que se deje de escribir y vuelve a la página 1', async () => {
+    await montar({ ...RESPUESTA, pagination: { page: 1, limit: 50, total: 120, pages: 3 } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ir a la página 2' }))
+    await waitFor(() => expect(ultimaConsulta().page).toBe(2))
+    mockList.mockClear()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Buscar sugerencias' }), 'envio')
+
+    expect(mockList).not.toHaveBeenCalled()
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1))
+    expect(ultimaConsulta()).toMatchObject({ search: 'envio', page: 1 })
+  })
+
+  test('«Limpiar filtros» solo aparece con filtros y vuelve a las pendientes, de todos los tipos, sin búsqueda', async () => {
+    await montar()
+
+    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Aprobadas/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Limpiar filtros' }))
+
+    await waitFor(() =>
+      expect(ultimaConsulta()).toMatchObject({
+        status: 'pending_review',
+        type: undefined,
+        search: undefined,
+        page: 1,
+      }),
+    )
+    expect(screen.queryByRole('button', { name: 'Limpiar filtros' })).toBeNull()
+  })
+
+  test('«Todas» y cualquier otro estado del resumen filtran por ese estado', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Todas/ }))
+    await waitFor(() => expect(ultimaConsulta().status).toBe('all'))
+
+    await userEvent.click(screen.getByRole('button', { name: /^Archivadas/ }))
+    await waitFor(() => expect(ultimaConsulta().status).toBe('archived'))
+  })
+
+  test('con varias páginas dice cuántas hay y deja pasar de página', async () => {
+    await montar({ ...RESPUESTA, pagination: { page: 1, limit: 50, total: 120, pages: 3 } })
+
+    expect(screen.getByText('Mostrando 2 de 120 (página 1 de 3)')).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+
+    await waitFor(() => expect(ultimaConsulta().page).toBe(2))
+  })
+
+  test('con una sola página cuenta las sugerencias y no muestra paginación', async () => {
+    await montar()
+
+    expect(screen.getByText('2 sugerencias')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Página siguiente' })).toBeNull()
+  })
+
+  test('si la página en la que estaba quedó vacía, vuelve a la última que existe', async () => {
+    await montar({ ...RESPUESTA, pagination: { page: 1, limit: 50, total: 51, pages: 2 } })
+
+    mockList.mockResolvedValueOnce({
+      items: [],
+      pagination: { page: 2, limit: 50, total: 50, pages: 1 },
+      counters: RESPUESTA.counters,
+    })
+    mockList.mockResolvedValue(RESPUESTA)
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+
+    await waitFor(() => expect(ultimaConsulta().page).toBe(1))
+    expect(await screen.findByText('Cuánto tarda el envío a Córdoba')).toBeTruthy()
+  })
+
+  test('una respuesta lenta de una consulta anterior no pisa a la más reciente', async () => {
+    await montar()
+
+    let responderLenta
+    mockList.mockReturnValueOnce(new Promise(resolve => (responderLenta = resolve)))
+    mockList.mockResolvedValueOnce({ ...RESPUESTA, items: [ENVIO] })
+
+    await userEvent.click(screen.getByRole('button', { name: /^Aprobadas/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Archivadas/ }))
+    await waitFor(() => expect(screen.queryByText('Garantía de productos usados')).toBeNull())
+
+    await act(async () => {
+      responderLenta({ ...RESPUESTA, items: [VIEJA] })
+    })
+
+    expect(screen.queryByText('Pedido de factura A')).toBeNull()
+    expect(screen.getByText('Cuánto tarda el envío a Córdoba')).toBeTruthy()
+  })
+
+  test('mientras se vuelve a consultar, la lista sigue a la vista', async () => {
+    await montar()
+
+    mockList.mockReturnValueOnce(new Promise(() => {}))
+    await userEvent.click(screen.getByRole('button', { name: /^Aprobadas/ }))
+
+    expect(await screen.findByRole('progressbar')).toBeTruthy()
+    expect(screen.getByText('Cuánto tarda el envío a Córdoba')).toBeTruthy()
+  })
+
+  test('si falla la carga no dice además que no hay nada, y se puede reintentar', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    mockList.mockRejectedValueOnce(new Error('Sin conexión'))
+
+    render(<AiLearningReviewPage />)
+
+    expect(await screen.findByText('Sin conexión')).toBeTruthy()
+    expect(screen.queryByText('Todavía no hay nada para revisar')).toBeNull()
+    expect(screen.queryByText('No hay sugerencias para este filtro.')).toBeNull()
+
+    mockList.mockResolvedValue(RESPUESTA)
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    expect(await screen.findByText('Cuánto tarda el envío a Córdoba')).toBeTruthy()
+    expect(screen.queryByText('Sin conexión')).toBeNull()
+    console.error.mockRestore()
+  })
+})
+
+describe('Aprendizaje · armado de lo que se manda y de los avisos', () => {
+  test('parseTags descarta vacías y tolera valores nulos', () => {
+    expect(parseTags(' a , ,b,, ')).toEqual(['a', 'b'])
+    expect(parseTags('')).toEqual([])
+    expect(parseTags(null)).toEqual([])
+  })
+
+  test('el aviso de un lote va en singular o plural según corresponda', () => {
+    expect(bulkMessage('approve', 1, 0).message).toBe(
+      '1 sugerencia aprobada y convertida en conocimiento.',
+    )
+    expect(bulkMessage('reject', 3, 0).message).toBe('3 sugerencias rechazadas.')
+    expect(bulkMessage('archive', 2, 1).message).toBe(
+      '2 archivadas, 1 falló. Quedaron seleccionadas para reintentar.',
+    )
+    expect(bulkMessage('archive', 1, 3).message).toBe(
+      '1 archivada, 3 fallaron. Quedaron seleccionadas para reintentar.',
+    )
+    expect(bulkMessage('archive', 0, 1).message).toBe(
+      'No se pudo completar la acción en la sugerencia.',
+    )
+    expect(bulkMessage('archive', 0, 4).message).toBe(
+      'No se pudo completar la acción en ninguna de las 4 sugerencias.',
+    )
+  })
+
+  test('la severidad del aviso: éxito, advertencia o error', () => {
+    expect(bulkMessage('archive', 2, 0).severity).toBe('success')
+    expect(bulkMessage('archive', 1, 1).severity).toBe('warning')
+    expect(bulkMessage('archive', 0, 2).severity).toBe('error')
+  })
+})
+
+describe('Aprendizaje · en el celular', () => {
+  afterEach(() => {
+    delete window.matchMedia
+  })
+
+  test('los diálogos ocupan toda la pantalla', async () => {
+    window.matchMedia = query => ({
+      matches: query === '(max-width:600px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })
+    await montar()
+
+    await userEvent.click(
+      within(tarjeta('Cuánto tarda el envío a Córdoba')).getByRole('button', { name: 'Aprobar' }),
+    )
+
+    expect(screen.getByRole('dialog').className).toMatch(/MuiDialog-paperFullScreen|fullScreen/)
   })
 })
