@@ -5,6 +5,7 @@ import app from '../../app.js'
 import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
 import AiInsight from '../models/aiInsightModel.js'
 import AiLearningSuggestion from '../models/aiLearningSuggestionModel.js'
+import AiKnowledge from '../models/aiKnowledgeModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { crearMongoEnMemoria } from './testDB.js'
@@ -160,5 +161,80 @@ describe('colas de revisión · primero lo urgente', () => {
       'medium',
       'low',
     ])
+  })
+})
+
+// ─── Los contadores de la base de conocimiento ───────────────────────────────
+//
+// El resumen de la pantalla muestra cuántas entradas hay en cada estado, y en
+// producción marcaba 0 en todos con 184 entradas cargadas. El listado filtraba
+// bien —`find` convierte el id del comercio de texto a ObjectId— pero el conteo
+// es una agregación, y `$match` en una agregación NO convierte nada: comparaba
+// un ObjectId guardado contra un texto y no encontraba ninguna fila.
+
+describe('base de conocimiento · contadores por estado', () => {
+  let tenantContext
+  let otherTenantContext
+  let adminSession
+  let mongod
+
+  beforeAll(async () => {
+    mongod = await crearMongoEnMemoria()
+    await mongoose.connect(mongod.getUri())
+
+    tenantContext = await createTestTenant()
+    otherTenantContext = await createTestTenant()
+    adminSession = await createTestUser({
+      tenantId: tenantContext.tenant._id,
+      email: 'conocimiento-admin@test.com',
+      role: 'admin',
+    })
+
+    const entrada = (tenantId, status, title) => ({
+      tenantId,
+      status,
+      title,
+      content: `Contenido de ${title}`,
+    })
+
+    await AiKnowledge.create([
+      entrada(tenantContext.tenant._id, 'approved', 'Envíos'),
+      entrada(tenantContext.tenant._id, 'approved', 'Pagos'),
+      entrada(tenantContext.tenant._id, 'archived', 'Promo vieja'),
+      // De OTRO comercio: no puede sumar en los contadores de este.
+      entrada(otherTenantContext.tenant._id, 'approved', 'Ajena'),
+      entrada(otherTenantContext.tenant._id, 'pending_approval', 'Ajena pendiente'),
+    ])
+  })
+
+  afterAll(async () => {
+    await mongoose.disconnect()
+    await mongod?.stop()
+  })
+
+  test('cuenta las entradas de cada estado, solo las del comercio', async () => {
+    const res = await request(app)
+      .get('/api/ai-agent/knowledge?status=all')
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
+
+    expect(res.statusCode).toBe(200)
+
+    const tenantId = tenantContext.tenant._id
+    const esperado = {}
+    for (const status of ['approved', 'archived', 'pending_approval']) {
+      const count = await AiKnowledge.countDocuments({ tenantId, status }).setOptions({
+        tenantId,
+      })
+      if (count) esperado[status] = count
+    }
+
+    expect(esperado.approved).toBeGreaterThanOrEqual(2)
+    expect(res.body.meta.counters).toEqual(esperado)
+    expect(res.body.meta.counters.pending_approval).toBeUndefined()
   })
 })
