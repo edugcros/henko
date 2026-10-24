@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockMetrics = jest.fn()
@@ -23,7 +23,12 @@ jest.unstable_mockModule('../services/aiAgentDashboardService.js', () => ({
   getAiCartRecoveries: mockRecoveries,
 }))
 
-const { default: AiAgentDashboardPage } = await import('./AiAgentDashboardPage.jsx')
+const {
+  default: AiAgentDashboardPage,
+  formatMoney,
+  formatPesos,
+  recoveryReason,
+} = await import('./AiAgentDashboardPage.jsx')
 
 const METRICAS = {
   period: '30d',
@@ -91,8 +96,8 @@ const montar = async () => {
 
 const ultimaRecuperacion = () => mockRecoveries.mock.calls[mockRecoveries.mock.calls.length - 1][0]
 
-const tarjeta = etiqueta =>
-  screen.getByText(etiqueta, { selector: 'span' }).closest('.MuiPaper-root')
+// Cada cifra es una celda del panel de su sección: la etiqueta y el número son hermanos.
+const tarjeta = etiqueta => screen.getByText(etiqueta, { selector: 'span' }).parentElement
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -265,7 +270,7 @@ describe('Métricas · probar el agente', () => {
 
     await waitFor(() => expect(mockTest).toHaveBeenCalledWith('¿Tenés talle 42 en negro?'))
     expect(await screen.findByText('Sí, tenemos talle 42 en negro.')).toBeTruthy()
-    expect(screen.getByText('Requiere humano')).toBeTruthy()
+    expect(screen.getByText('Pide hablar con una persona')).toBeTruthy()
   })
 
   test('si falla la prueba muestra el mensaje del servidor o uno genérico', async () => {
@@ -284,5 +289,218 @@ describe('Métricas · probar el agente', () => {
     await montar()
 
     expect(campo().getAttribute('maxlength')).toBe('2000')
+  })
+})
+
+describe('Métricas · ventas del asistente', () => {
+  test('muestra lo vendido con el asistente, sobre el total, en pesos', async () => {
+    await montar()
+
+    const ventas = within(screen.getByRole('region', { name: 'Ventas del asistente' }))
+    expect(ventas.getByText(/320\.000/)).toBeTruthy()
+    expect(ventas.getByText(/de \$\s?950\.000 vendidos en total/)).toBeTruthy()
+    expect(within(tarjeta('Pedidos influenciados')).getByText('9')).toBeTruthy()
+    expect(within(tarjeta('Pedidos influenciados')).getByText('de 30 pedidos')).toBeTruthy()
+    expect(within(tarjeta('Parte de las ventas')).getByText('33,68')).toBeTruthy()
+  })
+
+  test('cada sección dice de qué período son las cifras', async () => {
+    await montar()
+
+    expect(screen.getByText(/Últimos 30 días\. Compras de clientes/)).toBeTruthy()
+  })
+
+  test('los «leads calientes» se llaman por lo que cuentan: puntaje 75 o más', async () => {
+    await montar()
+
+    expect(within(tarjeta('Con puntaje 75 o más')).getByText('6')).toBeTruthy()
+  })
+})
+
+describe('Métricas · cargas separadas', () => {
+  test('cambiar el período no vuelve a pedir el detalle de recuperaciones', async () => {
+    await montar()
+    mockRecoveries.mockClear()
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Período' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Últimos 90 días' }))
+
+    await waitFor(() => expect(mockMetrics).toHaveBeenLastCalledWith('90d'))
+    expect(mockRecoveries).not.toHaveBeenCalled()
+  })
+
+  test('filtrar las recuperaciones no vuelve a pedir las métricas', async () => {
+    await montar()
+    mockMetrics.mockClear()
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Estado' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Convertidos' }))
+
+    await waitFor(() => expect(ultimaRecuperacion()).toMatchObject({ status: 'converted' }))
+    expect(mockMetrics).not.toHaveBeenCalled()
+  })
+
+  test('una respuesta lenta de otro período no pisa a la más reciente', async () => {
+    await montar()
+
+    let responderLenta
+    mockMetrics.mockReturnValueOnce(new Promise(resolve => (responderLenta = resolve)))
+    mockMetrics.mockResolvedValueOnce({ ...METRICAS, conversations: { total: 999 } })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Período' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Últimos 7 días' }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Período' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Últimos 90 días' }))
+    expect(await within(tarjeta('Total')).findByText('999')).toBeTruthy()
+
+    await act(async () => {
+      responderLenta({ ...METRICAS, conversations: { total: 111 } })
+    })
+
+    expect(within(tarjeta('Total')).getByText('999')).toBeTruthy()
+  })
+})
+
+describe('Métricas · detalle de recuperación, lo nuevo', () => {
+  test('el filtro ofrece los nueve estados del servidor', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Estado' }))
+    const opciones = (await screen.findAllByRole('option')).map(o => o.textContent)
+
+    expect(opciones).toEqual([
+      'Todos',
+      'Pendientes',
+      'Programados',
+      'Procesando',
+      'Enviados',
+      'Respondieron',
+      'Convertidos',
+      'Cancelados',
+      'Expirados',
+      'Fallidos',
+    ])
+  })
+
+  test('si falla la carga lo dice y deja reintentar, en vez de decir que no hay ninguna', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    mockRecoveries.mockRejectedValueOnce(new Error('Sin conexión'))
+
+    render(<AiAgentDashboardPage />)
+
+    expect(await screen.findByText('Sin conexión')).toBeTruthy()
+    expect(screen.queryByText(/No hay campañas de recuperación/)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    expect(await screen.findByText('Lucía Pérez')).toBeTruthy()
+    console.error.mockRestore()
+  })
+
+  test('sin recuperaciones con un filtro, dice cuál', async () => {
+    await montar()
+    mockRecoveries.mockResolvedValue({ items: [] })
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Estado' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Fallidos' }))
+
+    expect(await screen.findByText('No hay recuperaciones con estado «Fallidos».')).toBeTruthy()
+  })
+
+  test('la paginación pide la página elegida y dice cuántas hay', async () => {
+    mockRecoveries.mockResolvedValue({
+      ...RECUPEROS,
+      pagination: { page: 1, limit: 25, total: 60, pages: 3 },
+    })
+    await montar()
+
+    expect(screen.getByText('Página 1 de 3 · 60 recuperaciones')).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+
+    await waitFor(() => expect(ultimaRecuperacion()).toMatchObject({ page: 2 }))
+  })
+
+  test('cambiar el filtro vuelve a la página 1', async () => {
+    mockRecoveries.mockResolvedValue({
+      ...RECUPEROS,
+      pagination: { page: 1, limit: 25, total: 60, pages: 3 },
+    })
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ir a la página 3' }))
+    await waitFor(() => expect(ultimaRecuperacion()).toMatchObject({ page: 3 }))
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Estado' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Enviados' }))
+
+    await waitFor(() => expect(ultimaRecuperacion()).toMatchObject({ status: 'sent', page: 1 }))
+  })
+})
+
+describe('Métricas · probar el agente, lo nuevo', () => {
+  const campo = () => screen.getByRole('textbox', { name: 'Mensaje de prueba' })
+
+  test('avisa antes de usarla que la prueba queda guardada y gasta créditos', async () => {
+    await montar()
+
+    expect(screen.getByText(/queda guardada como una conversación de «Usuario Test»/)).toBeTruthy()
+    expect(screen.getByText(/consume créditos de IA/)).toBeTruthy()
+  })
+
+  test('la intención y el puntaje se dicen en español', async () => {
+    await montar()
+
+    fireEvent.change(campo(), { target: { value: 'Hola' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar' }))
+
+    expect(await screen.findByText('Intención: Stock')).toBeTruthy()
+    expect(screen.getByText('Puntaje del lead: 62')).toBeTruthy()
+  })
+
+  test('Enter envía; Shift+Enter no', async () => {
+    await montar()
+
+    await userEvent.type(campo(), 'Hola{Shift>}{Enter}{/Shift}')
+    expect(mockTest).not.toHaveBeenCalled()
+
+    await userEvent.type(campo(), '{Enter}')
+    await waitFor(() => expect(mockTest).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('Métricas · armado', () => {
+  test('los montos: centavos para recuperación, pesos para ventas', () => {
+    expect(formatMoney(4590000)).toMatch(/45\.900/)
+    expect(formatPesos(45900)).toMatch(/45\.900/)
+    expect(formatMoney(undefined)).toMatch(/0/)
+  })
+
+  test('un motivo de recuperación desconocido se muestra tal cual', () => {
+    expect(recoveryReason({ metadata: { cancelledReason: 'algo_nuevo' } })).toBe('algo_nuevo')
+    expect(recoveryReason({})).toBe('')
+  })
+})
+
+describe('Métricas · en el celular', () => {
+  afterEach(() => {
+    delete window.matchMedia
+  })
+
+  test('el detalle de recuperación se ve como tarjetas, no como tabla', async () => {
+    window.matchMedia = query => ({
+      matches: query === '(max-width:600px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })
+
+    await montar()
+
+    expect(await screen.findByText('Lucía Pérez')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByText(/1 intento · enviado/)).toBeTruthy()
   })
 })
