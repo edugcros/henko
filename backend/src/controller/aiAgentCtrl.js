@@ -410,7 +410,9 @@ export const approveKnowledgeItem = asyncHandler(async (req, res) => {
 })
 
 export const listKnowledge = asyncHandler(async (req, res) => {
-  const tenantId = requireTenantId(req)
+  const { tenantId, tenantObjectId } = resolveAuthorizedTenantFromRequest(req, {
+    requireUserTenant: true,
+  })
   const status = clean(req.query.status) || 'approved'
   const type = clean(req.query.type)
   const search = clean(req.query.search)
@@ -444,10 +446,12 @@ export const listKnowledge = asyncHandler(async (req, res) => {
     AiKnowledge.countDocuments(filter).setOptions({ tenantId }),
   ])
 
+  // `$match` en una agregación no convierte tipos como `find`: con el id del comercio en texto
+  // no encontraba ninguna fila y el resumen de la pantalla marcaba 0 en todos los estados.
   const counters = await AiKnowledge.aggregate([
-    { $match: { tenantId: filter.tenantId } },
+    { $match: { tenantId: tenantObjectId } },
     { $group: { _id: '$status', count: { $sum: 1 } } },
-  ])
+  ]).option({ tenantId })
 
   return res.status(200).json({
     success: true,
