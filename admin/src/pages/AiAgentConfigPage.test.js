@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockGet = jest.fn()
@@ -29,7 +29,12 @@ jest.unstable_mockModule('../components/aiBudget/AiBudgetPanel.jsx', () => ({
   default: () => <div>Panel de consumo</div>,
 }))
 
-const { default: AiAgentConfigPage } = await import('./AiAgentConfigPage.jsx')
+const {
+  default: AiAgentConfigPage,
+  toForm,
+  toPayload,
+  validateForm,
+} = await import('./AiAgentConfigPage.jsx')
 
 const AGENTE = {
   name: 'Sofi',
@@ -152,6 +157,7 @@ describe('Configuración del asistente · guardar', () => {
 
   test('sin escribir un secreto nuevo no lo manda (no borra el guardado)', async () => {
     await montar()
+    escribir(screen.getByLabelText('Firma'), 'Equipo Ejemplo SA')
     await guardar()
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled())
@@ -236,5 +242,228 @@ describe('Configuración del asistente · probar la conexión', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
 
     expect(await screen.findByText('Meta no responde')).toBeTruthy()
+  })
+})
+
+const seccion = nombre => within(screen.getByRole('region', { name: nombre }))
+const barraDeGuardar = () =>
+  within(
+    screen.getByRole('button', { name: /Guardar cambios|Guardando/ }).closest('.MuiPaper-root'),
+  )
+const CONECTADO = {
+  connected: true,
+  verifyToken: 'verif-ficticio',
+  checks: {
+    accessToken: { ok: true },
+    phoneNumberId: { ok: true },
+    appSecret: { ok: true },
+    webhook: { ok: true },
+  },
+}
+
+describe('Configuración del asistente · números que el backend cambiaba sin avisar', () => {
+  test('una confianza mínima de 0 se manda como 0, no como 0,55', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Confianza mínima para responder'), '0')
+    await guardar()
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled())
+    expect(enviado().behavior.minConfidenceToAnswer).toBe(0)
+  })
+
+  test('un valor fuera de rango se marca y no se guarda', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Máx. mensajes antes de derivar'), '200')
+
+    expect(screen.getByText('Tiene que ser entre 1 y 80, sin decimales.')).toBeTruthy()
+    await guardar()
+
+    expect(barraDeGuardar().getByText('Revisá 1 campo marcado antes de guardar.')).toBeTruthy()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  test('validateForm copia los rangos del backend', () => {
+    const base = toForm(AGENTE)
+
+    expect(validateForm(base)).toEqual({})
+    for (const [campo, valor] of [
+      ['minConfidenceToAnswer', '1.2'],
+      ['minConfidenceToAnswer', ''],
+      ['maxMessagesBeforeHuman', '2.5'],
+      ['maxMessagesBeforeHuman', '0'],
+      ['monthlyMessageLimit', '-1'],
+      ['monthlyAiTokenLimit', '1000000001'],
+      ['name', '   '],
+    ]) {
+      expect(validateForm({ ...base, [campo]: valor })).toHaveProperty(campo)
+    }
+  })
+
+  test('más de 80 palabras en una lista se avisa: el resto se perdería', async () => {
+    await montar()
+
+    const muchas = Array.from({ length: 81 }, (_, i) => `palabra${i}`).join(', ')
+    escribir(screen.getByLabelText('Temas bloqueados'), muchas)
+
+    expect(screen.getByText(/Hay 81 palabras y se guardan hasta 80/)).toBeTruthy()
+  })
+
+  test('toPayload no cambia un 0 por el default', () => {
+    const payload = toPayload({
+      ...toForm(AGENTE),
+      minConfidenceToAnswer: '0',
+      monthlyMessageLimit: '0',
+    })
+
+    expect(payload.behavior.minConfidenceToAnswer).toBe(0)
+    expect(payload.quotas.monthlyMessageLimit).toBe(0)
+  })
+})
+
+describe('Configuración del asistente · cambios sin guardar', () => {
+  test('sin cambios no deja guardar y dice que está todo guardado', async () => {
+    await montar()
+
+    expect(screen.getByRole('button', { name: 'Guardar cambios' }).disabled).toBe(true)
+    expect(screen.getByText('Todo guardado.')).toBeTruthy()
+  })
+
+  test('al cambiar algo lo avisa, y descartar vuelve a lo guardado', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Nombre del asistente'), 'Otra')
+    expect(screen.getByText('Tenés cambios sin guardar.')).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Descartar cambios' }))
+
+    expect(screen.getByLabelText('Nombre del asistente').value).toBe('Sofi')
+    expect(screen.getByText('Todo guardado.')).toBeTruthy()
+  })
+
+  test('el nombre vacío se marca recién al intentar guardar', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Nombre del asistente'), '')
+    expect(screen.queryByText(/Poné un nombre/)).toBeNull()
+
+    await guardar()
+
+    expect(screen.getByText(/Poné un nombre/)).toBeTruthy()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  test('el error de guardado aparece junto al botón', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    await montar()
+    mockUpdate.mockRejectedValueOnce(new Error('Sin conexión'))
+
+    escribir(screen.getByLabelText('Firma'), 'Otra firma')
+    await guardar()
+
+    expect(await barraDeGuardar().findByText('Sin conexión')).toBeTruthy()
+    console.error.mockRestore()
+  })
+
+  test('mientras guarda no se puede mandar dos veces', async () => {
+    await montar()
+    mockUpdate.mockReturnValue(new Promise(() => {}))
+
+    escribir(screen.getByLabelText('Firma'), 'Otra firma')
+    await guardar()
+
+    expect(screen.getByRole('button', { name: 'Guardando…' }).disabled).toBe(true)
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Configuración del asistente · WhatsApp', () => {
+  test('con credenciales sin guardar no deja probar y explica por qué', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Access Token'), 'token-ficticio')
+
+    expect(screen.getByRole('button', { name: 'Probar la conexión' }).disabled).toBe(true)
+    expect(screen.getByText(/Guardá los cambios antes de probar/)).toBeTruthy()
+  })
+
+  test('cambiar otra cosa no bloquea la prueba', async () => {
+    await montar()
+
+    escribir(screen.getByLabelText('Firma'), 'Otra firma')
+
+    expect(screen.getByRole('button', { name: 'Probar la conexión' }).disabled).toBe(false)
+  })
+
+  test('el error de la prueba sale dentro de la sección de WhatsApp', async () => {
+    await montar()
+    mockCheck.mockRejectedValueOnce(new Error('Meta no responde'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
+
+    expect(await seccion('WhatsApp').findByText('Meta no responde')).toBeTruthy()
+  })
+
+  test('el resumen pasa a "Conectado" después de una prueba buena', async () => {
+    const whatsapp = { ...AGENTE.channels.whatsapp, enabled: true }
+    await montar({ ...AGENTE, channels: { ...AGENTE.channels, whatsapp } })
+    mockCheck.mockResolvedValue(CONECTADO)
+
+    expect(seccion('Estado del asistente').getByText('Sin probar')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
+
+    expect(await seccion('Estado del asistente').findByText('Conectado')).toBeTruthy()
+    expect(screen.getByText(/Conectado: el asistente puede recibir/)).toBeTruthy()
+  })
+
+  test('cuenta los puntos que fallan', async () => {
+    await montar()
+    mockCheck.mockResolvedValue({
+      connected: false,
+      checks: {
+        accessToken: { ok: false, detail: 'El token no sirve o venció.' },
+        phoneNumberId: { ok: true },
+        appSecret: { ok: false },
+        webhook: { ok: true },
+      },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
+
+    expect(await screen.findByText('2 puntos para revisar.')).toBeTruthy()
+  })
+
+  test('la guía arranca cerrada si ya hay número', async () => {
+    await montar()
+
+    const guia = screen.getByRole('button', { name: /Cómo conectar WhatsApp/ })
+    expect(guia.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  test('sin número cargado la guía arranca abierta', async () => {
+    await montar({ ...AGENTE, channels: { webchat: { enabled: true }, whatsapp: {} } })
+
+    const guia = screen.getByRole('button', { name: /Cómo conectar WhatsApp/ })
+    expect(guia.getAttribute('aria-expanded')).toBe('true')
+  })
+})
+
+describe('Configuración del asistente · lo que se muestra es verdad', () => {
+  test('la firma, la confianza y la aprobación dicen que todavía no se usan', async () => {
+    await montar()
+
+    expect(
+      screen.getAllByText(/Se guarda, pero el asistente todavía no lo tiene en cuenta/),
+    ).toHaveLength(3)
+  })
+
+  test('el resumen muestra lo guardado, no lo que se está escribiendo', async () => {
+    await montar()
+
+    expect(seccion('Estado del asistente').getAllByText('Activo')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('switch', { name: 'Agente activado' }))
+
+    expect(seccion('Estado del asistente').getAllByText('Activo')).toHaveLength(2)
   })
 })
