@@ -104,6 +104,10 @@ export const getAiAgentMetrics = asyncHandler(async (req, res) => {
     data: {
       period: req.query.period || 'all',
 
+      // Los montos de ventas (salesInfluence) están en la moneda de la tienda; sin esto el panel
+      // los mostraba siempre como pesos.
+      currency: req.tenant?.currency || 'ARS',
+
       conversations: {
         total: totalConversations,
         open: convByStatus.open || 0,
