@@ -858,13 +858,14 @@ const AiInsightsPage = () => {
     if (value >= Number(dialog.plan.currentPrice)) {
       return `Tiene que ser menor al precio actual (${formatPesos(dialog.plan.currentPrice)}).`
     }
+    // El servidor rechaza cualquier precio por debajo del costo cargado (applyPriceReduction):
+    // dejar confirmarlo era apretar un botón que siempre falla.
+    const costFloor = dialog.plan.costFloor
+    if (costFloor !== null && costFloor !== undefined && value < Number(costFloor)) {
+      return `No puede quedar por debajo del costo cargado (${formatPesos(costFloor)}).`
+    }
     return ''
   })()
-  const belowCost =
-    priceReductionDialog?.plan?.costFloor > 0 &&
-    Number(priceReductionDialog?.newPrice) > 0 &&
-    Number(priceReductionDialog?.newPrice) < Number(priceReductionDialog.plan.costFloor)
-
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1180, mx: 'auto' }}>
       <Box component="header" sx={{ mb: 4 }}>
@@ -1300,12 +1301,6 @@ const AiInsightsPage = () => {
                 slotProps={{ htmlInput: { min: 0, step: '0.01' } }}
                 disabled={priceReductionDialog.applying}
               />
-
-              {belowCost && (
-                <Alert severity="warning">
-                  {`Ese precio queda por debajo del costo cargado (${formatPesos(priceReductionDialog.plan.costFloor)}): vas a vender a pérdida.`}
-                </Alert>
-              )}
 
               {priceReductionDialog?.error && (
                 <Alert severity="error">{priceReductionDialog.error}</Alert>

@@ -568,7 +568,7 @@ describe('Diagnóstico · reducir precio, explicado', () => {
     expect(dialogo().getByText(/Tiene que ser menor al precio actual/)).toBeTruthy()
   })
 
-  test('avisa si el precio queda por debajo del costo', async () => {
+  test('no deja aplicar un precio por debajo del costo, y dice por qué', async () => {
     await montar()
     mockPreviewPrice.mockResolvedValueOnce({
       currentPrice: 50000,
@@ -584,8 +584,8 @@ describe('Diagnóstico · reducir precio, explicado', () => {
     )
     escribir(await dialogo().findByLabelText('Precio nuevo'), '35000')
 
-    expect(dialogo().getByText(/vas a vender a pérdida/)).toBeTruthy()
-    expect(dialogo().getByRole('button', { name: 'Aplicar precio' }).disabled).toBe(false)
+    expect(dialogo().getByText(/No puede quedar por debajo del costo cargado/)).toBeTruthy()
+    expect(dialogo().getByRole('button', { name: 'Aplicar precio' }).disabled).toBe(true)
   })
 
   test('el precio actual se muestra en pesos', async () => {
