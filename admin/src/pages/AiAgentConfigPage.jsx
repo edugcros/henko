@@ -327,22 +327,29 @@ export const toPayload = form => {
 
 const sameValue = (a, b) => String(a ?? '') === String(b ?? '')
 
+// El backend responde `connected: true` con el número, el token y el App
+// Secret bien, aunque el webhook no esté suscripto. Sin webhook no entra
+// ningún mensaje, así que para la pantalla "conectado" exige los cuatro.
+export const isFullyConnected = connection =>
+  Boolean(connection?.connected) &&
+  CONNECTION_ITEMS.every(item => connection.checks?.[item.key]?.ok)
+
 // Qué dice el resumen sobre WhatsApp, con lo guardado y la última prueba.
 export const whatsappStatus = (saved, connection) => {
   if (!saved.whatsappEnabled) return { label: 'Apagado', color: BRAND.muted }
   if (!saved.phoneNumberId) return { label: 'Faltan datos', color: BRAND.amber }
   if (!connection?.checks) return { label: 'Sin probar', color: BRAND.blue }
-  return connection.connected
+  return isFullyConnected(connection)
     ? { label: 'Conectado', color: BRAND.green }
     : { label: 'Con problemas', color: BRAND.red }
 }
 
-const learningStatus = saved => {
-  if (!saved.learningEnabled) return { label: 'Apagado', color: BRAND.muted }
-  return saved.learningRequireApproval
+// "Requiere aprobación" no lo lee el backend: lo aprendido espera aprobación
+// siempre. El resumen dice lo que pasa, no lo que está guardado.
+const learningStatus = saved =>
+  saved.learningEnabled
     ? { label: 'Con revisión', color: BRAND.green }
-    : { label: 'Sin revisión', color: BRAND.amber }
-}
+    : { label: 'Apagado', color: BRAND.muted }
 
 const onOff = value =>
   value ? { label: 'Activo', color: BRAND.green } : { label: 'Apagado', color: BRAND.muted }
@@ -541,6 +548,8 @@ const AiAgentConfigPage = () => {
       // Rehidratamos desde la respuesta: limpia los campos de secreto y
       // refleja lo que realmente quedó guardado.
       applyAgent(await updateAiAgentConfig(toPayload(form)))
+      // La prueba anterior era de otras credenciales: hay que volver a probar.
+      if (credentialsDirty) setConnection(null)
       setTriedToSave(false)
       setSnackbar({ open: true, message: 'Configuración guardada.' })
     } catch (err) {
@@ -551,7 +560,7 @@ const AiAgentConfigPage = () => {
     } finally {
       setSaving(false)
     }
-  }, [applyAgent, errorCount, form, saving])
+  }, [applyAgent, credentialsDirty, errorCount, form, saving])
 
   const discardChanges = useCallback(() => {
     setForm(saved)
@@ -930,10 +939,10 @@ const AiAgentConfigPage = () => {
                     sx={{
                       fontWeight: 700,
                       mb: 1,
-                      color: connection.connected ? BRAND.green : BRAND.red,
+                      color: isFullyConnected(connection) ? BRAND.green : BRAND.red,
                     }}
                   >
-                    {connection.connected
+                    {isFullyConnected(connection)
                       ? 'Conectado: el asistente puede recibir y contestar mensajes.'
                       : `${plural(failingChecks, 'punto', 'puntos')} para revisar.`}
                   </Typography>

@@ -467,3 +467,41 @@ describe('Configuración del asistente · lo que se muestra es verdad', () => {
     expect(seccion('Estado del asistente').getAllByText('Activo')).toHaveLength(2)
   })
 })
+
+describe('Configuración del asistente · el estado no promete de más', () => {
+  test('sin webhook suscripto no dice "Conectado", aunque el backend diga connected', async () => {
+    const whatsapp = { ...AGENTE.channels.whatsapp, enabled: true }
+    await montar({ ...AGENTE, channels: { ...AGENTE.channels, whatsapp } })
+    mockCheck.mockResolvedValue({
+      ...CONECTADO,
+      checks: { ...CONECTADO.checks, webhook: { ok: false, detail: 'Sin suscripción.' } },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
+
+    expect(await seccion('Estado del asistente').findByText('Con problemas')).toBeTruthy()
+    expect(screen.getByText('1 punto para revisar.')).toBeTruthy()
+  })
+
+  test('al guardar credenciales nuevas se olvida la prueba anterior', async () => {
+    const whatsapp = { ...AGENTE.channels.whatsapp, enabled: true }
+    const agente = { ...AGENTE, channels: { ...AGENTE.channels, whatsapp } }
+    await montar(agente)
+    mockUpdate.mockResolvedValue(agente)
+    mockCheck.mockResolvedValue(CONECTADO)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Probar la conexión' }))
+    expect(await seccion('Estado del asistente').findByText('Conectado')).toBeTruthy()
+
+    escribir(screen.getByLabelText('Access Token'), 'otro-token-ficticio')
+    await guardar()
+
+    expect(await seccion('Estado del asistente').findByText('Sin probar')).toBeTruthy()
+  })
+
+  test('el aprendizaje dice "Con revisión" aunque se haya apagado la aprobación', async () => {
+    await montar({ ...AGENTE, learning: { enabled: true, requireApproval: false } })
+
+    expect(seccion('Estado del asistente').getByText('Con revisión')).toBeTruthy()
+  })
+})
