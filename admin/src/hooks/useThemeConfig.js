@@ -71,8 +71,12 @@ export const useTheme = () => {
 
   // Refs para auto-save
   const pendingChanges = useRef({})
-  const lastChangeTime = useRef(0)
   const autoSaveBlockedUntil = useRef(0)
+  const retryTimer = useRef(null)
+  const inFlight = useRef(false)
+  const queuedWhileInFlight = useRef(false)
+  const autoSaveEnabled = useRef(autoSave.enabled)
+  autoSaveEnabled.current = autoSave.enabled
 
   // ==========================================
   // CARGA INICIAL
@@ -82,11 +86,124 @@ export const useTheme = () => {
     return dispatch(fetchTheme())
   }, [dispatch])
 
+  // Con `error` se corta: antes, si la carga fallaba, theme seguía en null e
+  // isLoading volvía a false, así que este efecto la pedía otra vez, y otra,
+  // en un ciclo sin fin contra el backend. Reintentar es `refresh`.
   useEffect(() => {
-    if (!theme && !isLoading) {
+    if (!theme && !isLoading && !error) {
       loadTheme()
     }
-  }, [theme, isLoading, loadTheme])
+  }, [theme, isLoading, error, loadTheme])
+
+  // ==========================================
+  // AUTO-SAVE CON DEBOUNCE
+  // ==========================================
+
+  // Lee los cambios pendientes al momento de mandar, no al programarse. Antes
+  // recibía una foto tomada en el primer cambio y el efecto que la disparaba
+  // solo corría cuando hasChanges pasaba de false a true: lo que se escribía
+  // después de la primera tecla no viajaba, y la respuesta del servidor lo
+  // borraba de la pantalla.
+  const debouncedAutoSave = useMemo(() => {
+    const run = debounce(
+      async () => {
+        // Un reintento programado puede disparar después de que se apagó el
+        // auto-guardado: se vuelve a mirar acá, al momento de mandar.
+        if (!autoSaveEnabled.current) return
+
+        // De a uno: si dos PATCH viajan juntos y el más nuevo termina primero,
+        // el viejo llega último al backend y deja guardado el valor anterior.
+        if (inFlight.current) {
+          queuedWhileInFlight.current = true
+          return
+        }
+
+        const changes = { ...pendingChanges.current }
+        if (Object.keys(changes).length === 0) return
+
+        const cooldownRemaining = autoSaveBlockedUntil.current - Date.now()
+        if (cooldownRemaining > 0) {
+          clearTimeout(retryTimer.current)
+          retryTimer.current = setTimeout(run, cooldownRemaining + 50)
+          return
+        }
+
+        // Flatten changes para PATCH
+        const patchData = {}
+        Object.entries(changes).forEach(([path, value]) => {
+          const keys = path.split('.')
+          let current = patchData
+          keys.forEach((key, index) => {
+            if (index === keys.length - 1) {
+              current[key] = value
+            } else {
+              current[key] = current[key] || {}
+              current = current[key]
+            }
+          })
+        })
+
+        inFlight.current = true
+        const result = await dispatch(autoSaveTheme(patchData))
+        inFlight.current = false
+        const queued = queuedWhileInFlight.current
+        queuedWhileInFlight.current = false
+
+        if (autoSaveTheme.fulfilled.match(result)) {
+          autoSaveBlockedUntil.current = 0
+          dispatch(clearAutoSaveError())
+
+          Object.entries(changes).forEach(([path, value]) => {
+            if (pendingChanges.current[path] === value) {
+              delete pendingChanges.current[path]
+            }
+          })
+
+          // Lo que se escribió mientras viajaba este guardado sale en el próximo.
+          if (Object.keys(pendingChanges.current).length > 0 && autoSaveEnabled.current) run()
+          return
+        }
+
+        if (result.payload?.status === 429) {
+          autoSaveBlockedUntil.current = Date.now() + AUTO_SAVE_RETRY_COOLDOWN
+          if (autoSaveEnabled.current) run()
+          return
+        }
+
+        // Otro error: si se escribió algo mientras viajaba, se intenta con eso.
+        if (queued && autoSaveEnabled.current) run()
+      },
+      AUTO_SAVE_DELAY,
+      { maxWait: AUTO_SAVE_MAX_WAIT },
+    )
+    return run
+  }, [dispatch])
+
+  const scheduleAutoSave = useCallback(() => {
+    if (autoSaveEnabled.current) debouncedAutoSave()
+  }, [debouncedAutoSave])
+
+  // Al prender el auto-guardado (o al terminar un guardado manual) se manda lo
+  // que haya quedado pendiente.
+  // Al apagarlo se cancela lo programado, incluido un reintento por 429.
+  useEffect(() => {
+    if (!autoSave.enabled) {
+      debouncedAutoSave.cancel()
+      clearTimeout(retryTimer.current)
+      return
+    }
+    if (!isSaving && Object.keys(pendingChanges.current).length > 0) {
+      debouncedAutoSave()
+    }
+  }, [autoSave.enabled, isSaving, debouncedAutoSave])
+
+  // Cancelar debounce al desmontar
+  useEffect(() => {
+    return () => {
+      debouncedAutoSave.cancel()
+      clearTimeout(retryTimer.current)
+    }
+  }, [debouncedAutoSave])
 
   // ==========================================
   // ACTUALIZACIONES
@@ -95,10 +212,10 @@ export const useTheme = () => {
   const updateField = useCallback(
     (path, value) => {
       pendingChanges.current[path] = value
-      lastChangeTime.current = Date.now()
       dispatch(updateFieldAction({ path, value }))
+      scheduleAutoSave()
     },
-    [dispatch],
+    [dispatch, scheduleAutoSave],
   )
 
   const updateSection = useCallback(
@@ -107,81 +224,10 @@ export const useTheme = () => {
         pendingChanges.current[`${section}.${key}`] = value
       })
       dispatch(updateSectionAction({ section, data }))
+      scheduleAutoSave()
     },
-    [dispatch],
+    [dispatch, scheduleAutoSave],
   )
-
-  // ==========================================
-  // AUTO-SAVE CON DEBOUNCE
-  // ==========================================
-
-  const debouncedAutoSave = useMemo(
-    () =>
-      debounce(
-        async changes => {
-          if (Object.keys(changes).length === 0) return
-          if (Date.now() < autoSaveBlockedUntil.current) return
-
-          // Flatten changes para PATCH
-          const patchData = {}
-          Object.entries(changes).forEach(([path, value]) => {
-            const keys = path.split('.')
-            let current = patchData
-            keys.forEach((key, index) => {
-              if (index === keys.length - 1) {
-                current[key] = value
-              } else {
-                current[key] = current[key] || {}
-                current = current[key]
-              }
-            })
-          })
-
-          const result = await dispatch(autoSaveTheme(patchData))
-
-          if (autoSaveTheme.fulfilled.match(result)) {
-            autoSaveBlockedUntil.current = 0
-            dispatch(clearAutoSaveError())
-
-            Object.entries(changes).forEach(([path, value]) => {
-              if (pendingChanges.current[path] === value) {
-                delete pendingChanges.current[path]
-              }
-            })
-            return
-          }
-
-          if (result.payload?.status === 429) {
-            autoSaveBlockedUntil.current = Date.now() + AUTO_SAVE_RETRY_COOLDOWN
-          }
-        },
-        AUTO_SAVE_DELAY,
-        { maxWait: AUTO_SAVE_MAX_WAIT },
-      ),
-    [dispatch],
-  )
-
-  // Trigger auto-save cuando hay cambios
-  useEffect(() => {
-    if (hasChanges && autoSave.enabled && !isSaving) {
-      const cooldownRemaining = autoSaveBlockedUntil.current - Date.now()
-
-      if (cooldownRemaining > 0) {
-        const retryTimer = setTimeout(() => {
-          debouncedAutoSave({ ...pendingChanges.current })
-        }, cooldownRemaining + 50)
-
-        return () => clearTimeout(retryTimer)
-      }
-
-      debouncedAutoSave({ ...pendingChanges.current })
-    }
-  }, [hasChanges, autoSave.enabled, isSaving, debouncedAutoSave])
-
-  // Cancelar debounce al desmontar
-  useEffect(() => {
-    return () => debouncedAutoSave.cancel()
-  }, [debouncedAutoSave])
 
   // ==========================================
   // GUARDADO MANUAL
@@ -189,6 +235,7 @@ export const useTheme = () => {
 
   const save = useCallback(() => {
     debouncedAutoSave.cancel()
+    clearTimeout(retryTimer.current)
     pendingChanges.current = {}
     return dispatch(saveTheme(theme))
   }, [dispatch, theme, debouncedAutoSave])
@@ -240,9 +287,14 @@ export const useTheme = () => {
   // UTILIDADES
   // ==========================================
 
+  // Lo pendiente es anterior al reset: si se mandara después (un reintento por
+  // 429, un debounce en curso), deshacería el reset.
   const reset = useCallback(() => {
+    debouncedAutoSave.cancel()
+    clearTimeout(retryTimer.current)
+    pendingChanges.current = {}
     return dispatch(resetThemeToDefault())
-  }, [dispatch])
+  }, [dispatch, debouncedAutoSave])
 
   const toggleMaintenance = useCallback(
     enabled => {
@@ -266,9 +318,11 @@ export const useTheme = () => {
   )
 
   const discard = useCallback(() => {
+    debouncedAutoSave.cancel()
+    clearTimeout(retryTimer.current)
     dispatch(discardChanges())
     pendingChanges.current = {}
-  }, [dispatch])
+  }, [dispatch, debouncedAutoSave])
 
   const clear = useCallback(() => {
     dispatch(clearError())

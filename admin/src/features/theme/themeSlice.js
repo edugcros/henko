@@ -33,6 +33,9 @@ const initialState = {
 
   // Auto-save
   hasUnsavedChanges: false,
+  // Sube con cada edición. El auto-guardado anota cuál mandó para saber, al
+  // volver, si hubo cambios mientras viajaba.
+  revision: 0,
   lastSaved: null,
   autoSaveEnabled: true,
   autoSaveError: null,
@@ -91,11 +94,12 @@ export const saveTheme = createAsyncThunk('theme/save', async (themeData, { reje
 
 export const autoSaveTheme = createAsyncThunk(
   'theme/autoSave',
-  async (partialData, { rejectWithValue, dispatch }) => {
+  async (partialData, { rejectWithValue, dispatch, getState }) => {
+    const revision = getState().theme.revision
     try {
       const response = await apiPatchTheme(partialData)
       // Silencioso - no muestra loading global
-      return response
+      return { response, revision }
     } catch (error) {
       const errorPayload = {
         message: error.message,
@@ -214,6 +218,7 @@ const themeSlice = createSlice({
 
       target[keys[keys.length - 1]] = sanitizeThemeValue(value, keys[keys.length - 1])
       state.config = newConfig
+      state.revision += 1
       state.hasUnsavedChanges = !isEqual(newConfig, state.originalConfig)
     },
 
@@ -226,6 +231,7 @@ const themeSlice = createSlice({
           ...sanitizeThemeValue(data, section),
         },
       }
+      state.revision += 1
       state.hasUnsavedChanges = !isEqual(state.config, state.originalConfig)
     },
 
@@ -313,10 +319,16 @@ const themeSlice = createSlice({
 
       // Auto-save (silencioso)
       .addCase(autoSaveTheme.fulfilled, (state, action) => {
-        const savedConfig = sanitizeThemeValue(unwrapApiData(action.payload))
-        state.config = savedConfig
+        const savedConfig = sanitizeThemeValue(unwrapApiData(action.payload.response))
         state.originalConfig = deepClone(savedConfig)
-        state.hasUnsavedChanges = false
+        // Si se editó algo mientras viajaba, la respuesta no lo tiene: pisar
+        // `config` con ella borraba de la pantalla lo recién escrito.
+        if (state.revision === action.payload.revision) {
+          state.config = savedConfig
+          state.hasUnsavedChanges = false
+        } else {
+          state.hasUnsavedChanges = !isEqual(state.config, savedConfig)
+        }
         state.lastSaved = new Date().toISOString()
         state.autoSaveError = null
       })
@@ -324,6 +336,8 @@ const themeSlice = createSlice({
       // Reset
       .addCase(resetThemeToDefault.pending, state => {
         state.isLoading = true
+        // Un auto-guardado que vuelva después del reset no debe pisar la pantalla.
+        state.revision += 1
       })
       .addCase(resetThemeToDefault.fulfilled, (state, action) => {
         state.isLoading = false
