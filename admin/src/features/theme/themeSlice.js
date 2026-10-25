@@ -336,6 +336,8 @@ const themeSlice = createSlice({
       // Reset
       .addCase(resetThemeToDefault.pending, state => {
         state.isLoading = true
+        // Un auto-guardado que vuelva después del reset no debe pisar la pantalla.
+        state.revision += 1
       })
       .addCase(resetThemeToDefault.fulfilled, (state, action) => {
         state.isLoading = false

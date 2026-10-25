@@ -12,12 +12,13 @@ import { configureStore } from '@reduxjs/toolkit'
 
 const mockGet = jest.fn()
 const mockPatch = jest.fn()
+const mockReset = jest.fn()
 
 jest.unstable_mockModule('../features/theme/themeApi.js', () => ({
   getTheme: mockGet,
   updateTheme: jest.fn(),
   patchTheme: mockPatch,
-  resetTheme: jest.fn(),
+  resetTheme: mockReset,
   uploadImage: jest.fn(),
   exportTheme: jest.fn(),
   importTheme: jest.fn(),
@@ -111,6 +112,82 @@ describe('Diseño web · guardado automático', () => {
 
     expect(mockPatch).not.toHaveBeenCalled()
     expect(result.current.hasChanges).toBe(true)
+  }, 15000)
+})
+
+describe('Diseño web · guardado automático, casos de borde', () => {
+  test('manda de a un guardado: el siguiente sale cuando vuelve el anterior', async () => {
+    const { result } = montar()
+    await waitFor(() => expect(result.current.theme).toBeTruthy())
+
+    let soltar
+    mockPatch.mockImplementationOnce(
+      parche =>
+        new Promise(resolve => {
+          soltar = () => resolve(aplicarParche(parche))
+        }),
+    )
+
+    act(() => result.current.updateField('general.storeName', 'Kiosco L'))
+    await waitFor(() => expect(mockPatch).toHaveBeenCalledTimes(1), { timeout: 4000 })
+
+    // Pasa más que el debounce con el primero todavía en viaje.
+    act(() => result.current.updateField('general.storeName', 'Kiosco Lucía'))
+    await act(() => espera(2000))
+    expect(mockPatch).toHaveBeenCalledTimes(1)
+
+    await act(async () => soltar())
+
+    await waitFor(() => expect(mockPatch).toHaveBeenCalledTimes(2), { timeout: 4000 })
+    await waitFor(() => expect(guardado.general.storeName).toBe('Kiosco Lucía'), {
+      timeout: 4000,
+    })
+  }, 20000)
+
+  test('volver al diseño original descarta lo pendiente: no se manda después', async () => {
+    mockReset.mockImplementation(async () => copia(BASE))
+    const { result } = montar()
+    await waitFor(() => expect(result.current.theme).toBeTruthy())
+
+    act(() => result.current.toggleAutoSave())
+    act(() => result.current.updateField('general.storeName', 'Antes del reset'))
+    await act(async () => result.current.reset())
+    act(() => result.current.toggleAutoSave())
+    await act(() => espera(2000))
+
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.theme.general.storeName).toBe('Kiosco')
+  }, 15000)
+
+  test('un reintento por 429 no se manda si se apagó el guardado automático', async () => {
+    const { result } = montar()
+    await waitFor(() => expect(result.current.theme).toBeTruthy())
+
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] })
+    try {
+      mockPatch.mockRejectedValueOnce(
+        Object.assign(new Error('Demasiados pedidos'), { status: 429 }),
+      )
+
+      act(() => result.current.updateField('general.storeName', 'Kiosco L'))
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(1600)
+      })
+      expect(mockPatch).toHaveBeenCalledTimes(1)
+      // El reintento ya quedó programado para cuando termine la espera.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(1600)
+      })
+
+      act(() => result.current.toggleAutoSave())
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(20000)
+      })
+
+      expect(mockPatch).toHaveBeenCalledTimes(1)
+    } finally {
+      jest.useRealTimers()
+    }
   }, 15000)
 })
 

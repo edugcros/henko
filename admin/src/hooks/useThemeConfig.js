@@ -73,6 +73,8 @@ export const useTheme = () => {
   const pendingChanges = useRef({})
   const autoSaveBlockedUntil = useRef(0)
   const retryTimer = useRef(null)
+  const inFlight = useRef(false)
+  const queuedWhileInFlight = useRef(false)
   const autoSaveEnabled = useRef(autoSave.enabled)
   autoSaveEnabled.current = autoSave.enabled
 
@@ -105,6 +107,17 @@ export const useTheme = () => {
   const debouncedAutoSave = useMemo(() => {
     const run = debounce(
       async () => {
+        // Un reintento programado puede disparar después de que se apagó el
+        // auto-guardado: se vuelve a mirar acá, al momento de mandar.
+        if (!autoSaveEnabled.current) return
+
+        // De a uno: si dos PATCH viajan juntos y el más nuevo termina primero,
+        // el viejo llega último al backend y deja guardado el valor anterior.
+        if (inFlight.current) {
+          queuedWhileInFlight.current = true
+          return
+        }
+
         const changes = { ...pendingChanges.current }
         if (Object.keys(changes).length === 0) return
 
@@ -130,7 +143,11 @@ export const useTheme = () => {
           })
         })
 
+        inFlight.current = true
         const result = await dispatch(autoSaveTheme(patchData))
+        inFlight.current = false
+        const queued = queuedWhileInFlight.current
+        queuedWhileInFlight.current = false
 
         if (autoSaveTheme.fulfilled.match(result)) {
           autoSaveBlockedUntil.current = 0
@@ -150,7 +167,11 @@ export const useTheme = () => {
         if (result.payload?.status === 429) {
           autoSaveBlockedUntil.current = Date.now() + AUTO_SAVE_RETRY_COOLDOWN
           if (autoSaveEnabled.current) run()
+          return
         }
+
+        // Otro error: si se escribió algo mientras viajaba, se intenta con eso.
+        if (queued && autoSaveEnabled.current) run()
       },
       AUTO_SAVE_DELAY,
       { maxWait: AUTO_SAVE_MAX_WAIT },
@@ -164,8 +185,14 @@ export const useTheme = () => {
 
   // Al prender el auto-guardado (o al terminar un guardado manual) se manda lo
   // que haya quedado pendiente.
+  // Al apagarlo se cancela lo programado, incluido un reintento por 429.
   useEffect(() => {
-    if (autoSave.enabled && !isSaving && Object.keys(pendingChanges.current).length > 0) {
+    if (!autoSave.enabled) {
+      debouncedAutoSave.cancel()
+      clearTimeout(retryTimer.current)
+      return
+    }
+    if (!isSaving && Object.keys(pendingChanges.current).length > 0) {
       debouncedAutoSave()
     }
   }, [autoSave.enabled, isSaving, debouncedAutoSave])
@@ -260,9 +287,14 @@ export const useTheme = () => {
   // UTILIDADES
   // ==========================================
 
+  // Lo pendiente es anterior al reset: si se mandara después (un reintento por
+  // 429, un debounce en curso), deshacería el reset.
   const reset = useCallback(() => {
+    debouncedAutoSave.cancel()
+    clearTimeout(retryTimer.current)
+    pendingChanges.current = {}
     return dispatch(resetThemeToDefault())
-  }, [dispatch])
+  }, [dispatch, debouncedAutoSave])
 
   const toggleMaintenance = useCallback(
     enabled => {
