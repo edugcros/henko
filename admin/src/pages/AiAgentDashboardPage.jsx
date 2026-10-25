@@ -359,7 +359,9 @@ const AiAgentDashboardPage = () => {
 
   const handleTest = useCallback(async () => {
     const message = testInput.trim()
-    if (!message) return
+    // La prueba es real (guarda conversación y lead, gasta créditos): con Enter se podía mandar
+    // otra mientras la primera seguía en curso, porque solo el botón estaba deshabilitado.
+    if (!message || testing) return
 
     setTesting(true)
     setTestError('')
@@ -373,12 +375,13 @@ const AiAgentDashboardPage = () => {
     } finally {
       setTesting(false)
     }
-  }, [testInput])
+  }, [testInput, testing])
 
   const conv = metrics?.conversations || {}
   const leads = metrics?.leads || {}
   const recovery = metrics?.cartRecovery || {}
   const sales = metrics?.salesInfluence || {}
+  const currency = metrics?.currency || 'ARS'
   const periodLabel = PERIOD_OPTIONS.find(option => option.value === period)?.label || ''
 
   if (loading && !metrics) {
@@ -472,7 +475,9 @@ const AiAgentDashboardPage = () => {
       <Stack spacing={4} sx={{ opacity: loading ? 0.55 : 1, transition: 'opacity .15s' }}>
         {/* Lo que el backend ya mandaba y la pantalla nunca mostraba. */}
         <Box component="section" aria-label="Ventas del asistente">
-          <SectionTitle hint={`${periodLabel}. Compras de clientes que hablaron con el asistente.`}>
+          <SectionTitle
+            hint={`${periodLabel}. Pedidos con algún producto que el asistente agregó al carrito de ese cliente en los 30 días previos.`}
+          >
             Ventas del asistente
           </SectionTitle>
           <StatGrid
@@ -480,9 +485,9 @@ const AiAgentDashboardPage = () => {
             items={[
               {
                 label: 'Ventas influenciadas',
-                value: formatPesos(sales.aiInfluencedRevenue),
+                value: formatPesos(sales.aiInfluencedRevenue, currency),
                 color: BRAND.green,
-                hint: `de ${formatPesos(sales.totalRevenue)} vendidos en total`,
+                hint: `de ${formatPesos(sales.totalRevenue, currency)} vendidos en total`,
               },
               {
                 label: 'Pedidos influenciados',
@@ -660,6 +665,7 @@ const AiAgentDashboardPage = () => {
                   sx={{ display: 'block', mt: 0.5, color: BRAND.muted }}
                 >
                   {`${item.attempts ?? 0} ${item.attempts === 1 ? 'intento' : 'intentos'}`}
+                  {item.scheduledAt ? ` · programado ${formatDate(item.scheduledAt)}` : ''}
                   {item.sentAt ? ` · enviado ${formatDate(item.sentAt)}` : ''}
                 </Typography>
               </Paper>

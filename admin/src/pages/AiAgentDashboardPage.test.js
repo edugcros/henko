@@ -307,7 +307,9 @@ describe('Métricas · ventas del asistente', () => {
   test('cada sección dice de qué período son las cifras', async () => {
     await montar()
 
-    expect(screen.getByText(/Últimos 30 días\. Compras de clientes/)).toBeTruthy()
+    expect(
+      screen.getByText(/Últimos 30 días\. Pedidos con algún producto que el asistente agregó/),
+    ).toBeTruthy()
   })
 
   test('los «leads calientes» se llaman por lo que cuentan: puntaje 75 o más', async () => {
@@ -501,6 +503,33 @@ describe('Métricas · en el celular', () => {
 
     expect(await screen.findByText('Lucía Pérez')).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.getByText(/1 intento · enviado/)).toBeTruthy()
+    expect(screen.getByText(/1 intento · programado .* · enviado/)).toBeTruthy()
+  })
+})
+
+describe('Métricas · lo que pidió la revisión', () => {
+  test('las ventas se muestran en la moneda de la tienda', async () => {
+    mockMetrics.mockResolvedValue({ ...METRICAS, currency: 'USD' })
+
+    await montar()
+
+    const ventas = within(screen.getByRole('region', { name: 'Ventas del asistente' }))
+    expect(
+      ventas.getByText(content => content.startsWith('US$') && content.includes('320.000')),
+    ).toBeTruthy()
+  })
+
+  test('mientras una prueba está en curso, Enter no manda otra', async () => {
+    await montar()
+    mockTest.mockReturnValue(new Promise(() => {}))
+    const campo = screen.getByRole('textbox', { name: 'Mensaje de prueba' })
+
+    fireEvent.change(campo, { target: { value: 'Hola' } })
+    fireEvent.keyDown(campo, { key: 'Enter' })
+    await waitFor(() => expect(mockTest).toHaveBeenCalledTimes(1))
+    fireEvent.keyDown(campo, { key: 'Enter' })
+    fireEvent.keyDown(campo, { key: 'Enter' })
+
+    expect(mockTest).toHaveBeenCalledTimes(1)
   })
 })

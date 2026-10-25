@@ -238,3 +238,43 @@ describe('base de conocimiento · contadores por estado', () => {
     expect(res.body.meta.counters.pending_approval).toBeUndefined()
   })
 })
+
+describe('métricas del asistente · moneda', () => {
+  let tenantContext
+  let adminSession
+  let mongod
+
+  beforeAll(async () => {
+    mongod = await crearMongoEnMemoria()
+    await mongoose.connect(mongod.getUri())
+
+    tenantContext = await createTestTenant()
+    adminSession = await createTestUser({
+      tenantId: tenantContext.tenant._id,
+      email: 'metricas-admin@test.com',
+      role: 'admin',
+    })
+  })
+
+  afterAll(async () => {
+    await mongoose.disconnect()
+    await mongod?.stop()
+  })
+
+  // Las ventas influenciadas están en la moneda de la tienda: el panel la necesita para no
+  // mostrarlas siempre como pesos.
+  test('devuelve la moneda de la tienda junto con las cifras', async () => {
+    const res = await request(app)
+      .get('/api/ai-agent/metrics?period=30d')
+      .set(
+        authHeaders({
+          token: adminSession.token,
+          domain: tenantContext.adminDomain,
+        }),
+      )
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data.currency).toBe(tenantContext.tenant.currency || 'ARS')
+    expect(res.body.data.salesInfluence).toBeDefined()
+  })
+})
