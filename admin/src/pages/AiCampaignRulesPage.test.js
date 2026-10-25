@@ -24,7 +24,15 @@ jest.unstable_mockModule('../services/aiCampaignRuleService.js', () => ({
   deleteCampaignRule: mockDelete,
 }))
 
-const { default: AiCampaignRulesPage } = await import('./AiCampaignRulesPage.jsx')
+const {
+  default: AiCampaignRulesPage,
+  EMPTY_FORM,
+  describeTrigger,
+  formatDelay,
+  renderPreview,
+  toPayload,
+  validateRule,
+} = await import('./AiCampaignRulesPage.jsx')
 
 const CARRITO = {
   _id: 'r1',
@@ -85,7 +93,7 @@ describe('Campañas · lo que se ve', () => {
     expect(carrito.getByText(/te quedó \{\{productName\}\}/)).toBeTruthy()
     expect(carrito.getByText(/45 min/)).toBeTruthy()
     expect(carrito.getByText(/10:00/)).toBeTruthy()
-    expect(carrito.getByText(/Enviados: 12/)).toBeTruthy()
+    expect(carrito.getByText('12 enviados · 3 convertidos')).toBeTruthy()
 
     const winback = within(tarjeta('Volver a comprar'))
     expect(winback.getByText('Inactiva')).toBeTruthy()
@@ -285,5 +293,266 @@ describe('Campañas · eliminar', () => {
     await userEvent.click(dialogo().getByRole('button', { name: 'Eliminar' }))
 
     expect(await screen.findByText('Error al eliminar.')).toBeTruthy()
+  })
+})
+
+describe('Campañas · lo que no se ejecuta, dicho', () => {
+  test('una regla que no es de carrito abandonado avisa que todavía no se ejecuta', async () => {
+    await montar()
+
+    const winback = within(tarjeta('Volver a comprar'))
+    expect(winback.getByText('Todavía no se ejecuta')).toBeTruthy()
+    expect(winback.getByText(/solo ejecuta reglas de carrito abandonado/)).toBeTruthy()
+
+    expect(
+      within(tarjeta('Recuperar carrito por WhatsApp')).queryByText('Todavía no se ejecuta'),
+    ).toBeNull()
+  })
+
+  test('en el formulario, elegir un tipo que no se ejecuta lo avisa', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+    expect(dialogo().queryByText(/se guarda, pero no le va a escribir a nadie/)).toBeNull()
+
+    await userEvent.click(dialogo().getByRole('combobox', { name: 'Tipo' }))
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Post-compra (todavía no se ejecuta)' }),
+    )
+
+    expect(dialogo().getByText(/se guarda, pero no le va a escribir a nadie/)).toBeTruthy()
+  })
+
+  test('el disparador se lee en castellano, con el monto en pesos', async () => {
+    await montar()
+
+    expect(
+      within(tarjeta('Recuperar carrito por WhatsApp')).getByText(
+        /Espera 45 min · Hasta 3 intentos · Carritos desde \$\s?5\.000 · De 10:00 a 19:00 · 8 h entre contactos/,
+      ),
+    ).toBeTruthy()
+  })
+
+  test('el encabezado cuenta las reglas activas', async () => {
+    await montar()
+
+    expect(screen.getByText(/1 regla activa de 2\./)).toBeTruthy()
+  })
+})
+
+describe('Campañas · el formulario valida antes de mandar', () => {
+  const abrirNueva = async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+    escribir(dialogo().getByLabelText('Nombre'), 'Carrito')
+    escribir(dialogo().getByLabelText('Plantilla de mensaje'), 'Hola')
+  }
+
+  test('una espera de 0 minutos no se manda y avisa el rango', async () => {
+    await montar()
+    await abrirNueva()
+
+    escribir(dialogo().getByLabelText('Delay (min)'), '0')
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+
+    expect(
+      await dialogo().findByText(/La espera tiene que ser de 1 a 43\.200 minutos/),
+    ).toBeTruthy()
+    expect(mockUpsert).not.toHaveBeenCalled()
+  })
+
+  test('un número vacío queda vacío mientras se escribe y no se puede guardar', async () => {
+    await montar()
+    await abrirNueva()
+
+    escribir(dialogo().getByLabelText('Max intentos'), '')
+    expect(dialogo().getByLabelText('Max intentos').value).toBe('')
+
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+
+    expect(await dialogo().findByText('Los intentos tienen que ser de 1 a 5.')).toBeTruthy()
+    expect(mockUpsert).not.toHaveBeenCalled()
+  })
+
+  test('con la plantilla de Meta activada hace falta su nombre', async () => {
+    await montar()
+    await abrirNueva()
+
+    await userEvent.click(
+      dialogo().getByRole('switch', { name: 'Usar template aprobado por Meta' }),
+    )
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+
+    expect(
+      await dialogo().findByText('Falta el nombre de la plantilla aprobada por Meta.'),
+    ).toBeTruthy()
+  })
+
+  test('con el cupón activado hace falta el código, y se manda en mayúsculas', async () => {
+    await montar()
+    await abrirNueva()
+
+    await userEvent.click(dialogo().getByRole('switch', { name: 'Incluir cupón de descuento' }))
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+    expect(await dialogo().findByText('Falta el código del cupón.')).toBeTruthy()
+
+    escribir(dialogo().getByLabelText('Código de cupón'), 'vuelve10')
+    expect(dialogo().getByLabelText('Código de cupón').value).toBe('VUELVE10')
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => expect(mockUpsert.mock.calls[0][0].offer.couponCode).toBe('VUELVE10'))
+  })
+
+  test('el error del servidor aparece dentro del diálogo y se quita al seguir escribiendo', async () => {
+    await montar()
+    mockUpsert.mockRejectedValueOnce(new Error('Algo falló'))
+    await abrirNueva()
+
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar' }))
+    expect(await dialogo().findByText('Algo falló')).toBeTruthy()
+
+    escribir(dialogo().getByLabelText('Nombre'), 'Carrito 2')
+    expect(dialogo().queryByText('Algo falló')).toBeNull()
+  })
+})
+
+describe('Campañas · la plantilla del mensaje', () => {
+  test('tocar una variable la inserta en la plantilla', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+    escribir(dialogo().getByLabelText('Plantilla de mensaje'), 'Llevás ')
+    await userEvent.click(dialogo().getByRole('button', { name: '{{itemCount}}' }))
+
+    expect(dialogo().getByLabelText('Plantilla de mensaje').value).toContain('{{itemCount}}')
+  })
+
+  test('muestra cómo le llega el mensaje, con datos de ejemplo', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+    escribir(dialogo().getByLabelText('Plantilla de mensaje'), 'Hola {{customerName}}')
+
+    expect(dialogo().getByText('Hola Lucía')).toBeTruthy()
+  })
+
+  test('con canal Email no aparece la plantilla de WhatsApp', async () => {
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+    expect(dialogo().getByRole('switch', { name: 'Usar template aprobado por Meta' })).toBeTruthy()
+
+    await userEvent.click(dialogo().getByRole('combobox', { name: 'Canal' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Email' }))
+
+    expect(dialogo().queryByRole('switch', { name: 'Usar template aprobado por Meta' })).toBeNull()
+  })
+})
+
+describe('Campañas · eliminar, lo nuevo', () => {
+  test('mientras elimina no se puede apretar dos veces', async () => {
+    await montar()
+    mockDelete.mockReturnValue(new Promise(() => {}))
+
+    await userEvent.click(
+      within(tarjeta('Volver a comprar')).getByRole('button', { name: 'Eliminar' }),
+    )
+    await userEvent.click(dialogo().getByRole('button', { name: 'Eliminar' }))
+
+    expect(dialogo().getByRole('button', { name: 'Eliminando...' }).disabled).toBe(true)
+    expect(mockDelete).toHaveBeenCalledTimes(1)
+  })
+
+  test('si falla, el error aparece en el diálogo, que sigue abierto', async () => {
+    await montar()
+    mockDelete.mockRejectedValueOnce({ response: { data: { message: 'No existe' } } })
+
+    await userEvent.click(
+      within(tarjeta('Volver a comprar')).getByRole('button', { name: 'Eliminar' }),
+    )
+    await userEvent.click(dialogo().getByRole('button', { name: 'Eliminar' }))
+
+    expect(await dialogo().findByText('No existe')).toBeTruthy()
+  })
+
+  test('sin reglas, el botón de la pantalla vacía abre el formulario', async () => {
+    await montar({ items: [], readiness: null })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Crear la primera regla' }))
+
+    expect(dialogo().getByText('Nueva regla de campaña')).toBeTruthy()
+  })
+})
+
+describe('Campañas · armado', () => {
+  test('validateRule acepta los valores por omisión con nombre y mensaje', () => {
+    expect(validateRule({ ...EMPTY_FORM, name: 'A', messageTemplate: 'B' })).toBe('')
+  })
+
+  test('validateRule rechaza un horario mal escrito', () => {
+    const form = {
+      ...EMPTY_FORM,
+      name: 'A',
+      messageTemplate: 'B',
+      trigger: { ...EMPTY_FORM.trigger, businessHours: { start: '9', end: '20:00' } },
+    }
+    expect(validateRule(form)).toMatch(/HH:mm/)
+  })
+
+  test('toPayload limpia espacios, saca el id y pasa el cupón a mayúsculas', () => {
+    const payload = toPayload({
+      ...EMPTY_FORM,
+      _id: 'x',
+      name: '  A  ',
+      messageTemplate: ' B ',
+      offer: { enabled: true, couponCode: ' abc ' },
+    })
+    expect(payload._id).toBeUndefined()
+    expect(payload.name).toBe('A')
+    expect(payload.messageTemplate).toBe('B')
+    expect(payload.offer.couponCode).toBe('ABC')
+  })
+
+  test('describeTrigger dice «a cualquier hora» si no se limita al horario comercial', () => {
+    expect(describeTrigger({ onlyBusinessHours: false })).toContain('A cualquier hora')
+    expect(describeTrigger({ maxAttempts: 1 })).toContain('1 intento')
+  })
+
+  test('renderPreview reemplaza todas las variables conocidas', () => {
+    expect(renderPreview('{{customerName}} · {{cartTotal}} · {{otra}}')).toBe(
+      'Lucía · $ 84.900 · {{otra}}',
+    )
+  })
+})
+
+describe('Campañas · en el celular', () => {
+  afterEach(() => {
+    delete window.matchMedia
+  })
+
+  test('el formulario ocupa toda la pantalla', async () => {
+    window.matchMedia = query => ({
+      matches: query === '(max-width:600px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })
+    await montar()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nueva regla' }))
+
+    expect(screen.getByRole('dialog').className).toMatch(/MuiDialog-paperFullScreen|fullScreen/)
+  })
+})
+
+describe('Campañas · esperas largas', () => {
+  test('una espera larga se dice en horas o días', () => {
+    expect(formatDelay(45)).toBe('45 min')
+    expect(formatDelay(60)).toBe('1 hora')
+    expect(formatDelay(120)).toBe('2 horas')
+    expect(formatDelay(1440)).toBe('1 día')
+    expect(formatDelay(43200)).toBe('30 días')
+    expect(formatDelay(90)).toBe('90 min')
   })
 })
