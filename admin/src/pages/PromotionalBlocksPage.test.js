@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
@@ -46,7 +46,11 @@ jest.unstable_mockModule('../features/product/productService.js', () => ({
 const { default: promotionalBlocksReducer } =
   await import('../features/promotionalBlocks/promotionalBlocksSlice')
 const { default: productReducer } = await import('../features/product/productSlice.js')
-const { default: PromotionalBlocksPage } = await import('./PromotionalBlocksPage.js')
+const {
+  default: PromotionalBlocksPage,
+  getBlockStatus,
+  validateBlock,
+} = await import('./PromotionalBlocksPage.js')
 
 const dias = n => new Date(Date.now() + n * 86400000).toISOString()
 
@@ -130,8 +134,8 @@ describe('Bloques promocionales · listado', () => {
 
     expect(await screen.findByText('Semana del ahorro')).toBeInTheDocument()
     expect(within(fila('Liquidación de invierno')).getByText('Programado')).toBeInTheDocument()
-    expect(within(fila('Hot Sale')).getByText('Expirado')).toBeInTheDocument()
-    expect(within(fila('Semana del ahorro')).getByText('Activo')).toBeInTheDocument()
+    expect(within(fila('Hot Sale')).getByText('Vencido')).toBeInTheDocument()
+    expect(within(fila('Semana del ahorro')).getByText('En la tienda')).toBeInTheDocument()
   })
 
   test('buscar consulta al backend con el texto', async () => {
@@ -201,7 +205,7 @@ describe('Bloques promocionales · activar y eliminar', () => {
     await userEvent.click(within(fila('Semana del ahorro')).getByRole('switch'))
     expect(mockToggle).not.toHaveBeenCalled()
 
-    await userEvent.click(dialogo().getByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(dialogo().getByRole('button', { name: 'Pausar' }))
 
     await waitFor(() => expect(mockToggle).toHaveBeenCalled())
     expect(mockToggle.mock.calls[0]).toEqual(['b1', false])
@@ -219,5 +223,239 @@ describe('Bloques promocionales · activar y eliminar', () => {
 
     await waitFor(() => expect(mockDelete).toHaveBeenCalled())
     expect(mockDelete.mock.calls[0][0]).toBe('b3')
+  })
+})
+
+const resumen = () => within(screen.getByRole('region', { name: 'Resumen de bloques' }))
+
+describe('Bloques promocionales · lo que se ve en la tienda', () => {
+  test('el resumen cuenta todos los bloques y filtra al tocarlo', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    expect(resumen().getByRole('button', { name: 'En la tienda 1' })).toBeInTheDocument()
+    expect(resumen().getByRole('button', { name: 'Todos 3' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await userEvent.click(resumen().getByRole('button', { name: /^Vencidos/ }))
+
+    expect(screen.getByText('Hot Sale')).toBeInTheDocument()
+    expect(screen.queryByText('Semana del ahorro')).toBeNull()
+  })
+
+  test('pide todos los bloques (hasta 100) para que el resumen no cuente solo una página', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    expect(mockList).toHaveBeenCalledWith(expect.objectContaining({ limit: 100, page: 1 }))
+  })
+
+  test('un bloque fuera del inicio dice que no se muestra, y uno oculto dice que está oculto', async () => {
+    mockList.mockResolvedValue({
+      data: [
+        { ...VIGENTE, _id: 'c1', title: 'En el carrito', placement: 'cart' },
+        { ...VIGENTE, _id: 'c2', title: 'Escondido', visibility: 'hidden' },
+      ],
+      meta: { total: 2 },
+    })
+    montar()
+
+    await screen.findByText('En el carrito')
+    expect(within(fila('En el carrito')).getByText('No se muestra')).toBeInTheDocument()
+    expect(within(fila('Escondido')).getByText('Oculto')).toBeInTheDocument()
+  })
+
+  test('getBlockStatus explica por qué se ve o no', () => {
+    const ahora = Date.now()
+    expect(getBlockStatus({ ...VIGENTE, isActive: false }, ahora)).toBe('paused')
+    expect(getBlockStatus({ ...VIGENTE, placement: 'checkout' }, ahora)).toBe('nowhere')
+    expect(getBlockStatus(PROGRAMADO, ahora)).toBe('scheduled')
+    expect(getBlockStatus(VIGENTE, ahora)).toBe('live')
+  })
+
+  test('si falla la carga deja reintentar', async () => {
+    mockList.mockRejectedValueOnce(new Error('Sin conexión'))
+    montar()
+
+    expect(await screen.findByText('Sin conexión')).toBeInTheDocument()
+    mockList.mockResolvedValue(RESPUESTA)
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    expect(await screen.findByText('Semana del ahorro')).toBeInTheDocument()
+  })
+})
+
+describe('Bloques promocionales · elegir productos', () => {
+  test('busca en todo el catálogo, en el servidor', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo bloque' }))
+    fireEvent.change(dialogo().getByLabelText('Buscar productos para agregar'), {
+      target: { value: 'termo' },
+    })
+
+    await waitFor(() =>
+      expect(mockAdminProducts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: 'termo', limit: 24 }),
+      ),
+    )
+    expect(mockProducts).not.toHaveBeenCalled()
+  })
+
+  test('al editar, un producto que no está en la búsqueda se muestra con su nombre', async () => {
+    mockAdminProducts.mockResolvedValue({ data: [BOTELLA] })
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar Semana del ahorro' }))
+
+    expect(dialogo().getByRole('article', { name: 'Mochila urbana' })).toBeInTheDocument()
+    expect(dialogo().queryByText('p1')).toBeNull()
+  })
+
+  test('con un descuento avisa que se manda un email a quienes lo tienen en favoritos', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar Semana del ahorro' }))
+
+    expect(dialogo().getByText(/avisa por email a los clientes/)).toBeInTheDocument()
+  })
+
+  test('al llegar al máximo no deja agregar más', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo bloque' }))
+    fireEvent.change(dialogo().getByLabelText('Máximo'), { target: { value: '1' } })
+    await userEvent.click(await dialogo().findByText('Mochila urbana'))
+
+    const botella = dialogo().getByText('Botella térmica').closest('[role="listitem"]')
+    expect(botella).toBeDisabled()
+    expect(within(botella).getByText('Llegaste al máximo')).toBeInTheDocument()
+  })
+
+  test('una búsqueda lenta no pisa el resultado de la más reciente', async () => {
+    let soltarPrimera
+    mockAdminProducts
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            soltarPrimera = () => resolve({ data: [MOCHILA] })
+          }),
+      )
+      .mockResolvedValueOnce({ data: [BOTELLA] })
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo bloque' }))
+    fireEvent.change(dialogo().getByLabelText('Buscar productos para agregar'), {
+      target: { value: 'bot' },
+    })
+    await dialogo().findByText('Botella térmica')
+
+    await act(async () => soltarPrimera())
+
+    expect(dialogo().getByText('Botella térmica')).toBeInTheDocument()
+    expect(dialogo().queryByText('Mochila urbana')).toBeNull()
+  })
+})
+
+describe('Bloques promocionales · validación antes de mandar', () => {
+  test('una descripción de más de 300 caracteres se marca y no se manda', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo bloque' }))
+    fireEvent.change(campoTitulo(), { target: { value: 'Novedades' } })
+    fireEvent.change(dialogo().getByLabelText('Descripción'), {
+      target: { value: 'a'.repeat(301) },
+    })
+    await userEvent.click(dialogo().getByRole('button', { name: 'Crear bloque' }))
+
+    expect(dialogo().getByText('Hasta 300 caracteres.')).toBeInTheDocument()
+    expect(dialogo().getByText('Revisá 1 campo marcado.')).toBeInTheDocument()
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  test('un descuento de más de 100 se marca', async () => {
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Editar Semana del ahorro' }))
+    fireEvent.change(dialogo().getByLabelText('% de descuento'), { target: { value: '150' } })
+    await userEvent.click(dialogo().getByRole('button', { name: 'Guardar cambios' }))
+
+    expect(dialogo().getByText('Entre 0 y 100.')).toBeInTheDocument()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  test('validateBlock copia los límites del backend', () => {
+    const base = {
+      title: 'Ofertas',
+      slug: '',
+      description: '',
+      startDate: '2026-11-01T10:00',
+      endDate: '2026-11-08T10:00',
+      maxItems: 5,
+      priority: 1,
+      products: [],
+    }
+    expect(validateBlock(base)).toEqual({})
+    expect(validateBlock({ ...base, title: 'x'.repeat(121) })).toHaveProperty('title')
+    expect(validateBlock({ ...base, endDate: '2026-10-01T10:00' })).toHaveProperty('endDate')
+    expect(validateBlock({ ...base, maxItems: 21 })).toHaveProperty('maxItems')
+    expect(validateBlock({ ...base, priority: 1.5 })).toHaveProperty('priority')
+    expect(
+      validateBlock({
+        ...base,
+        products: [
+          { productId: 'p1', discountPercentage: 10, priority: 1, customLabel: 'x'.repeat(81) },
+        ],
+      }),
+    ).toHaveProperty('producto:p1:customLabel')
+  })
+
+  test('si el backend rechaza, el error queda adentro del formulario y no se pierde lo escrito', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('Ya existe un bloque con esa dirección'))
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nuevo bloque' }))
+    fireEvent.change(campoTitulo(), { target: { value: 'Novedades' } })
+    await userEvent.click(dialogo().getByRole('button', { name: 'Crear bloque' }))
+
+    expect(await dialogo().findByText('Ya existe un bloque con esa dirección')).toBeInTheDocument()
+    expect(campoTitulo().value).toBe('Novedades')
+  })
+})
+
+describe('Bloques promocionales · confirmaciones', () => {
+  test('activar un bloque con descuentos avisa del email a clientes', async () => {
+    mockList.mockResolvedValue({
+      data: [{ ...VIGENTE, isActive: false }],
+      meta: { total: 1 },
+    })
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(within(fila('Semana del ahorro')).getByRole('switch'))
+
+    expect(dialogo().getByText(/avisa por email a los clientes/)).toBeInTheDocument()
+    expect(dialogo().getByRole('button', { name: 'Activar' })).toBeInTheDocument()
+  })
+
+  test('si eliminar falla, el diálogo queda abierto con el motivo', async () => {
+    mockDelete.mockRejectedValueOnce(new Error('No encontrado'))
+    montar()
+    await screen.findByText('Semana del ahorro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Eliminar Hot Sale' }))
+    await userEvent.click(dialogo().getByRole('button', { name: 'Eliminar definitivamente' }))
+
+    expect(await dialogo().findByText('No encontrado')).toBeInTheDocument()
   })
 })

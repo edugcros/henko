@@ -1,36 +1,40 @@
-// 📁 src/pages/PromotionalBlocks/PromotionalBlocksPage.jsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+// 📁 src/pages/PromotionalBlocksPage.js
+//
+// Bloques promocionales: las secciones de ofertas, destacados y novedades que
+// se ven en la tienda. Lo que esta pantalla afirma sale del producto:
+//
+// - La tienda pide SOLO los bloques con placement 'home' (Home.js, OurStore.js
+//   y SingleProduct.js en website/src/Pages), y los muestra en las tres
+//   páginas. Las otras ubicaciones las acepta el backend pero no se ven en
+//   ningún lado, así que acá se dicen como tales en vez de ofrecerse.
+// - Un bloque vigente con productos en descuento dispara avisos por email a
+//   quienes tienen esos productos en favoritos
+//   (backend/src/services/wishlistPromotionNotifierService.js).
+// - Los límites de validación copian backend/src/validators/
+//   promotionalBlockValidator.js y el modelo; el backend responde un
+//   "Errores de validación." genérico que no dice qué campo falló.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'react-toastify'
-
-// MUI
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
-  CardMedia,
-  Chip,
+  ButtonBase,
   CircularProgress,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
-  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
   InputAdornment,
-  InputLabel,
+  LinearProgress,
   MenuItem,
   Pagination,
   Paper,
-  Select,
-  Skeleton,
+  Snackbar,
   Stack,
   Switch,
   Table,
@@ -42,716 +46,586 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material'
-
-// Icons
 import {
-  BsArrowLeft,
-  BsCalendar,
-  BsCheckCircleFill,
-  BsClock,
-  BsEye,
-  BsEyeSlash,
-  BsPencil,
-  BsPlus,
-  BsSearch,
-  BsTrash,
-  BsXCircleFill,
-} from 'react-icons/bs'
+  Add as AddIcon,
+  ArrowBack as ArrowBackIcon,
+  Close as CloseIcon,
+  DeleteOutlined as DeleteIcon,
+  EditOutlined as EditIcon,
+  Search as SearchIcon,
+} from '@mui/icons-material'
 
-// Redux
-import { getProducts } from '@features/product/productSlice'
-
+import productService from '@features/product/productService'
 import {
+  clearPromotionalBlocksError,
+  clearPromotionalBlocksSuccess,
   createPromotionalBlock,
   deletePromotionalBlock,
   fetchPromotionalBlocks,
   togglePromotionalBlockStatus,
   updatePromotionalBlock,
-  clearPromotionalBlocksError,
-  clearPromotionalBlocksSuccess,
 } from '@features/promotionalBlocks/promotionalBlocksSlice'
 
-import {
-  selectPromotionalBlocks,
-  selectPromotionalBlocksError,
-  selectPromotionalBlocksMeta,
-  selectPromotionalBlocksSuccess,
-  selectPromotionalBlocksIsFetching,
-  selectPromotionalBlocksIsSaving,
-  selectPromotionalBlocksIsDeleting,
-  selectPromotionalBlocksIsToggling,
-} from '@features/promotionalBlocks/promotionalBlocksSelectors'
-import { Newprimary } from '../../../website/src/theme/colors'
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+  green: '#047857',
+  amber: '#b45309',
+  red: '#b42318',
+}
 
-// =====================================================
-// Configuración
-// =====================================================
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
 
-const CONFIG = {
-  DEFAULT_LIMIT: 10,
-  DEFAULT_MAX_ITEMS: 5,
-  DEFAULT_DURATION_DAYS: 7,
-  DEBOUNCE_MS: 300,
-  MAX_PRODUCTS_PER_BLOCK: 20,
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
+
+// El backend devuelve hasta 100 por pedido. Se traen todos los que cumplen los
+// filtros para que el resumen cuente el total y no solo la página visible.
+const FETCH_LIMIT = 100
+const PAGE_SIZE = 10
+const PICKER_LIMIT = 24
+const DEBOUNCE_MS = 300
+const DEFAULT_DURATION_DAYS = 7
+
+export const LIMITS = {
+  title: 120,
+  slug: 140,
+  description: 300,
+  maxItems: 20,
+  priority: 100,
+  customTitle: 120,
+  customLabel: 80,
 }
 
 const BLOCK_TYPES = [
-  {
-    value: 'weekly_offers',
-    label: 'Ofertas de la semana',
-  },
-  {
-    value: 'featured_products',
-    label: 'Productos destacados',
-  },
-  {
-    value: 'new_arrivals',
-    label: 'Novedades',
-  },
-  {
-    value: 'clearance',
-    label: 'Liquidación',
-  },
-  {
-    value: 'seasonal_campaign',
-    label: 'Campaña temporal',
-  },
-  {
-    value: 'custom',
-    label: 'Personalizado',
-  },
+  { value: 'weekly_offers', label: 'Ofertas de la semana' },
+  { value: 'featured_products', label: 'Productos destacados' },
+  { value: 'new_arrivals', label: 'Novedades' },
+  { value: 'clearance', label: 'Liquidación' },
+  { value: 'seasonal_campaign', label: 'Campaña de temporada' },
+  { value: 'custom', label: 'Personalizado' },
 ]
 
-const PLACEMENTS = [
-  {
-    value: 'home',
-    label: 'Home',
-  },
-  {
-    value: 'category',
-    label: 'Categoría',
-  },
-  {
-    value: 'product_detail',
-    label: 'Detalle producto',
-  },
-  {
-    value: 'cart',
-    label: 'Carrito',
-  },
-  {
-    value: 'checkout',
-    label: 'Checkout',
-  },
+export const PLACEMENTS = [
+  { value: 'home', label: 'Inicio, tienda y ficha de producto', shown: true },
+  { value: 'category', label: 'Categoría', shown: false },
+  { value: 'product_detail', label: 'Solo ficha de producto', shown: false },
+  { value: 'cart', label: 'Carrito', shown: false },
+  { value: 'checkout', label: 'Checkout', shown: false },
 ]
 
-const VISIBILITIES = [
-  {
-    value: 'public',
-    label: 'Público',
-  },
-  {
-    value: 'hidden',
-    label: 'Oculto',
-  },
-]
-
-const EMPTY_FORM = {
-  title: '',
-  slug: '',
-  type: 'weekly_offers',
-  placement: 'home',
-  description: '',
-  products: [],
-  maxItems: CONFIG.DEFAULT_MAX_ITEMS,
-  priority: 1,
-  startDate: '',
-  endDate: '',
-  isActive: true,
-  visibility: 'public',
+const STATUS_META = {
+  live: { label: 'En la tienda', color: BRAND.green, bg: '#e7f6ef' },
+  scheduled: { label: 'Programado', color: BRAND.blue, bg: '#e8f0ff' },
+  expired: { label: 'Vencido', color: BRAND.muted, bg: '#eef1fb' },
+  paused: { label: 'Pausado', color: BRAND.muted, bg: '#eef1fb' },
+  hidden: { label: 'Oculto', color: BRAND.amber, bg: '#fdf3e7' },
+  nowhere: { label: 'No se muestra', color: BRAND.amber, bg: '#fdf3e7' },
+  invalid: { label: 'Fechas inválidas', color: BRAND.red, bg: '#fdecea' },
 }
 
-// =====================================================
-// Helpers
-// =====================================================
+// Resumen: lo que está en la tienda, lo que viene, lo que pasó y lo que no se ve.
+const SUMMARY = [
+  { key: 'live', label: 'En la tienda', statuses: ['live'], color: BRAND.green },
+  { key: 'scheduled', label: 'Programados', statuses: ['scheduled'], color: BRAND.blue },
+  { key: 'expired', label: 'Vencidos', statuses: ['expired'], color: BRAND.muted },
+  {
+    key: 'off',
+    label: 'Sin mostrarse',
+    statuses: ['paused', 'hidden', 'nowhere', 'invalid'],
+    color: BRAND.amber,
+  },
+]
+
+const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`
+
+const formatPesos = value =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0)
+
+const formatDate = value => {
+  const date = new Date(value)
+  if (!value || Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date)
+}
+
+const formatForInput = value => {
+  const date = new Date(value)
+  if (!value || Number.isNaN(date.getTime())) return ''
+  const pad = number => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 const getEntityId = value => {
   if (!value) return ''
   if (typeof value === 'string') return value
-  if (value._id) return value._id
+  if (value._id) return String(value._id)
   return String(value)
-}
-
-const getProductFromItem = item => {
-  return item?.productId && typeof item.productId === 'object' ? item.productId : null
 }
 
 const getProductImageUrl = product => {
   const image = product?.images?.[0] || product?.image || null
-
-  if (!image) return '/assets/images/placeholder.png'
-
+  if (!image) return ''
   if (typeof image === 'string') return image
-
-  return image.url || image.secure_url || image.imageUrl || '/assets/images/placeholder.png'
+  return image.url || image.secure_url || image.imageUrl || ''
 }
 
-const getPromotionalBlockProducts = block => {
-  return normalizeProductsArray(block?.products)
-    .map(item => getProductFromItem(item))
-    .filter(Boolean)
+const toList = payload => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.blocks)) return payload.blocks
+  if (Array.isArray(payload?.products)) return payload.products
+  return []
 }
 
-const normalizeProductsArray = products => {
-  return Array.isArray(products) ? products : []
+const messageOf = (err, fallback) => (typeof err === 'string' ? err : err?.message) || fallback
+
+const getTypeLabel = value => BLOCK_TYPES.find(item => item.value === value)?.label || value
+const getPlacement = value => PLACEMENTS.find(item => item.value === value)
+
+// Por qué un bloque se ve o no en la tienda, en una palabra.
+export const getBlockStatus = (block, now = Date.now()) => {
+  if (!block?.isActive) return 'paused'
+  if (block.visibility === 'hidden') return 'hidden'
+  if (!getPlacement(block.placement)?.shown) return 'nowhere'
+
+  const start = new Date(block.startDate).getTime()
+  const end = new Date(block.endDate).getTime()
+  if (Number.isNaN(start) || Number.isNaN(end)) return 'invalid'
+  if (now < start) return 'scheduled'
+  if (now > end) return 'expired'
+  return 'live'
 }
 
-const formatForInput = value => {
-  if (!value) return ''
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return ''
-
-  const pad = number => String(number).padStart(2, '0')
-
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-const formatDate = value => {
-  if (!value) return '-'
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return '-'
-
-  return new Intl.DateTimeFormat('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-const getDefaultDates = () => {
-  const now = new Date()
-  const endDate = new Date()
-  endDate.setDate(now.getDate() + CONFIG.DEFAULT_DURATION_DAYS)
-
+const newForm = () => {
+  const start = new Date()
+  const end = new Date()
+  end.setDate(start.getDate() + DEFAULT_DURATION_DAYS)
   return {
-    startDate: formatForInput(now),
-    endDate: formatForInput(endDate),
+    title: '',
+    slug: '',
+    type: 'weekly_offers',
+    placement: 'home',
+    description: '',
+    products: [],
+    maxItems: 5,
+    priority: 1,
+    startDate: formatForInput(start),
+    endDate: formatForInput(end),
+    isActive: true,
+    visibility: 'public',
   }
 }
 
-const getBlockStatus = block => {
-  const now = Date.now()
-  const start = new Date(block?.startDate).getTime()
-  const end = new Date(block?.endDate).getTime()
+// El producto poblado queda en `product` solo para mostrarlo: antes se tiraba
+// y un producto que no estaba entre los cargados aparecía como "Producto 1"
+// con su id de base de datos.
+const formFromBlock = block => ({
+  title: block.title || '',
+  slug: block.slug || '',
+  type: block.type || 'weekly_offers',
+  placement: block.placement || 'home',
+  description: block.description || '',
+  maxItems: block.maxItems || 5,
+  priority: block.priority || 1,
+  startDate: formatForInput(block.startDate),
+  endDate: formatForInput(block.endDate),
+  isActive: block.isActive !== false,
+  visibility: block.visibility || 'public',
+  products: (Array.isArray(block.products) ? block.products : []).map((item, index) => ({
+    productId: getEntityId(item.productId),
+    product: typeof item.productId === 'object' ? item.productId : null,
+    customTitle: item.customTitle || '',
+    customLabel: item.customLabel || '',
+    discountPercentage: item.discountPercentage ?? 0,
+    priority: item.priority || index + 1,
+    isActive: item.isActive !== false,
+  })),
+})
 
-  if (!block?.isActive) {
-    return {
-      value: 'inactive',
-      label: 'Inactivo',
-      color: 'default',
-      icon: <BsEyeSlash />,
+const isWhole = (value, min, max) => {
+  const number = Number(value)
+  return String(value).trim() !== '' && Number.isInteger(number) && number >= min && number <= max
+}
+
+// { campo: mensaje }. Los de cada producto van como `producto:<id>:<campo>`.
+export const validateBlock = form => {
+  const errors = {}
+  const title = form.title.trim()
+
+  if (!title) errors.title = 'Poné un título: es lo que ven los clientes arriba del bloque.'
+  else if (title.length > LIMITS.title) errors.title = `Hasta ${LIMITS.title} caracteres.`
+
+  if (form.slug.trim().length > LIMITS.slug) errors.slug = `Hasta ${LIMITS.slug} caracteres.`
+  if (form.description.trim().length > LIMITS.description) {
+    errors.description = `Hasta ${LIMITS.description} caracteres.`
+  }
+
+  const start = new Date(form.startDate).getTime()
+  const end = new Date(form.endDate).getTime()
+  if (!form.startDate || Number.isNaN(start)) errors.startDate = 'Elegí desde cuándo.'
+  if (!form.endDate || Number.isNaN(end)) errors.endDate = 'Elegí hasta cuándo.'
+  else if (!Number.isNaN(start) && end <= start) {
+    errors.endDate = 'Tiene que terminar después de empezar.'
+  }
+
+  if (!isWhole(form.maxItems, 1, LIMITS.maxItems)) {
+    errors.maxItems = `Entre 1 y ${LIMITS.maxItems}.`
+  } else if (form.products.length > Number(form.maxItems)) {
+    errors.maxItems = `Elegiste ${form.products.length}: subí el máximo o sacá productos.`
+  }
+
+  if (!isWhole(form.priority, 1, LIMITS.priority)) {
+    errors.priority = `Entre 1 y ${LIMITS.priority}, sin decimales.`
+  }
+
+  for (const item of form.products) {
+    const key = `producto:${item.productId}`
+    const discount = Number(item.discountPercentage)
+    if (String(item.discountPercentage).trim() === '' || !(discount >= 0 && discount <= 100)) {
+      errors[`${key}:discountPercentage`] = 'Entre 0 y 100.'
+    }
+    if (!isWhole(item.priority, 1, LIMITS.priority)) errors[`${key}:priority`] = '1 a 100.'
+    if (String(item.customLabel || '').trim().length > LIMITS.customLabel) {
+      errors[`${key}:customLabel`] = `Hasta ${LIMITS.customLabel}.`
+    }
+    if (String(item.customTitle || '').trim().length > LIMITS.customTitle) {
+      errors[`${key}:customTitle`] = `Hasta ${LIMITS.customTitle}.`
     }
   }
 
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return {
-      value: 'invalid',
-      label: 'Fecha inválida',
-      color: 'error',
-      icon: <BsXCircleFill />,
-    }
-  }
-
-  if (now < start) {
-    return {
-      value: 'scheduled',
-      label: 'Programado',
-      color: 'warning',
-      icon: <BsClock />,
-    }
-  }
-
-  if (now > end) {
-    return {
-      value: 'expired',
-      label: 'Expirado',
-      color: 'error',
-      icon: <BsXCircleFill />,
-    }
-  }
-
-  return {
-    value: 'active',
-    label: 'Activo',
-    color: 'success',
-    icon: <BsCheckCircleFill />,
-  }
+  return errors
 }
 
-const getTypeLabel = value => {
-  return BLOCK_TYPES.find(item => item.value === value)?.label || value
-}
+export const buildPayload = form => ({
+  title: form.title.trim(),
+  slug: form.slug.trim(),
+  type: form.type,
+  placement: form.placement,
+  description: form.description.trim(),
+  maxItems: Number(form.maxItems),
+  priority: Number(form.priority),
+  startDate: new Date(form.startDate).toISOString(),
+  endDate: new Date(form.endDate).toISOString(),
+  isActive: Boolean(form.isActive),
+  visibility: form.visibility,
+  products: form.products.map(item => ({
+    productId: item.productId,
+    customTitle: String(item.customTitle || '').trim(),
+    customLabel: String(item.customLabel || '').trim(),
+    discountPercentage: Number(item.discountPercentage),
+    priority: Number(item.priority),
+    isActive: item.isActive !== false,
+  })),
+})
 
-const getPlacementLabel = value => {
-  return PLACEMENTS.find(item => item.value === value)?.label || value
-}
+const hasDiscounts = products =>
+  products.some(item => item.isActive !== false && Number(item.discountPercentage) > 0)
 
-const safeNumber = (value, fallback = 0) => {
-  const parsed = Number(value)
-
-  if (Number.isNaN(parsed)) return fallback
-
-  return parsed
-}
-
-const buildPayload = form => {
-  return {
-    title: form.title.trim(),
-    slug: form.slug.trim(),
-    type: form.type,
-    placement: form.placement,
-    description: form.description.trim(),
-    maxItems: safeNumber(form.maxItems, CONFIG.DEFAULT_MAX_ITEMS),
-    priority: safeNumber(form.priority, 1),
-    startDate: new Date(form.startDate).toISOString(),
-    endDate: new Date(form.endDate).toISOString(),
-    isActive: Boolean(form.isActive),
-    visibility: form.visibility,
-    products: form.products.map((item, index) => ({
-      productId: getEntityId(item.productId),
-      customTitle: String(item.customTitle || '').trim(),
-      customLabel: String(item.customLabel || '').trim(),
-      discountPercentage: Math.min(100, Math.max(0, safeNumber(item.discountPercentage, 0))),
-      priority: safeNumber(item.priority, index + 1),
-      isActive: item.isActive !== false,
-    })),
-  }
-}
-
-// =====================================================
-// Componentes internos
-// =====================================================
-
-const ConfirmDialog = ({
-  open,
-  title,
-  message,
-  confirmText = 'Confirmar',
-  confirmColor = Newprimary.darkBlueGray,
-  loading = false,
-  onConfirm,
-  onCancel,
-}) => {
+const Pill = ({ status }) => {
+  const meta = STATUS_META[status]
   return (
-    <Dialog open={open} onClose={loading ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-
-      <DialogContent>
-        <Typography color="text.secondary">{message}</Typography>
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onCancel} disabled={loading}>
-          Cancelar
-        </Button>
-
-        <Button variant="contained" color={confirmColor} onClick={onConfirm} disabled={loading}>
-          {loading ? <CircularProgress size={20} /> : confirmText}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
-const ProductPickerCard = ({ product, selected, disabled, onToggle }) => {
-  return (
-    <Card
-      onClick={() => {
-        if (!disabled) onToggle(product)
-      }}
+    <Typography
+      component="span"
       sx={{
-        height: '100%',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        border: '2px solid',
-        borderColor: selected ? 'primary.main' : 'transparent',
-        transition: 'all 0.2s ease',
-        '&:hover': disabled
-          ? {}
-          : {
-              transform: 'translateY(-2px)',
-              boxShadow: 4,
-            },
+        display: 'inline-flex',
+        flexShrink: 0,
+        alignSelf: 'flex-start',
+        px: 1.25,
+        py: 0.25,
+        borderRadius: 99,
+        fontSize: 12,
+        fontWeight: 700,
+        lineHeight: 1.6,
+        whiteSpace: 'nowrap',
+        color: meta.color,
+        bgcolor: meta.bg,
       }}
     >
-      <CardMedia
-        component="img"
-        height="140"
-        image={product.images?.[0]?.url || '/assets/images/placeholder.png'}
-        alt={product.title || 'Producto'}
-        sx={{
-          objectFit: 'cover',
-          bgcolor: 'grey.100',
-        }}
-      />
-
-      <CardContent sx={{ p: 2 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-          {product.title || 'Producto sin título'}
-        </Typography>
-
-        <Typography variant="body2" color="primary" sx={{ fontWeight: 800 }}>
-          ${product.price || 0}
-        </Typography>
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
-          {product.categoria || product.category || 'Sin categoría'}
-        </Typography>
-
-        {selected && <Chip size="small" color="primary" label="Seleccionado" sx={{ mt: 1 }} />}
-      </CardContent>
-    </Card>
+      {meta.label}
+    </Typography>
   )
 }
 
-const PromotionalBlockRow = ({ block, onEdit, onToggleStatus, onDelete, toggling, deleting }) => {
-  const status = getBlockStatus(block)
-  const previewProducts = getPromotionalBlockProducts(block)
+const SummaryTile = ({ title, value, color, onClick, active }) => (
+  <ButtonBase
+    onClick={onClick}
+    aria-pressed={active}
+    sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 0.25,
+      width: '100%',
+      height: '100%',
+      p: 2,
+      textAlign: 'left',
+      borderBottom: active ? `3px solid ${color}` : '3px solid transparent',
+      bgcolor: active ? BRAND.paper : 'transparent',
+      '&:hover': { bgcolor: BRAND.paper },
+    }}
+  >
+    <Typography
+      component="span"
+      variant="caption"
+      sx={{ color: BRAND.muted, fontWeight: 700, letterSpacing: '0.04em' }}
+    >
+      {title}
+    </Typography>
+    <Typography
+      component="span"
+      sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 26, color: BRAND.ink }}
+    >
+      {value}
+    </Typography>
+  </ButtonBase>
+)
 
+const Thumb = ({ product, size = 40 }) => {
+  const url = getProductImageUrl(product)
   return (
-    <TableRow hover>
-      <TableCell>
-        <Box>
-          <Typography sx={{ fontWeight: 800 }}>{block.title}</Typography>
-
-          <Typography variant="caption" color="text.secondary">
-            /{block.slug}
-          </Typography>
-        </Box>
-      </TableCell>
-
-      <TableCell>
-        <Chip size="small" label={getTypeLabel(block.type)} variant="outlined" />
-      </TableCell>
-
-      <TableCell sx={{ minWidth: 280 }}>
-        <Stack direction="row" sx={{ alignItems: 'center' }} spacing={1.25}>
-          <Stack direction="row" spacing={0.75} sx={{ flexShrink: 0 }}>
-            {previewProducts.slice(0, 3).map(product => (
-              <Box
-                key={getEntityId(product)}
-                component="img"
-                src={getProductImageUrl(product)}
-                alt={product.title || 'Producto promocionado'}
-                onError={event => {
-                  event.currentTarget.onerror = null
-                  event.currentTarget.src = '/assets/images/placeholder.png'
-                }}
-                sx={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 1,
-                  objectFit: 'cover',
-                  bgcolor: 'grey.100',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                }}
-              />
-            ))}
-          </Stack>
-
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="body2" noWrap>
-              {block.description || 'Sin descripción'}
-            </Typography>
-
-            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-              {previewProducts.length > 0
-                ? previewProducts
-                    .slice(0, 2)
-                    .map(product => product.title || 'Producto')
-                    .join(', ')
-                : 'Sin productos asociados'}
-              {previewProducts.length > 2 ? ` +${previewProducts.length - 2} más` : ''}
-            </Typography>
-          </Box>
-        </Stack>
-      </TableCell>
-
-      <TableCell>{getPlacementLabel(block.placement)}</TableCell>
-
-      <TableCell>
-        <Typography variant="body2">
-          {block.products?.length || 0} / {block.maxItems}
-        </Typography>
-      </TableCell>
-
-      <TableCell>
-        <Chip
-          size="small"
-          icon={status.icon}
-          label={status.label}
-          color={status.color}
-          variant="outlined"
+    <Box
+      sx={{
+        width: size,
+        height: size,
+        borderRadius: 2,
+        flexShrink: 0,
+        overflow: 'hidden',
+        bgcolor: BRAND.paper,
+        border: `1px solid ${BRAND.line}`,
+      }}
+    >
+      {url && (
+        <Box
+          component="img"
+          src={url}
+          alt=""
+          sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
-      </TableCell>
-
-      <TableCell>
-        <Typography variant="body2">{formatDate(block.startDate)}</Typography>
-
-        <Typography variant="caption" color="text.secondary">
-          hasta {formatDate(block.endDate)}
-        </Typography>
-      </TableCell>
-
-      <TableCell>
-        <Switch
-          checked={block.isActive}
-          onChange={() => onToggleStatus(block)}
-          disabled={toggling}
-        />
-      </TableCell>
-
-      <TableCell align="right">
-        <Tooltip title="Editar">
-          <IconButton color="primary" onClick={() => onEdit(block)}>
-            <BsPencil />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title="Eliminar">
-          <IconButton color="error" onClick={() => onDelete(block)} disabled={deleting}>
-            <BsTrash />
-          </IconButton>
-        </Tooltip>
-      </TableCell>
-    </TableRow>
+      )}
+    </Box>
   )
 }
 
-// =====================================================
-// Página principal
-// =====================================================
+const blockProducts = block =>
+  (Array.isArray(block?.products) ? block.products : [])
+    .map(item => (typeof item?.productId === 'object' ? item.productId : null))
+    .filter(Boolean)
+
+const ProductStrip = ({ block }) => {
+  const products = blockProducts(block)
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+      <Stack direction="row" spacing={-1}>
+        {products.slice(0, 3).map(product => (
+          <Thumb key={getEntityId(product)} product={product} size={32} />
+        ))}
+      </Stack>
+      <Typography variant="body2" sx={{ color: BRAND.muted, whiteSpace: 'nowrap' }}>
+        {block.products?.length || 0} de {block.maxItems}
+      </Typography>
+    </Stack>
+  )
+}
+
+const BlockActions = ({ block, onEdit, onToggle, onDelete, busy }) => (
+  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
+    <Tooltip title={block.isActive ? 'Pausar' : 'Activar'}>
+      <Switch
+        checked={Boolean(block.isActive)}
+        onChange={() => onToggle(block)}
+        disabled={busy}
+        slotProps={{ input: { 'aria-label': `Activo: ${block.title}` } }}
+      />
+    </Tooltip>
+    <Tooltip title="Editar">
+      <IconButton aria-label={`Editar ${block.title}`} onClick={() => onEdit(block)}>
+        <EditIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
+    <Tooltip title="Eliminar">
+      <IconButton
+        aria-label={`Eliminar ${block.title}`}
+        onClick={() => onDelete(block)}
+        disabled={busy}
+        sx={{ color: BRAND.red }}
+      >
+        <DeleteIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
+  </Stack>
+)
 
 const PromotionalBlocksPage = () => {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const isMobile = useMediaQuery('(max-width:600px)')
 
-  const blocks = useSelector(selectPromotionalBlocks)
-  const meta = useSelector(selectPromotionalBlocksMeta)
-  const error = useSelector(selectPromotionalBlocksError)
-  const successMessage = useSelector(selectPromotionalBlocksSuccess)
+  const [blocks, setBlocks] = useState([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const requestSeq = useRef(0)
 
-  const isFetching = useSelector(selectPromotionalBlocksIsFetching)
-  const isSaving = useSelector(selectPromotionalBlocksIsSaving)
-  const isDeleting = useSelector(selectPromotionalBlocksIsDeleting)
-  const isToggling = useSelector(selectPromotionalBlocksIsToggling)
-
-  const { products = [], isLoading: productsLoading = false } = useSelector(
-    state => state.product || {},
-  )
-
-  const [page, setPage] = useState(1)
+  const [summaryFilter, setSummaryFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('')
-  const [placementFilter, setPlacementFilter] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingBlock, setEditingBlock] = useState(null)
-  const [form, setForm] = useState({
-    ...EMPTY_FORM,
-    ...getDefaultDates(),
-  })
+  const [editor, setEditor] = useState(null) // { block|null }
+  const [form, setForm] = useState(newForm)
+  const [triedToSave, setTriedToSave] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
-  const [productSearch, setProductSearch] = useState('')
-  const [confirmDialog, setConfirmDialog] = useState({
-    open: false,
-    action: null,
-    block: null,
-  })
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerResults, setPickerResults] = useState([])
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerError, setPickerError] = useState('')
+  const pickerSeq = useRef(0)
 
-  // =====================================================
-  // Effects
-  // =====================================================
+  const [confirming, setConfirming] = useState(null) // { action, block }
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim())
+      setDebouncedSearch(search.trim())
       setPage(1)
-    }, CONFIG.DEBOUNCE_MS)
-
+    }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [search])
 
-  const loadBlocks = useCallback(() => {
-    dispatch(
-      fetchPromotionalBlocks({
-        page,
-        limit: CONFIG.DEFAULT_LIMIT,
-        type: typeFilter || undefined,
-        placement: placementFilter || undefined,
-        q: debouncedSearch || undefined,
-      }),
-    )
-  }, [dispatch, page, typeFilter, placementFilter, debouncedSearch])
-
-  useEffect(() => {
-    dispatch(getProducts())
+  // La pantalla maneja sus propios avisos: lo que el slice deja en error o
+  // successMessage no se muestra en otro lado.
+  const clearSliceMessages = useCallback(() => {
+    dispatch(clearPromotionalBlocksError())
+    dispatch(clearPromotionalBlocksSuccess())
   }, [dispatch])
 
-  useEffect(() => {
-    loadBlocks()
-  }, [loadBlocks])
-
-  useEffect(() => {
-    if (error) {
-      toast.error(error)
-      dispatch(clearPromotionalBlocksError())
+  const load = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setLoading(true)
+    setLoadError('')
+    try {
+      const payload = await dispatch(
+        fetchPromotionalBlocks({
+          page: 1,
+          limit: FETCH_LIMIT,
+          type: typeFilter || undefined,
+          q: debouncedSearch || undefined,
+        }),
+      ).unwrap()
+      if (seq !== requestSeq.current) return
+      const list = toList(payload)
+      setBlocks(list)
+      setTotal(Number(payload?.meta?.total ?? list.length))
+      setLoaded(true)
+    } catch (err) {
+      if (seq !== requestSeq.current) return
+      setLoadError(messageOf(err, 'No se pudieron cargar los bloques.'))
+    } finally {
+      if (seq === requestSeq.current) setLoading(false)
+      clearSliceMessages()
     }
-  }, [error, dispatch])
+  }, [clearSliceMessages, debouncedSearch, dispatch, typeFilter])
 
   useEffect(() => {
-    if (successMessage) {
-      toast.success(successMessage)
-      dispatch(clearPromotionalBlocksSuccess())
+    load()
+  }, [load])
+
+  const statusOf = useMemo(() => {
+    const now = Date.now()
+    return new Map(blocks.map(block => [block._id, getBlockStatus(block, now)]))
+  }, [blocks])
+
+  const counts = useMemo(() => {
+    const result = { all: blocks.length }
+    for (const tile of SUMMARY) {
+      result[tile.key] = blocks.filter(block =>
+        tile.statuses.includes(statusOf.get(block._id)),
+      ).length
     }
-  }, [successMessage, dispatch])
+    return result
+  }, [blocks, statusOf])
 
-  // =====================================================
-  // Derived state
-  // =====================================================
+  const visible = useMemo(() => {
+    if (summaryFilter === 'all') return blocks
+    const tile = SUMMARY.find(item => item.key === summaryFilter)
+    return blocks.filter(block => tile.statuses.includes(statusOf.get(block._id)))
+  }, [blocks, statusOf, summaryFilter])
 
-  const activeBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'active').length
-  }, [blocks])
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
 
-  const scheduledBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'scheduled').length
-  }, [blocks])
+  // Si la página actual se vacía (por ejemplo al eliminar el último), se vuelve
+  // a la última que tenga algo.
+  useEffect(() => {
+    if (page > pages) setPage(pages)
+  }, [page, pages])
 
-  const expiredBlocksCount = useMemo(() => {
-    return blocks.filter(block => getBlockStatus(block).value === 'expired').length
-  }, [blocks])
+  const pageItems = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const normalizedProducts = useMemo(() => {
-    return normalizeProductsArray(products)
-  }, [products])
+  // ---------------------------------------------------------------------------
+  // Editor
+  // ---------------------------------------------------------------------------
 
-  const selectedProductIds = useMemo(() => {
-    return new Set(form.products.map(item => getEntityId(item.productId)))
-  }, [form.products])
+  const errors = useMemo(() => validateBlock(form), [form])
+  const errorCount = Object.keys(errors).length
+  const fieldError = key => (triedToSave ? errors[key] || '' : '')
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase()
+  const openEditor = block => {
+    setEditor({ block })
+    setForm(block ? formFromBlock(block) : newForm())
+    setTriedToSave(false)
+    setSaveError('')
+    setPickerSearch('')
+  }
 
-    return normalizedProducts.filter(product => {
-      const title = String(product.title || '').toLowerCase()
-      const category = String(product.categoria || product.category || '').toLowerCase()
-      const brand = String(product.marca || product.brand || '').toLowerCase()
+  const closeEditor = () => {
+    if (saving) return
+    setEditor(null)
+  }
 
-      return !q || title.includes(q) || category.includes(q) || brand.includes(q)
-    })
-  }, [normalizedProducts, productSearch])
+  const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
 
-  // =====================================================
-  // Handlers
-  // =====================================================
-
-  const setField = (field, value) => {
+  const setProductField = (productId, key, value) =>
     setForm(prev => ({
       ...prev,
-      [field]: value,
+      products: prev.products.map(item =>
+        item.productId === productId ? { ...item, [key]: value } : item,
+      ),
     }))
-  }
 
-  const openCreateModal = () => {
-    setEditingBlock(null)
-    setProductSearch('')
-    setForm({
-      ...EMPTY_FORM,
-      ...getDefaultDates(),
-    })
-    setModalOpen(true)
-  }
-
-  const openEditModal = block => {
-    setEditingBlock(block)
-    setProductSearch('')
-
-    setForm({
-      title: block.title || '',
-      slug: block.slug || '',
-      type: block.type || 'weekly_offers',
-      placement: block.placement || 'home',
-      description: block.description || '',
-      maxItems: block.maxItems || CONFIG.DEFAULT_MAX_ITEMS,
-      priority: block.priority || 1,
-      startDate: formatForInput(block.startDate),
-      endDate: formatForInput(block.endDate),
-      isActive: block.isActive !== false,
-      visibility: block.visibility || 'public',
-      products: normalizeProductsArray(block.products).map((item, index) => ({
-        productId: getEntityId(item.productId),
-        customTitle: item.customTitle || getProductFromItem(item)?.title || '',
-        customLabel: item.customLabel || '',
-        discountPercentage: item.discountPercentage || 0,
-        priority: item.priority || index + 1,
-        isActive: item.isActive !== false,
-      })),
-    })
-
-    setModalOpen(true)
-  }
-
-  const closeModal = () => {
-    if (isSaving) return
-
-    setModalOpen(false)
-    setEditingBlock(null)
-    setProductSearch('')
-    setForm({
-      ...EMPTY_FORM,
-      ...getDefaultDates(),
-    })
-  }
-
-  const toggleProductSelection = product => {
+  const toggleProduct = product => {
     const productId = getEntityId(product)
-
     setForm(prev => {
-      const exists = prev.products.some(item => getEntityId(item.productId) === productId)
-
-      if (exists) {
-        return {
-          ...prev,
-          products: prev.products.filter(item => getEntityId(item.productId) !== productId),
-        }
+      if (prev.products.some(item => item.productId === productId)) {
+        return { ...prev, products: prev.products.filter(item => item.productId !== productId) }
       }
-
-      if (prev.products.length >= Number(prev.maxItems)) {
-        toast.warning(`Máximo ${prev.maxItems} productos permitidos en este bloque`)
-        return prev
-      }
-
-      if (prev.products.length >= CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-        toast.warning(`Máximo técnico permitido: ${CONFIG.MAX_PRODUCTS_PER_BLOCK} productos`)
-        return prev
-      }
-
       return {
         ...prev,
         products: [
           ...prev.products,
           {
             productId,
+            product,
             customTitle: '',
             customLabel: '',
             discountPercentage: 0,
@@ -763,897 +637,939 @@ const PromotionalBlocksPage = () => {
     })
   }
 
-  const updateSelectedProductField = (productId, field, value) => {
-    setForm(prev => ({
-      ...prev,
-      products: prev.products.map(item => {
-        if (getEntityId(item.productId) !== productId) return item
-
-        return {
-          ...item,
-          [field]: value,
+  // Busca en todo el catálogo del comercio, en el servidor. Antes se pedía la
+  // lista pública sin parámetros: el backend devuelve 12 por defecto y solo se
+  // podía elegir entre esos.
+  useEffect(() => {
+    if (!editor) return undefined
+    const seq = ++pickerSeq.current
+    const timer = setTimeout(
+      async () => {
+        setPickerLoading(true)
+        setPickerError('')
+        try {
+          const payload = await productService.getAdminProducts({
+            q: pickerSearch.trim() || undefined,
+            limit: PICKER_LIMIT,
+            page: 1,
+          })
+          if (seq !== pickerSeq.current) return
+          setPickerResults(toList(payload))
+        } catch (err) {
+          if (seq !== pickerSeq.current) return
+          setPickerError(messageOf(err, 'No se pudieron cargar los productos.'))
+        } finally {
+          if (seq === pickerSeq.current) setPickerLoading(false)
         }
-      }),
-    }))
-  }
+      },
+      pickerSearch ? DEBOUNCE_MS : 0,
+    )
+    return () => clearTimeout(timer)
+  }, [editor, pickerSearch])
 
-  const removeSelectedProduct = productId => {
-    setForm(prev => ({
-      ...prev,
-      products: prev.products
-        .filter(item => getEntityId(item.productId) !== productId)
-        .map((item, index) => ({
-          ...item,
-          priority: index + 1,
-        })),
-    }))
-  }
+  const handleSave = async () => {
+    setTriedToSave(true)
+    setSaveError('')
+    if (errorCount > 0) return
 
-  const validateForm = () => {
-    if (!form.title.trim()) {
-      toast.error('El título del bloque es obligatorio')
-      return false
-    }
-
-    if (!form.type) {
-      toast.error('El tipo de bloque es obligatorio')
-      return false
-    }
-
-    if (!form.placement) {
-      toast.error('La ubicación del bloque es obligatoria')
-      return false
-    }
-
-    if (!form.startDate || !form.endDate) {
-      toast.error('Las fechas de inicio y fin son obligatorias')
-      return false
-    }
-
-    const start = new Date(form.startDate).getTime()
-    const end = new Date(form.endDate).getTime()
-
-    if (Number.isNaN(start) || Number.isNaN(end)) {
-      toast.error('Las fechas ingresadas no son válidas')
-      return false
-    }
-
-    if (end <= start) {
-      toast.error('La fecha de fin debe ser posterior a la fecha de inicio')
-      return false
-    }
-
-    const maxItems = safeNumber(form.maxItems, CONFIG.DEFAULT_MAX_ITEMS)
-
-    if (maxItems < 1 || maxItems > CONFIG.MAX_PRODUCTS_PER_BLOCK) {
-      toast.error(`El máximo de productos debe estar entre 1 y ${CONFIG.MAX_PRODUCTS_PER_BLOCK}`)
-      return false
-    }
-
-    if (form.products.length > maxItems) {
-      toast.error(
-        `Seleccionaste ${form.products.length} productos, pero el máximo configurado es ${maxItems}`,
-      )
-      return false
-    }
-
-    return true
-  }
-
-  const handleSubmit = async () => {
-    if (!validateForm()) return
-
-    const payload = buildPayload(form)
-
+    setSaving(true)
     try {
-      if (editingBlock?._id) {
-        await dispatch(
-          updatePromotionalBlock({
-            id: editingBlock._id,
-            data: payload,
-          }),
-        ).unwrap()
+      const payload = buildPayload(form)
+      if (editor.block?._id) {
+        await dispatch(updatePromotionalBlock({ id: editor.block._id, data: payload })).unwrap()
       } else {
         await dispatch(createPromotionalBlock(payload)).unwrap()
       }
-
-      closeModal()
-      loadBlocks()
+      setEditor(null)
+      setNotice(editor.block ? 'Bloque guardado.' : 'Bloque creado.')
+      load()
     } catch (err) {
-      toast.error(typeof err === 'string' ? err : err?.message || 'Error al guardar el bloque')
+      setSaveError(messageOf(err, 'No se pudo guardar el bloque.'))
+    } finally {
+      setSaving(false)
+      clearSliceMessages()
     }
   }
 
-  const handleToggleStatus = block => {
-    setConfirmDialog({
-      open: true,
-      action: 'toggle',
-      block,
-    })
+  // ---------------------------------------------------------------------------
+  // Activar / pausar / eliminar
+  // ---------------------------------------------------------------------------
+
+  const askConfirm = (action, block) => {
+    setConfirmError('')
+    setConfirming({ action, block })
   }
 
-  const handleDelete = block => {
-    setConfirmDialog({
-      open: true,
-      action: 'delete',
-      block,
-    })
+  const closeConfirm = () => {
+    if (confirmBusy) return
+    setConfirming(null)
   }
 
-  const closeConfirmDialog = () => {
-    if (isDeleting || isToggling) return
-
-    setConfirmDialog({
-      open: false,
-      action: null,
-      block: null,
-    })
-  }
-
-  const confirmAction = async () => {
-    const { action, block } = confirmDialog
-
-    if (!block?._id || !action) return
-
+  const runConfirm = async () => {
+    const { action, block } = confirming
+    setConfirmBusy(true)
+    setConfirmError('')
     try {
-      if (action === 'toggle') {
-        await dispatch(
-          togglePromotionalBlockStatus({
-            id: block._id,
-            isActive: !block.isActive,
-          }),
-        ).unwrap()
-      }
-
       if (action === 'delete') {
+        await dispatch(deletePromotionalBlock({ id: block._id, hard: true })).unwrap()
+        setNotice('Bloque eliminado.')
+      } else {
         await dispatch(
-          deletePromotionalBlock({
-            id: block._id,
-            hard: true,
-          }),
+          togglePromotionalBlockStatus({ id: block._id, isActive: !block.isActive }),
         ).unwrap()
+        setNotice(block.isActive ? 'Bloque pausado.' : 'Bloque activado.')
       }
-
-      closeConfirmDialog()
-      loadBlocks()
+      setConfirming(null)
+      load()
     } catch (err) {
-      toast.error(typeof err === 'string' ? err : err?.message || 'Error al procesar la acción')
+      setConfirmError(messageOf(err, 'No se pudo completar la acción.'))
+    } finally {
+      setConfirmBusy(false)
+      clearSliceMessages()
     }
   }
 
-  // =====================================================
+  const confirmCopy = (() => {
+    if (!confirming) return null
+    const { action, block } = confirming
+    if (action === 'delete') {
+      return {
+        title: '¿Eliminar este bloque?',
+        body: `«${block.title}» se borra para siempre y deja de verse en la tienda. No se puede deshacer.`,
+        action: 'Eliminar definitivamente',
+        color: 'error',
+      }
+    }
+    if (block.isActive) {
+      return {
+        title: '¿Pausar este bloque?',
+        body: `«${block.title}» deja de verse en la tienda hasta que lo vuelvas a activar.`,
+        action: 'Pausar',
+        color: 'primary',
+      }
+    }
+    const notify =
+      hasDiscounts(block.products || []) && getBlockStatus({ ...block, isActive: true }) === 'live'
+    return {
+      title: '¿Activar este bloque?',
+      body: `«${block.title}» vuelve a verse en la tienda.${
+        notify
+          ? ' Tiene productos con descuento: HENKO avisa por email a los clientes que los tienen en favoritos.'
+          : ''
+      }`,
+      action: 'Activar',
+      color: 'primary',
+    }
+  })()
+
+  // ---------------------------------------------------------------------------
   // Render
-  // =====================================================
+  // ---------------------------------------------------------------------------
+
+  const selectedIds = new Set(form.products.map(item => item.productId))
+  const full = form.products.length >= Number(form.maxItems || 0)
+  const placement = getPlacement(form.placement)
 
   return (
-    <Box sx={{ bgcolor: '#F5F5F7', minHeight: '100vh', pb: 8 }}>
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #e0e0e0', py: 3 }}>
-        <Container maxWidth="xl">
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            sx={{ justifyContent: 'space-between' }}
-            spacing={2}
-          >
-            <Box>
-              <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }} spacing={2}>
-                <Button
-                  startIcon={<BsArrowLeft />}
-                  variant="outlined"
-                  onClick={() => navigate('/admin')}
-                >
-                  Volver
-                </Button>
-
-                <Typography variant="h4" sx={{ fontWeight: 900 }}>
-                  Bloques promocionales
-                </Typography>
-              </Stack>
-
-              <Typography color="text.secondary">
-                Gestioná ofertas, destacados, novedades, liquidaciones y campañas visibles por
-                tenant.
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<BsPlus />}
-                onClick={openCreateModal}
-              >
-                Nuevo bloque
-              </Button>
-            </Box>
-          </Stack>
-        </Container>
-      </Box>
-
-      <Container maxWidth="xl" sx={{ mt: 4 }}>
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper sx={{ p: 3, borderRadius: 3 }}>
-              <Typography variant="h3" sx={{ fontWeight: 900 }} color="primary">
-                {activeBlocksCount}
-              </Typography>
-              <Typography color="text.secondary">Bloques activos</Typography>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper sx={{ p: 3, borderRadius: 3 }}>
-              <Typography variant="h3" sx={{ fontWeight: 900 }} color="warning.main">
-                {scheduledBlocksCount}
-              </Typography>
-              <Typography color="text.secondary">Programados</Typography>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper sx={{ p: 3, borderRadius: 3 }}>
-              <Typography variant="h3" sx={{ fontWeight: 900 }} color="error">
-                {expiredBlocksCount}
-              </Typography>
-              <Typography color="text.secondary">Expirados</Typography>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper sx={{ p: 3, borderRadius: 3 }}>
-              <Typography variant="h3" sx={{ fontWeight: 900 }}>
-                {meta?.total || 0}
-              </Typography>
-              <Typography color="text.secondary">Total configurados</Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-
-        <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 5 }}>
-              <TextField
-                fullWidth
-                label="Buscar bloque"
-                placeholder="Título, slug o descripción..."
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <BsSearch />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 3 }}>
-              <FormControl fullWidth>
-                <InputLabel>Tipo</InputLabel>
-                <Select
-                  label="Tipo"
-                  value={typeFilter}
-                  onChange={event => {
-                    setTypeFilter(event.target.value)
-                    setPage(1)
-                  }}
-                >
-                  <MenuItem value="">Todos</MenuItem>
-                  {BLOCK_TYPES.map(item => (
-                    <MenuItem key={item.value} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 3 }}>
-              <FormControl fullWidth>
-                <InputLabel>Ubicación</InputLabel>
-                <Select
-                  label="Ubicación"
-                  value={placementFilter}
-                  onChange={event => {
-                    setPlacementFilter(event.target.value)
-                    setPage(1)
-                  }}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  {PLACEMENTS.map(item => (
-                    <MenuItem key={item.value} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 1 }}>
-              <Button
-                fullWidth
-                variant="outlined"
-                sx={{ height: '100%' }}
-                onClick={() => {
-                  setSearchQuery('')
-                  setTypeFilter('')
-                  setPlacementFilter('')
-                  setPage(1)
-                }}
-              >
-                Limpiar
-              </Button>
-            </Grid>
-          </Grid>
-        </Paper>
-
-        <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
-          <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0' }}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Bloques configurados
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1180, mx: 'auto' }}>
+      <Box component="header" sx={{ mb: 3 }}>
+        <Button
+          size="small"
+          startIcon={<ArrowBackIcon fontSize="small" />}
+          onClick={() => navigate('/admin')}
+          sx={{ textTransform: 'none', fontWeight: 700, color: BRAND.muted, ml: -1, mb: 1 }}
+        >
+          Volver al panel
+        </Button>
+        <Typography
+          variant="overline"
+          sx={{ display: 'block', color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+        >
+          TU TIENDA
+        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          sx={{ justifyContent: 'space-between', alignItems: { sm: 'flex-end' } }}
+        >
+          <Box>
+            <Typography
+              component="h1"
+              sx={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 800,
+                fontSize: { xs: 26, md: 34 },
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+              }}
+            >
+              Bloques promocionales
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
+              Secciones de ofertas, destacados y novedades que se ven en el inicio, la tienda y la
+              ficha de cada producto.
             </Typography>
           </Box>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => openEditor(null)}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
+          >
+            Nuevo bloque
+          </Button>
+        </Stack>
+      </Box>
 
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Bloque</TableCell>
-                  <TableCell>Tipo</TableCell>
-                  <TableCell>Descripción / productos</TableCell>
-                  <TableCell>Ubicación</TableCell>
-                  <TableCell>Productos</TableCell>
-                  <TableCell>Estado</TableCell>
-                  <TableCell>Vigencia</TableCell>
-                  <TableCell>Activo</TableCell>
-                  <TableCell align="right">Acciones</TableCell>
-                </TableRow>
-              </TableHead>
+      <Paper
+        component="section"
+        aria-label="Resumen de bloques"
+        variant="outlined"
+        sx={{ ...PANEL_SX, mb: 3, overflow: 'hidden' }}
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, 1fr)',
+              sm: 'repeat(3, 1fr)',
+              md: 'repeat(5, 1fr)',
+            },
+          }}
+        >
+          {SUMMARY.map(tile => (
+            <SummaryTile
+              key={tile.key}
+              title={tile.label}
+              value={loaded ? counts[tile.key] : '–'}
+              color={tile.color}
+              active={summaryFilter === tile.key}
+              onClick={() => {
+                setSummaryFilter(tile.key)
+                setPage(1)
+              }}
+            />
+          ))}
+          <SummaryTile
+            title="Todos"
+            value={loaded ? counts.all : '–'}
+            color={BRAND.blue}
+            active={summaryFilter === 'all'}
+            onClick={() => {
+              setSummaryFilter('all')
+              setPage(1)
+            }}
+          />
+        </Box>
+      </Paper>
 
-              <TableBody>
-                {isFetching ? (
-                  [...Array(4)].map((_, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Skeleton width={220} />
+      <Paper variant="outlined" sx={{ ...PANEL_SX, mb: 3, p: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Buscar bloque"
+            placeholder="Título, dirección o descripción"
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <TextField
+            select
+            size="small"
+            label="Tipo"
+            value={typeFilter}
+            onChange={event => {
+              setTypeFilter(event.target.value)
+              setPage(1)
+            }}
+            sx={{ minWidth: { sm: 240 } }}
+          >
+            <MenuItem value="">Todos los tipos</MenuItem>
+            {BLOCK_TYPES.map(item => (
+              <MenuItem key={item.value} value={item.value}>
+                {item.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      </Paper>
+
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 3 }} action={<Button onClick={load}>Reintentar</Button>}>
+          {loadError}
+        </Alert>
+      )}
+
+      {total > FETCH_LIMIT && (
+        <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
+          Hay {total} bloques: se muestran los primeros {FETCH_LIMIT}. Usá la búsqueda o el tipo
+          para encontrar el resto.
+        </Alert>
+      )}
+
+      {/* Si la carga falló y no hay nada para mostrar, el error ya lo dice todo:
+          sin una tabla vacía debajo. */}
+      {!(loadError && blocks.length === 0) && (
+        <Paper variant="outlined" sx={{ ...PANEL_SX, overflow: 'hidden', position: 'relative' }}>
+          {loading && loaded && (
+            <LinearProgress sx={{ position: 'absolute', top: 0, left: 0, right: 0 }} />
+          )}
+
+          {!loaded && loading ? (
+            <Box sx={{ p: 6, display: 'flex', justifyContent: 'center' }}>
+              <CircularProgress />
+            </Box>
+          ) : !loadError && pageItems.length === 0 ? (
+            <Box sx={{ p: 6, textAlign: 'center' }}>
+              <Typography sx={{ fontWeight: 700 }}>
+                {blocks.length === 0 && !debouncedSearch && !typeFilter
+                  ? 'Todavía no hay bloques.'
+                  : 'No hay bloques para este filtro.'}
+              </Typography>
+              {blocks.length === 0 && !debouncedSearch && !typeFilter && (
+                <Button
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={() => openEditor(null)}
+                  sx={{ mt: 2, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+                >
+                  Crear el primero
+                </Button>
+              )}
+            </Box>
+          ) : isMobile ? (
+            <Stack sx={{ opacity: loading ? 0.6 : 1 }}>
+              {pageItems.map((block, index) => (
+                <Box
+                  key={block._id}
+                  component="article"
+                  aria-label={block.title}
+                  sx={{ p: 2, borderTop: index ? `1px solid ${BRAND.line}` : 'none' }}
+                >
+                  <Stack direction="row" spacing={1} sx={{ justifyContent: 'space-between' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700 }}>{block.title}</Typography>
+                      <Typography variant="caption" sx={{ color: BRAND.muted }}>
+                        {getTypeLabel(block.type)} · {formatDate(block.startDate)} al{' '}
+                        {formatDate(block.endDate)}
+                      </Typography>
+                    </Box>
+                    <Pill status={statusOf.get(block._id)} />
+                  </Stack>
+                  <Stack
+                    direction="row"
+                    sx={{ mt: 1.5, justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    <ProductStrip block={block} />
+                    <BlockActions
+                      block={block}
+                      busy={confirmBusy}
+                      onEdit={openEditor}
+                      onToggle={b => askConfirm('toggle', b)}
+                      onDelete={b => askConfirm('delete', b)}
+                    />
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          ) : (
+            <TableContainer sx={{ opacity: loading ? 0.6 : 1 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Bloque</TableCell>
+                    <TableCell>Productos</TableCell>
+                    <TableCell>Vigencia</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pageItems.map(block => (
+                    <TableRow key={block._id} hover>
+                      <TableCell sx={{ maxWidth: 380 }}>
+                        <Typography sx={{ fontWeight: 700 }}>{block.title}</Typography>
+                        <Typography variant="caption" sx={{ color: BRAND.muted, display: 'block' }}>
+                          {getTypeLabel(block.type)}
+                          {block.description ? ` · ${block.description}` : ''}
+                        </Typography>
                       </TableCell>
                       <TableCell>
-                        <Skeleton width={140} />
+                        <ProductStrip block={block} />
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <Typography variant="body2">{formatDate(block.startDate)}</Typography>
+                        <Typography variant="caption" sx={{ color: BRAND.muted }}>
+                          al {formatDate(block.endDate)}
+                        </Typography>
                       </TableCell>
                       <TableCell>
-                        <Skeleton width={240} />
+                        <Pill status={statusOf.get(block._id)} />
                       </TableCell>
-                      <TableCell>
-                        <Skeleton width={100} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={80} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={110} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={180} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={60} />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton width={100} />
+                      <TableCell align="right">
+                        <BlockActions
+                          block={block}
+                          busy={confirmBusy}
+                          onEdit={openEditor}
+                          onToggle={b => askConfirm('toggle', b)}
+                          onDelete={b => askConfirm('delete', b)}
+                        />
                       </TableCell>
                     </TableRow>
-                  ))
-                ) : blocks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 8 }}>
-                      <BsCalendar size={48} color="#bbb" />
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
 
-                      <Typography color="text.secondary" sx={{ mt: 2 }}>
-                        No hay bloques promocionales configurados.
-                      </Typography>
-
-                      <Button
-                        variant="outlined"
-                        startIcon={<BsPlus />}
-                        sx={{ mt: 2 }}
-                        onClick={openCreateModal}
-                      >
-                        Crear primer bloque
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  blocks.map(block => (
-                    <PromotionalBlockRow
-                      key={block._id}
-                      block={block}
-                      toggling={isToggling}
-                      deleting={isDeleting}
-                      onEdit={openEditModal}
-                      onToggleStatus={handleToggleStatus}
-                      onDelete={handleDelete}
-                    />
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          {meta?.pages > 1 && (
-            <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}>
+          {pages > 1 && (
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{
+                p: 2,
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                borderTop: `1px solid ${BRAND.line}`,
+              }}
+            >
+              <Typography variant="body2" sx={{ color: BRAND.muted }}>
+                Mostrando {pageItems.length} de {visible.length} (página {page} de {pages})
+              </Typography>
               <Pagination
-                count={meta.pages}
+                count={pages}
                 page={page}
+                onChange={(_, next) => setPage(next)}
                 color="primary"
-                onChange={(_, nextPage) => setPage(nextPage)}
+                getItemAriaLabel={(type, item) =>
+                  type === 'page'
+                    ? `Página ${item}`
+                    : type === 'next'
+                      ? 'Página siguiente'
+                      : type === 'previous'
+                        ? 'Página anterior'
+                        : type
+                }
               />
-            </Box>
+            </Stack>
           )}
         </Paper>
+      )}
 
-        <Alert severity="info" sx={{ mt: 3 }}>
-          <Typography variant="body2">
-            Los bloques públicos se muestran en el website solo si están activos, visibles, dentro
-            del rango de fechas y pertenecen al tenant actual.
-          </Typography>
-        </Alert>
-      </Container>
+      {/* ------------------------------------------------------------------ */}
+      {/* Editor                                                              */}
+      {/* ------------------------------------------------------------------ */}
 
-      <Dialog open={modalOpen} onClose={closeModal} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          {editingBlock ? 'Editar bloque promocional' : 'Nuevo bloque promocional'}
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Grid container spacing={3}>
-            <Grid size={{ xs: 12 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                Datos generales
-              </Typography>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 8 }}>
-              <TextField
-                fullWidth
-                required
-                label="Título"
-                value={form.title}
-                onChange={event => setField('title', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                fullWidth
-                label="Slug opcional"
-                helperText="Si lo dejás vacío, el backend lo genera desde el título."
-                value={form.slug}
-                onChange={event => setField('slug', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Tipo</InputLabel>
-                <Select
-                  label="Tipo"
-                  value={form.type}
-                  onChange={event => setField('type', event.target.value)}
-                >
-                  {BLOCK_TYPES.map(item => (
-                    <MenuItem key={item.value} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Ubicación</InputLabel>
-                <Select
-                  label="Ubicación"
-                  value={form.placement}
-                  onChange={event => setField('placement', event.target.value)}
-                >
-                  {PLACEMENTS.map(item => (
-                    <MenuItem key={item.value} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth>
-                <InputLabel>Visibilidad</InputLabel>
-                <Select
-                  label="Visibilidad"
-                  value={form.visibility}
-                  onChange={event => setField('visibility', event.target.value)}
-                >
-                  {VISIBILITIES.map(item => (
-                    <MenuItem key={item.value} value={item.value}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                label="Descripción"
-                value={form.description}
-                onChange={event => setField('description', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Divider />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                Programación
-              </Typography>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField
-                fullWidth
-                required
-                type="datetime-local"
-                label="Fecha inicio"
-                value={form.startDate}
-                onChange={event => setField('startDate', event.target.value)}
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                    sx: {
-                      backgroundColor: 'background.paper',
-                      px: 0.75,
-                      zIndex: 1,
-                    },
-                  },
-                }}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField
-                fullWidth
-                required
-                type="datetime-local"
-                label="Fecha fin"
-                slotProps={{
-                  inputLabel: {
-                    shrink: true,
-                    sx: {
-                      backgroundColor: 'background.paper',
-                      px: 0.75,
-                      zIndex: 1,
-                    },
-                  },
-                }}
-                value={form.endDate}
-                onChange={event => setField('endDate', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Máx. productos"
-                value={form.maxItems}
-                slotProps={{
-                  htmlInput: {
-                    min: 1,
-                    max: CONFIG.MAX_PRODUCTS_PER_BLOCK,
-                  },
-                  inputLabel: {
-                    shrink: true,
-                    sx: {
-                      backgroundColor: 'background.paper',
-                      px: 0.75,
-                      zIndex: 1,
-                    },
-                  },
-                }}
-                onChange={event => setField('maxItems', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Prioridad"
-                value={form.priority}
-                slotProps={{
-                  htmlInput: {
-                    min: 1,
-                    max: 100,
-                  },
-                }}
-                onChange={event => setField('priority', event.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 2 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.isActive}
-                    onChange={event => setField('isActive', event.target.checked)}
-                  />
-                }
-                label="Activo"
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Divider />
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                sx={{ justifyContent: 'space-between' }}
-                spacing={2}
-              >
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                    Productos del bloque
-                  </Typography>
-
-                  <Typography variant="body2" color="text.secondary">
-                    Seleccionados: {form.products.length} / {form.maxItems}
-                  </Typography>
+      <Dialog
+        open={Boolean(editor)}
+        onClose={closeEditor}
+        maxWidth="md"
+        fullWidth
+        fullScreen={isMobile}
+      >
+        {editor && (
+          <>
+            <DialogTitle
+              sx={{
+                fontFamily: DISPLAY_FONT,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              {editor.block ? 'Editar bloque' : 'Nuevo bloque'}
+              <IconButton aria-label="Cerrar" onClick={closeEditor} disabled={saving}>
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent dividers>
+              <Stack spacing={3}>
+                <Box component="section" aria-label="Qué muestra">
+                  <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Qué muestra</Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 8 }}>
+                      <TextField
+                        fullWidth
+                        required
+                        label="Título"
+                        value={form.title}
+                        onChange={event => setField('title', event.target.value)}
+                        error={Boolean(fieldError('title'))}
+                        helperText={
+                          fieldError('title') ||
+                          `${form.title.trim().length} de ${LIMITS.title} caracteres`
+                        }
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <TextField
+                        select
+                        fullWidth
+                        label="Tipo"
+                        value={form.type}
+                        onChange={event => setField('type', event.target.value)}
+                      >
+                        {BLOCK_TYPES.map(item => (
+                          <MenuItem key={item.value} value={item.value}>
+                            {item.label}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        label="Descripción"
+                        value={form.description}
+                        onChange={event => setField('description', event.target.value)}
+                        error={Boolean(fieldError('description'))}
+                        helperText={
+                          fieldError('description') ||
+                          `Opcional. ${form.description.trim().length} de ${LIMITS.description} caracteres`
+                        }
+                      />
+                    </Grid>
+                  </Grid>
                 </Box>
 
-                <TextField
-                  size="small"
-                  placeholder="Buscar producto..."
-                  value={productSearch}
-                  onChange={event => setProductSearch(event.target.value)}
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <BsSearch />
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                  sx={{ minWidth: { xs: '100%', md: 320 } }}
-                />
-              </Stack>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-                  gap: 2,
-                  maxHeight: 330,
-                  overflowY: 'auto',
-                  p: 1,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                }}
-              >
-                {productsLoading ? (
-                  [...Array(6)].map((_, index) => (
-                    <Skeleton key={index} variant="rounded" height={230} />
-                  ))
-                ) : filteredProducts.length === 0 ? (
-                  <Typography
-                    color="text.secondary"
-                    sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 4 }}
-                  >
-                    No se encontraron productos.
-                  </Typography>
-                ) : (
-                  filteredProducts.map(product => {
-                    const productId = getEntityId(product)
-                    const selected = selectedProductIds.has(productId)
-                    const disabled = !selected && form.products.length >= Number(form.maxItems)
-
-                    return (
-                      <ProductPickerCard
-                        key={productId}
-                        product={product}
-                        selected={selected}
-                        disabled={disabled}
-                        onToggle={() => toggleProductSelection(product)}
+                <Box component="section" aria-label="Dónde y cuándo">
+                  <Typography sx={{ fontWeight: 800, mb: 1.5 }}>Dónde y cuándo</Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        select
+                        fullWidth
+                        label="Ubicación"
+                        value={form.placement}
+                        onChange={event => setField('placement', event.target.value)}
+                        helperText={
+                          placement?.shown
+                            ? ''
+                            : 'La tienda todavía no muestra bloques en esta ubicación: no se va a ver.'
+                        }
+                        error={!placement?.shown}
+                      >
+                        {PLACEMENTS.map(item => (
+                          <MenuItem
+                            key={item.value}
+                            value={item.value}
+                            disabled={!item.shown && item.value !== form.placement}
+                          >
+                            {item.label}
+                            {item.shown ? '' : ' (todavía no se muestra)'}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        label="Dirección (opcional)"
+                        value={form.slug}
+                        onChange={event => setField('slug', event.target.value)}
+                        error={Boolean(fieldError('slug'))}
+                        helperText={
+                          fieldError('slug') || 'Si la dejás vacía, se arma con el título.'
+                        }
                       />
-                    )
-                  })
-                )}
-              </Box>
-            </Grid>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        type="datetime-local"
+                        label="Desde"
+                        value={form.startDate}
+                        onChange={event => setField('startDate', event.target.value)}
+                        error={Boolean(fieldError('startDate'))}
+                        helperText={fieldError('startDate')}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        type="datetime-local"
+                        label="Hasta"
+                        value={form.endDate}
+                        onChange={event => setField('endDate', event.target.value)}
+                        error={Boolean(fieldError('endDate'))}
+                        helperText={fieldError('endDate')}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Orden"
+                        value={form.priority}
+                        onChange={event => setField('priority', event.target.value)}
+                        error={Boolean(fieldError('priority'))}
+                        helperText={fieldError('priority') || '1 sale primero'}
+                        slotProps={{ htmlInput: { min: 1, max: LIMITS.priority, step: 1 } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <TextField
+                        select
+                        fullWidth
+                        label="Visibilidad"
+                        value={form.visibility}
+                        onChange={event => setField('visibility', event.target.value)}
+                      >
+                        <MenuItem value="public">Pública</MenuItem>
+                        <MenuItem value="hidden">Oculta</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex', alignItems: 'center' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={form.isActive}
+                            onChange={event => setField('isActive', event.target.checked)}
+                          />
+                        }
+                        label={form.isActive ? 'Activo' : 'Pausado'}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
 
-            {form.products.length > 0 && (
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 2 }}>
-                  Configuración de productos seleccionados
-                </Typography>
+                <Box component="section" aria-label="Productos">
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, mb: 1.5 }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 800 }}>Productos</Typography>
+                      <Typography variant="body2" sx={{ color: BRAND.muted }}>
+                        {plural(form.products.length, 'elegido', 'elegidos')} de un máximo de{' '}
+                        {form.maxItems || '—'}
+                      </Typography>
+                    </Box>
+                    <TextField
+                      type="number"
+                      size="small"
+                      label="Máximo"
+                      value={form.maxItems}
+                      onChange={event => setField('maxItems', event.target.value)}
+                      error={Boolean(fieldError('maxItems'))}
+                      helperText={fieldError('maxItems')}
+                      slotProps={{ htmlInput: { min: 1, max: LIMITS.maxItems, step: 1 } }}
+                      sx={{ width: { sm: 140 } }}
+                    />
+                  </Stack>
 
-                <Stack spacing={2}>
-                  {form.products.map((item, index) => {
-                    const productId = getEntityId(item.productId)
-                    const product = normalizedProducts.find(p => getEntityId(p) === productId)
+                  {form.products.length > 0 && (
+                    <Stack spacing={1.5} sx={{ mb: 2 }}>
+                      {form.products.map(item => {
+                        const key = `producto:${item.productId}`
+                        const product =
+                          item.product ||
+                          pickerResults.find(p => getEntityId(p) === item.productId) ||
+                          null
+                        return (
+                          <Paper
+                            key={item.productId}
+                            variant="outlined"
+                            component="article"
+                            aria-label={product?.title || 'Producto'}
+                            sx={{ p: 1.5, borderRadius: 3, borderColor: BRAND.line }}
+                          >
+                            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                              <Thumb product={product} />
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography sx={{ fontWeight: 700 }} noWrap>
+                                  {product?.title || 'Producto que ya no está en el catálogo'}
+                                </Typography>
+                                {product?.price != null && (
+                                  <Typography variant="caption" sx={{ color: BRAND.muted }}>
+                                    {formatPesos(product.price)}
+                                  </Typography>
+                                )}
+                              </Box>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={item.isActive !== false}
+                                    onChange={event =>
+                                      setProductField(
+                                        item.productId,
+                                        'isActive',
+                                        event.target.checked,
+                                      )
+                                    }
+                                  />
+                                }
+                                label="Se ve"
+                                sx={{ m: 0 }}
+                              />
+                              <IconButton
+                                aria-label={`Quitar ${product?.title || 'producto'}`}
+                                onClick={() => toggleProduct({ _id: item.productId })}
+                                sx={{ color: BRAND.red }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+                              <Grid size={{ xs: 6, sm: 2 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  type="number"
+                                  label="% de descuento"
+                                  value={item.discountPercentage}
+                                  onChange={event =>
+                                    setProductField(
+                                      item.productId,
+                                      'discountPercentage',
+                                      event.target.value,
+                                    )
+                                  }
+                                  error={Boolean(fieldError(`${key}:discountPercentage`))}
+                                  helperText={fieldError(`${key}:discountPercentage`)}
+                                  slotProps={{ htmlInput: { min: 0, max: 100 } }}
+                                />
+                              </Grid>
+                              <Grid size={{ xs: 6, sm: 2 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  type="number"
+                                  label="Orden"
+                                  value={item.priority}
+                                  onChange={event =>
+                                    setProductField(item.productId, 'priority', event.target.value)
+                                  }
+                                  error={Boolean(fieldError(`${key}:priority`))}
+                                  helperText={fieldError(`${key}:priority`)}
+                                  slotProps={{ htmlInput: { min: 1, max: LIMITS.priority } }}
+                                />
+                              </Grid>
+                              <Grid size={{ xs: 12, sm: 3 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  label="Etiqueta"
+                                  placeholder="Ej.: Últimas unidades"
+                                  value={item.customLabel}
+                                  onChange={event =>
+                                    setProductField(
+                                      item.productId,
+                                      'customLabel',
+                                      event.target.value,
+                                    )
+                                  }
+                                  error={Boolean(fieldError(`${key}:customLabel`))}
+                                  helperText={fieldError(`${key}:customLabel`)}
+                                />
+                              </Grid>
+                              <Grid size={{ xs: 12, sm: 5 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  label="Título en el bloque"
+                                  placeholder={product?.title || ''}
+                                  value={item.customTitle}
+                                  onChange={event =>
+                                    setProductField(
+                                      item.productId,
+                                      'customTitle',
+                                      event.target.value,
+                                    )
+                                  }
+                                  error={Boolean(fieldError(`${key}:customTitle`))}
+                                  helperText={fieldError(`${key}:customTitle`)}
+                                />
+                              </Grid>
+                            </Grid>
+                          </Paper>
+                        )
+                      })}
+                    </Stack>
+                  )}
 
-                    return (
-                      <Paper key={productId} sx={{ p: 2, borderRadius: 2 }}>
-                        <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-                          <Grid size={{ xs: 12, md: 3 }}>
-                            <Typography sx={{ fontWeight: 800 }} noWrap>
-                              {product?.title || `Producto ${index + 1}`}
-                            </Typography>
+                  {hasDiscounts(form.products) && (
+                    <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+                      Mientras el bloque esté vigente, HENKO avisa por email a los clientes que
+                      tienen estos productos en favoritos.
+                    </Alert>
+                  )}
 
-                            <Typography variant="caption" color="text.secondary">
-                              {productId}
-                            </Typography>
-                          </Grid>
-
-                          <Grid size={{ xs: 12, md: 2 }}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              label="Etiqueta"
-                              value={item.customLabel}
-                              onChange={event =>
-                                updateSelectedProductField(
-                                  productId,
-                                  'customLabel',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Grid>
-
-                          <Grid size={{ xs: 12, md: 3 }}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              label="Título personalizado"
-                              value={item.customTitle}
-                              onChange={event =>
-                                updateSelectedProductField(
-                                  productId,
-                                  'customTitle',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Grid>
-
-                          <Grid size={{ xs: 6, md: 1.5 }}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              type="number"
-                              label="% OFF"
-                              value={item.discountPercentage}
-                              slotProps={{
-                                htmlInput: {
-                                  min: 0,
-                                  max: 100,
-                                },
-                              }}
-                              onChange={event =>
-                                updateSelectedProductField(
-                                  productId,
-                                  'discountPercentage',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Grid>
-
-                          <Grid size={{ xs: 6, md: 1 }}>
-                            <TextField
-                              fullWidth
-                              size="small"
-                              type="number"
-                              label="Orden"
-                              value={item.priority}
-                              slotProps={{
-                                htmlInput: {
-                                  min: 1,
-                                  max: 100,
-                                },
-                              }}
-                              onChange={event =>
-                                updateSelectedProductField(
-                                  productId,
-                                  'priority',
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Grid>
-
-                          <Grid size={{ xs: 6, md: 0.8 }}>
-                            <Switch
-                              checked={item.isActive !== false}
-                              onChange={event =>
-                                updateSelectedProductField(
-                                  productId,
-                                  'isActive',
-                                  event.target.checked,
-                                )
-                              }
-                            />
-                          </Grid>
-
-                          <Grid size={{ xs: 6, md: 0.7 }}>
-                            <IconButton
-                              color="error"
-                              onClick={() => removeSelectedProduct(productId)}
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Buscar productos para agregar"
+                    value={pickerSearch}
+                    onChange={event => setPickerSearch(event.target.value)}
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+                  {pickerError && (
+                    <Alert severity="error" sx={{ mt: 1.5 }}>
+                      {pickerError}
+                    </Alert>
+                  )}
+                  <Box
+                    role="list"
+                    aria-label="Productos del catálogo"
+                    sx={{
+                      mt: 1.5,
+                      border: `1px solid ${BRAND.line}`,
+                      borderRadius: 3,
+                      maxHeight: 280,
+                      overflowY: 'auto',
+                      opacity: pickerLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {pickerResults.length === 0 && !pickerLoading ? (
+                      <Typography sx={{ p: 2, color: BRAND.muted, textAlign: 'center' }}>
+                        {pickerSearch ? 'Ningún producto coincide.' : 'No hay productos.'}
+                      </Typography>
+                    ) : (
+                      pickerResults.map((product, index) => {
+                        const productId = getEntityId(product)
+                        const selected = selectedIds.has(productId)
+                        const disabled = !selected && full
+                        return (
+                          <ButtonBase
+                            key={productId}
+                            role="listitem"
+                            aria-pressed={selected}
+                            disabled={disabled}
+                            onClick={() => toggleProduct(product)}
+                            sx={{
+                              width: '100%',
+                              display: 'flex',
+                              gap: 1.5,
+                              px: 1.5,
+                              py: 1,
+                              justifyContent: 'flex-start',
+                              textAlign: 'left',
+                              borderTop: index ? `1px solid ${BRAND.line}` : 'none',
+                              bgcolor: selected ? BRAND.paper : 'transparent',
+                              opacity: disabled ? 0.5 : 1,
+                              '&:hover': { bgcolor: BRAND.paper },
+                            }}
+                          >
+                            <Thumb product={product} size={36} />
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                                {product.title || 'Producto sin título'}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: BRAND.muted }}>
+                                {formatPesos(product.price)}
+                                {product.status && product.status !== 'active'
+                                  ? ' · no publicado'
+                                  : ''}
+                              </Typography>
+                            </Box>
+                            <Typography
+                              variant="caption"
+                              sx={{ fontWeight: 700, color: selected ? BRAND.blue : BRAND.muted }}
                             >
-                              <BsTrash />
-                            </IconButton>
-                          </Grid>
-                        </Grid>
-                      </Paper>
-                    )
-                  })}
-                </Stack>
-              </Grid>
-            )}
-          </Grid>
-        </DialogContent>
-
-        <DialogActions>
-          <Button onClick={closeModal} disabled={isSaving}>
-            Cancelar
-          </Button>
-
-          <Button variant="contained" onClick={handleSubmit} disabled={isSaving}>
-            {isSaving ? (
-              <CircularProgress size={22} />
-            ) : editingBlock ? (
-              'Guardar cambios'
-            ) : (
-              'Crear bloque'
-            )}
-          </Button>
-        </DialogActions>
+                              {selected ? 'Elegido' : disabled ? 'Llegaste al máximo' : 'Agregar'}
+                            </Typography>
+                          </ButtonBase>
+                        )
+                      })
+                    )}
+                  </Box>
+                </Box>
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ flexWrap: 'wrap', gap: 1, px: 3, py: 2 }}>
+              {saveError && (
+                <Alert severity="error" sx={{ width: '100%' }}>
+                  {saveError}
+                </Alert>
+              )}
+              {triedToSave && errorCount > 0 && (
+                <Typography variant="body2" sx={{ color: BRAND.red, mr: 'auto', fontWeight: 700 }}>
+                  Revisá {plural(errorCount, 'campo marcado', 'campos marcados')}.
+                </Typography>
+              )}
+              <Button onClick={closeEditor} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSave}
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+              >
+                {saving ? 'Guardando…' : editor.block ? 'Guardar cambios' : 'Crear bloque'}
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
-      <ConfirmDialog
-        open={confirmDialog.open}
-        title={
-          confirmDialog.action === 'delete'
-            ? 'Eliminar definitivamente'
-            : confirmDialog.block?.isActive
-              ? 'Desactivar bloque promocional'
-              : 'Activar bloque promocional'
-        }
-        message={
-          confirmDialog.action === 'delete'
-            ? `¿Estás seguro de eliminar definitivamente "${confirmDialog.block?.title}" de la base de datos? Esta acción no se puede deshacer.`
-            : `¿Querés ${confirmDialog.block?.isActive ? 'desactivar' : 'activar'} "${confirmDialog.block?.title}"?`
-        }
-        confirmText={confirmDialog.action === 'delete' ? 'Eliminar definitivamente' : 'Confirmar'}
-        confirmColor={confirmDialog.action === 'delete' ? 'error' : 'primary'}
-        loading={isDeleting || isToggling}
-        onConfirm={confirmAction}
-        onCancel={closeConfirmDialog}
-      />
+      <Dialog open={Boolean(confirming)} onClose={closeConfirm} maxWidth="xs" fullWidth>
+        {confirmCopy && (
+          <>
+            <DialogTitle sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800 }}>
+              {confirmCopy.title}
+            </DialogTitle>
+            <DialogContent>
+              <Typography color="text.secondary">{confirmCopy.body}</Typography>
+              {confirmError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {confirmError}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeConfirm} disabled={confirmBusy}>
+                Cancelar
+              </Button>
+              <Button
+                variant="contained"
+                color={confirmCopy.color}
+                onClick={runConfirm}
+                disabled={confirmBusy}
+                startIcon={confirmBusy ? <CircularProgress size={16} color="inherit" /> : null}
+              >
+                {confirmCopy.action}
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={3500}
+        onClose={() => setNotice('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity="success" variant="filled" onClose={() => setNotice('')}>
+          {notice}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }
