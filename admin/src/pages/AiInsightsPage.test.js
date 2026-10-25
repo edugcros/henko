@@ -38,7 +38,11 @@ jest.unstable_mockModule('../services/aiInsightService.js', () => ({
   applyPriceReduction: mockApplyPrice,
 }))
 
-const { default: AiInsightsPage } = await import('./AiInsightsPage.jsx')
+const {
+  default: AiInsightsPage,
+  describeEvidence,
+  describeMeasurement,
+} = await import('./AiInsightsPage.jsx')
 
 const PRODUCTO = {
   _id: 'i1',
@@ -155,8 +159,7 @@ describe('Diagnóstico · consulta', () => {
   test('cambiar el estado o el tipo vuelve a pedir con ese filtro', async () => {
     await montar()
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Estado' }))
-    await userEvent.click(await screen.findByRole('option', { name: /En curso/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^En curso/ }))
     await waitFor(() => expect(ultimaConsulta().status).toBe('measuring'))
 
     await userEvent.click(screen.getByRole('combobox', { name: 'Tipo' }))
@@ -167,13 +170,13 @@ describe('Diagnóstico · consulta', () => {
   test('el subtítulo dice cuántos esperan revisión', async () => {
     await montar()
 
-    expect(screen.getByText(/2 pendiente\(s\) de revisión\./)).toBeTruthy()
+    expect(screen.getByText(/2 pendientes de revisión./)).toBeTruthy()
   })
 
   test('sin diagnósticos lo dice', async () => {
     await montar({ items: [], counters: {} })
 
-    expect(screen.getByText('No hay insights para este filtro.')).toBeTruthy()
+    expect(screen.getByText('No hay diagnósticos para este filtro.')).toBeTruthy()
   })
 
   test('si falla la carga muestra el mensaje del servidor o uno genérico', async () => {
@@ -186,7 +189,7 @@ describe('Diagnóstico · consulta', () => {
 
     mockList.mockRejectedValueOnce(new Error(''))
     render(<AiInsightsPage />)
-    expect(await screen.findByText('No se pudieron cargar los insights.')).toBeTruthy()
+    expect(await screen.findByText('No se pudieron cargar los diagnósticos.')).toBeTruthy()
     console.error.mockRestore()
   })
 })
@@ -271,7 +274,7 @@ describe('Diagnóstico · acciones según el estado', () => {
     )
 
     await waitFor(() => expect(mockAck).toHaveBeenCalledWith('i1'))
-    expect(await screen.findByText('Insight marcado en curso.')).toBeTruthy()
+    expect(await screen.findByText('Diagnóstico marcado en curso.')).toBeTruthy()
   })
 
   test('descartar pide un motivo opcional y lo manda', async () => {
@@ -363,7 +366,9 @@ describe('Diagnóstico · acciones que cambian cosas, siempre con confirmación'
     )
 
     expect(await dialogo().findByText('1 → 3')).toBeTruthy()
-    expect(dialogo().getByText(/\$5000 → \$2000/)).toBeTruthy()
+    expect(
+      dialogo().getByText(content => content.includes('5.000 →') && content.includes('2.000')),
+    ).toBeTruthy()
     expect(dialogo().getByText('Desactivada → Activada')).toBeTruthy()
     expect(mockApplyReinf).not.toHaveBeenCalled()
 
@@ -419,5 +424,217 @@ describe('Diagnóstico · acciones que cambian cosas, siempre con confirmación'
     escribir(precio, '50000')
 
     expect(dialogo().getByRole('button', { name: 'Aplicar precio' }).disabled).toBe(true)
+  })
+})
+
+describe('Diagnóstico · la evidencia, en castellano', () => {
+  test('las cifras salen con nombre y formato, no con la clave interna', async () => {
+    await montar()
+
+    const producto = within(tarjeta('Bajo rendimiento: Zapatillas Runner'))
+    expect(producto.getByText('Visitas')).toBeTruthy()
+    expect(producto.getByText('120')).toBeTruthy()
+    expect(producto.getByText('Conversión')).toBeTruthy()
+    expect(producto.getByText('0,83%')).toBeTruthy()
+    expect(producto.queryByText(/conversionRate/)).toBeNull()
+
+    const cliente = within(tarjeta('Cliente inactivo: Lucía Pérez'))
+    expect(cliente.getByText('Última compra')).toBeTruthy()
+    expect(
+      cliente.getByText(new Date('2026-07-20T00:00:00.000Z').toLocaleDateString('es-AR')),
+    ).toBeTruthy()
+    expect(cliente.queryByText(/T00:00:00/)).toBeNull()
+  })
+
+  test('el antes y el después dicen qué métrica es y si mejoró', async () => {
+    await montar({ ...RESPUESTA, items: [MEDIDO] })
+
+    expect(screen.getByText(/Conversión: antes 1,2% → ahora 1,9% · mejoró/)).toBeTruthy()
+  })
+
+  test('en días sin comprar, que suban es peor', () => {
+    expect(
+      describeMeasurement({ metricName: 'daysSinceLastOrder', beforeValue: 90, afterValue: 120 })
+        .verdict,
+    ).toBe('peor')
+    expect(
+      describeMeasurement({ metricName: 'conversionRate', beforeValue: 2, afterValue: 2 }).verdict,
+    ).toBe('igual')
+  })
+
+  test('la prioridad se dice en castellano', async () => {
+    await montar()
+
+    expect(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByText('Prioridad alta'),
+    ).toBeTruthy()
+    expect(
+      within(tarjeta('Cliente inactivo: Lucía Pérez')).getByText('Prioridad media'),
+    ).toBeTruthy()
+  })
+
+  test('describeEvidence muestra tal cual una clave que no conoce y esconde los días de ventana', () => {
+    expect(describeEvidence({ nuevaCosa: 3, days: 30, windowDays: 14 })).toEqual([
+      { label: 'nuevaCosa', value: '3' },
+    ])
+  })
+})
+
+describe('Diagnóstico · resumen y páginas', () => {
+  test('el resumen cuenta cada estado y marca el elegido', async () => {
+    await montar()
+
+    const resumen = within(screen.getByRole('region', { name: 'Resumen del diagnóstico' }))
+    expect(resumen.getByRole('button', { name: 'Pendientes 2' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(resumen.getByRole('button', { name: 'Medidos 3' })).toBeTruthy()
+    expect(resumen.getByRole('button', { name: 'Todos 7' })).toBeTruthy()
+  })
+
+  test('con más de 50 hay paginación y cambiar de filtro vuelve a la página 1', async () => {
+    await montar({ ...RESPUESTA, pagination: { page: 1, limit: 50, total: 120, pages: 3 } })
+
+    expect(screen.getByText('Mostrando 3 de 120 (página 1 de 3)')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+    await waitFor(() => expect(ultimaConsulta().page).toBe(2))
+
+    await userEvent.click(screen.getByRole('button', { name: /^Medidos/ }))
+    await waitFor(() => expect(ultimaConsulta()).toMatchObject({ status: 'resolved', page: 1 }))
+  })
+
+  test('si falla la carga deja reintentar y no dice además que no hay ninguno', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    mockList.mockRejectedValueOnce(new Error('Sin conexión'))
+
+    render(<AiInsightsPage />)
+
+    expect(await screen.findByText('Sin conexión')).toBeTruthy()
+    expect(screen.queryByText('No hay diagnósticos para este filtro.')).toBeNull()
+
+    mockList.mockResolvedValue(RESPUESTA)
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    expect(await screen.findByText('Bajo rendimiento: Zapatillas Runner')).toBeTruthy()
+    console.error.mockRestore()
+  })
+})
+
+describe('Diagnóstico · descartar no pierde lo escrito', () => {
+  test('si falla, el diálogo sigue abierto con el motivo y el error adentro', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {})
+    await montar()
+    mockDismiss.mockRejectedValueOnce(new Error('Ya fue descartado'))
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Descartar',
+      }),
+    )
+    escribir(dialogo().getByLabelText(/Motivo/), 'Lo arreglamos')
+    await userEvent.click(dialogo().getByRole('button', { name: 'Descartar' }))
+
+    expect(await dialogo().findByText('Ya fue descartado')).toBeTruthy()
+    expect(dialogo().getByLabelText(/Motivo/).value).toBe('Lo arreglamos')
+    console.error.mockRestore()
+  })
+
+  test('si sale bien, cierra y avisa', async () => {
+    await montar()
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Descartar',
+      }),
+    )
+    await userEvent.click(dialogo().getByRole('button', { name: 'Descartar' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(await screen.findByText('Diagnóstico descartado.')).toBeTruthy()
+  })
+})
+
+describe('Diagnóstico · reducir precio, explicado', () => {
+  test('dice por qué no deja aplicar un precio igual o mayor al actual', async () => {
+    await montar()
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Reducir precio',
+      }),
+    )
+    escribir(await dialogo().findByLabelText('Precio nuevo'), '50000')
+
+    expect(dialogo().getByText(/Tiene que ser menor al precio actual/)).toBeTruthy()
+  })
+
+  test('avisa si el precio queda por debajo del costo', async () => {
+    await montar()
+    mockPreviewPrice.mockResolvedValueOnce({
+      currentPrice: 50000,
+      suggestedPrice: 45000,
+      reductionPct: 10,
+      costFloor: 40000,
+    })
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Reducir precio',
+      }),
+    )
+    escribir(await dialogo().findByLabelText('Precio nuevo'), '35000')
+
+    expect(dialogo().getByText(/vas a vender a pérdida/)).toBeTruthy()
+    expect(dialogo().getByRole('button', { name: 'Aplicar precio' }).disabled).toBe(false)
+  })
+
+  test('el precio actual se muestra en pesos', async () => {
+    await montar()
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Reducir precio',
+      }),
+    )
+
+    expect(await dialogo().findByText(/Precio actual: \$\s?50\.000/)).toBeTruthy()
+  })
+
+  test('mientras aplica, el diálogo no se cierra con Escape', async () => {
+    await montar()
+    mockApplyPrice.mockReturnValue(new Promise(() => {}))
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Reducir precio',
+      }),
+    )
+    await dialogo().findByLabelText('Precio nuevo')
+    await userEvent.click(dialogo().getByRole('button', { name: 'Aplicar precio' }))
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(dialogo().getByRole('button', { name: 'Aplicando…' })).toBeTruthy()
+  })
+})
+
+describe('Diagnóstico · el precio sugerido se puede aplicar tal cual', () => {
+  test('al abrir, con el precio sugerido, el botón está habilitado', async () => {
+    await montar()
+    mockPreviewPrice.mockResolvedValueOnce({
+      currentPrice: 84900,
+      suggestedPrice: 76410,
+      reductionPct: 10,
+      costFloor: 60000,
+    })
+
+    await userEvent.click(
+      within(tarjeta('Bajo rendimiento: Zapatillas Runner')).getByRole('button', {
+        name: 'Reducir precio',
+      }),
+    )
+    await dialogo().findByLabelText('Precio nuevo')
+
+    expect(dialogo().getByRole('button', { name: 'Aplicar precio' }).disabled).toBe(false)
   })
 })
