@@ -136,7 +136,7 @@ describe('Diseño web · secciones', () => {
   test('el nombre de la tienda se edita desde la lista de secciones', () => {
     montar()
 
-    fireEvent.change(screen.getByLabelText('Nombre de la tienda'), {
+    fireEvent.change(screen.getByLabelText(/^Nombre de la tienda/), {
       target: { value: 'Kiosco Lucía 2' },
     })
 
@@ -146,7 +146,24 @@ describe('Diseño web · secciones', () => {
   test('el nombre de la tienda se puede borrar: no vuelve a aparecer «Mi Tienda»', () => {
     montar({ theme: { ...TEMA, general: { storeName: '', tagline: '' } } })
 
-    expect(screen.getByLabelText('Nombre de la tienda').value).toBe('')
+    expect(screen.getByLabelText(/^Nombre de la tienda/).value).toBe('')
+  })
+
+  test('borrar el nombre no manda un vacío (el backend lo rechaza) y lo explica', () => {
+    montar()
+
+    fireEvent.change(screen.getByLabelText(/^Nombre de la tienda/), { target: { value: '   ' } })
+
+    expect(estado.updateField).not.toHaveBeenCalledWith('general.storeName', expect.anything())
+    expect(screen.getByLabelText(/^Nombre de la tienda/).value).toBe('   ')
+    expect(screen.getByText(/No puede quedar vacío/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/^Nombre de la tienda/), {
+      target: { value: 'Kiosco Lucía' },
+    })
+
+    expect(estado.updateField).toHaveBeenCalledWith('general.storeName', 'Kiosco Lucía')
+    expect(screen.queryByText(/No puede quedar vacío/)).toBeNull()
   })
 
   test('la vista previa cambia de tamaño', async () => {
