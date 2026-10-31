@@ -1073,7 +1073,9 @@ const Home = () => {
                             <Typography
                               variant="overline"
                               sx={{
-                                color: themeColors.primary,
+                                // Texto chico sobre el panel: el texto de la card, que la
+                                // auditoría de paletas garantiza legible sobre ese fondo.
+                                color: textPrimary,
                                 letterSpacing: 1.7,
                                 fontWeight: 900,
                                 fontSize: 11,
