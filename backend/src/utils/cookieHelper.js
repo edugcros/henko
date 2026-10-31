@@ -121,6 +121,7 @@ export const getSessionCookieNames = req => {
   const esPanel = esHostDePanelDePlataforma(
     hostDelOrigen(req),
     env.tenantAdminBaseDomain || env.adminBaseDomain,
+    env.platformAdminAliases,
   )
 
   return esPanel ? SESSION_COOKIE_NAMES.admin : SESSION_COOKIE_NAMES.storefront

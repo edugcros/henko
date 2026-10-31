@@ -117,11 +117,43 @@ describe('colas de revisión · primero lo urgente', () => {
       },
     ])
 
+    // Cada una con su fingerprint: el modelo lo exige y hay un índice único
+    // (tenantId, fingerprint). collection.insertMany saltea la validación, así
+    // que sin esto las cuatro iban con null y chocaban apenas el índice estaba
+    // armado — en CI casi siempre; en una máquina lenta, a veces no.
     await AiLearningSuggestion.collection.insertMany([
-      { ...base, priority: 'medium', title: 'Media', question: '¿A?', updatedAt: new Date() },
-      { ...base, priority: 'critical', title: 'Crítica', question: '¿B?', updatedAt: new Date() },
-      { ...base, priority: 'high', title: 'Alta', question: '¿C?', updatedAt: new Date() },
-      { ...base, priority: 'low', title: 'Baja', question: '¿D?', updatedAt: new Date() },
+      {
+        ...base,
+        fingerprint: 'cola:media',
+        priority: 'medium',
+        title: 'Media',
+        question: '¿A?',
+        updatedAt: new Date(),
+      },
+      {
+        ...base,
+        fingerprint: 'cola:critica',
+        priority: 'critical',
+        title: 'Crítica',
+        question: '¿B?',
+        updatedAt: new Date(),
+      },
+      {
+        ...base,
+        fingerprint: 'cola:alta',
+        priority: 'high',
+        title: 'Alta',
+        question: '¿C?',
+        updatedAt: new Date(),
+      },
+      {
+        ...base,
+        fingerprint: 'cola:baja',
+        priority: 'low',
+        title: 'Baja',
+        question: '¿D?',
+        updatedAt: new Date(),
+      },
     ])
   })
 

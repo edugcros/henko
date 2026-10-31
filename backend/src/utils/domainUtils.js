@@ -267,12 +267,22 @@ export const getDomainCandidates = value => {
  * Recibe el dominio del panel por parámetro en lugar de leer `env`, para que
  * este archivo siga sin dependencias y se pueda probar sin entorno.
  */
-export const esHostDePanelDePlataforma = (host, adminBaseDomain) => {
+export const esHostDePanelDePlataforma = (host, adminBaseDomain, aliases = []) => {
+  if (!host) return false
+
+  const candidatos = getDomainCandidates(host)
   const panel = normalizeHostname(adminBaseDomain || '')
 
-  if (!panel || !host) return false
+  if (panel && candidatos.includes(panel)) return true
 
-  return getDomainCandidates(host).includes(panel)
+  // Los alias (PLATFORM_ADMIN_ALIASES) son el MISMO panel servido desde otro
+  // nombre, por ejemplo el dominio de Vercel del proyecto, para entrar cuando
+  // el dominio principal no es alcanzable desde una red. Coincidencia exacta:
+  // ningún otro subdominio de vercel.app pasa por acá.
+  return aliases.some(alias => {
+    const nombre = normalizeHostname(alias || '')
+    return Boolean(nombre) && candidatos.includes(nombre)
+  })
 }
 
 // =====================================================

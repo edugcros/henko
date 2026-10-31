@@ -180,7 +180,11 @@ const clearTenantContext = req => {
  * elige quien hace la petición, el token lo firma el servidor.
  */
 const isPlatformAdminHost = host =>
-  esHostDePanelDePlataforma(host, env.tenantAdminBaseDomain || env.adminBaseDomain)
+  esHostDePanelDePlataforma(
+    host,
+    env.tenantAdminBaseDomain || env.adminBaseDomain,
+    env.platformAdminAliases,
+  )
 
 /**
  * El comercio que dice la sesión, para el panel compartido.
