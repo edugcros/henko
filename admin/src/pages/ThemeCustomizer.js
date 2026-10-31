@@ -221,6 +221,11 @@ const ThemeCustomizer = () => {
   const [confirming, setConfirming] = useState(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)
+  // Lo que se ve en "Nombre de la tienda" mientras está vacío. El backend lo
+  // exige (themeConfigModel: required), así que un nombre vacío no se manda:
+  // antes el guardado automático lo mandaba y fallaba con un error de
+  // validación. null = mostrar el nombre del tema.
+  const [storeNameDraft, setStoreNameDraft] = useState(null)
 
   const {
     autoSaveEnabled,
@@ -243,6 +248,13 @@ const ThemeCustomizer = () => {
   } = useTheme()
 
   const openSection = openSectionId ? findSection(openSectionId) : null
+
+  // Si el nombre cambia por fuera (descartar, volver al original, recargar),
+  // manda el del tema.
+  const savedStoreName = theme?.general?.storeName
+  useEffect(() => {
+    setStoreNameDraft(null)
+  }, [savedStoreName])
 
   useEffect(() => {
     if (openSectionId) setSection?.(openSectionId)
@@ -279,6 +291,7 @@ const ThemeCustomizer = () => {
 
   const confirm = useCallback(async () => {
     const kind = confirming
+    setStoreNameDraft(null)
     if (kind === 'discard') {
       discard()
       setConfirming(null)
@@ -467,6 +480,8 @@ const ThemeCustomizer = () => {
   const showPreview = isMobile ? mobileView === 'preview' : true
   const previewWidth = VIEWPORTS.find(item => item.id === viewport)?.width || '100%'
 
+  const storeNameValue = storeNameDraft ?? theme.general?.storeName ?? ''
+
   const sectionList = (
     <Stack spacing={2.5} sx={{ p: 2.5 }}>
       <Box>
@@ -480,10 +495,26 @@ const ThemeCustomizer = () => {
           <TextField
             size="small"
             fullWidth
+            required
             label="Nombre de la tienda"
-            value={theme.general?.storeName ?? ''}
+            value={storeNameValue}
             placeholder="Mi Tienda"
-            onChange={event => updateField('general.storeName', event.target.value)}
+            error={!storeNameValue.trim()}
+            helperText={
+              storeNameValue.trim()
+                ? ''
+                : 'No puede quedar vacío: hasta que escribas uno, se mantiene el anterior.'
+            }
+            onChange={event => {
+              const value = event.target.value
+              if (value.trim()) {
+                setStoreNameDraft(null)
+                updateField('general.storeName', value)
+              } else {
+                setStoreNameDraft(value)
+              }
+            }}
+            slotProps={{ htmlInput: { maxLength: 100 } }}
           />
           <TextField
             size="small"
@@ -492,6 +523,7 @@ const ThemeCustomizer = () => {
             value={theme.general?.tagline ?? ''}
             placeholder="Opcional"
             onChange={event => updateField('general.tagline', event.target.value)}
+            slotProps={{ htmlInput: { maxLength: 200 } }}
           />
         </Stack>
       </Box>
