@@ -166,6 +166,25 @@ describe('Diseño web · secciones', () => {
     expect(screen.queryByText(/No puede quedar vacío/)).toBeNull()
   })
 
+  test('borrar de a una letra no deja guardado un pedazo del nombre', () => {
+    montar()
+    // El hook real cambia el tema con cada letra: se imita para que el campo lo vea.
+    estado.updateField.mockImplementation((path, value) => {
+      estado.theme = { ...estado.theme, general: { ...estado.theme.general, storeName: value } }
+    })
+    const campo = () => screen.getByLabelText(/^Nombre de la tienda/)
+
+    fireEvent.focus(campo())
+    fireEvent.change(campo(), { target: { value: 'K' } })
+    fireEvent.change(campo(), { target: { value: '' } })
+
+    expect(estado.updateField).toHaveBeenLastCalledWith('general.storeName', 'Kiosco Lucía')
+    expect(campo().value).toBe('')
+
+    fireEvent.blur(campo())
+    expect(campo().value).toBe('Kiosco Lucía')
+  })
+
   test('la vista previa cambia de tamaño', async () => {
     montar()
 

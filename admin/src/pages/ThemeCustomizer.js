@@ -4,7 +4,7 @@
 // vista previa en vivo. Los editores de cada sección viven en
 // features/theme/editors; el guardado (manual y automático) en
 // hooks/useThemeConfig.
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert,
@@ -226,6 +226,8 @@ const ThemeCustomizer = () => {
   // antes el guardado automático lo mandaba y fallaba con un error de
   // validación. null = mostrar el nombre del tema.
   const [storeNameDraft, setStoreNameDraft] = useState(null)
+  const nameBeforeEditing = useRef('')
+  const lastSentName = useRef('')
 
   const {
     autoSaveEnabled,
@@ -505,15 +507,30 @@ const ThemeCustomizer = () => {
                 ? ''
                 : 'No puede quedar vacío: hasta que escribas uno, se mantiene el anterior.'
             }
+            onFocus={() => {
+              const current = theme.general?.storeName ?? ''
+              nameBeforeEditing.current = current
+              lastSentName.current = current
+            }}
             onChange={event => {
               const value = event.target.value
               if (value.trim()) {
                 setStoreNameDraft(null)
+                lastSentName.current = value
                 updateField('general.storeName', value)
-              } else {
-                setStoreNameDraft(value)
+                return
               }
+              // Borrando de a una letra, cada prefijo ("Kios", "Ki", "K") ya se
+              // mandó al guardado automático: sin esto quedaba guardado el
+              // último. Se vuelve al nombre que había antes de editar.
+              const previous = nameBeforeEditing.current
+              if (previous.trim() && lastSentName.current !== previous) {
+                lastSentName.current = previous
+                updateField('general.storeName', previous)
+              }
+              setStoreNameDraft(value)
             }}
+            onBlur={() => setStoreNameDraft(null)}
             slotProps={{ htmlInput: { maxLength: 100 } }}
           />
           <TextField
