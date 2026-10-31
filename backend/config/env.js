@@ -166,14 +166,17 @@ if (missingBase.length > 0) {
 // =====================================================
 
 // Los alias del panel que se pueden usar: todos fuera de producción; en
-// producción, solo si las cookies de sesión son SameSite=None.
+// producción, solo si las cookies de sesión Y la de CSRF son SameSite=None.
+// La de CSRF se configura aparte (CSRF_COOKIE_SAME_SITE): si fuera Lax, el
+// navegador no la mandaría desde el alias y el login fallaría con 403.
 export const resolvePlatformAdminAliases = ({
   platformAdminAliasesRequested = [],
   cookieSameSite,
+  csrfCookieSameSite,
   isProduction,
 } = {}) => {
   if (!platformAdminAliasesRequested.length) return []
-  if (isProduction && cookieSameSite !== 'None') return []
+  if (isProduction && (cookieSameSite !== 'None' || csrfCookieSameSite !== 'None')) return []
   return [...new Set(platformAdminAliasesRequested)]
 }
 
@@ -450,7 +453,8 @@ env.platformAdminAliases = resolvePlatformAdminAliases(env)
 
 if (env.platformAdminAliasesRequested.length && !env.platformAdminAliases.length) {
   console.warn(
-    `[ENV] PLATFORM_ADMIN_ALIASES ignorado: requiere COOKIE_SAME_SITE=None (es ${env.cookieSameSite}).`,
+    `[ENV] PLATFORM_ADMIN_ALIASES ignorado: requiere COOKIE_SAME_SITE=None y CSRF_COOKIE_SAME_SITE=None ` +
+      `(son ${env.cookieSameSite} y ${env.csrfCookieSameSite}).`,
   )
 }
 

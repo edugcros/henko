@@ -74,6 +74,7 @@ describe('alias del panel · activación', () => {
       resolvePlatformAdminAliases({
         platformAdminAliasesRequested: [ALIAS],
         cookieSameSite: 'None',
+        csrfCookieSameSite: 'None',
         isProduction: true,
       }),
     ).toEqual([ALIAS])
@@ -84,6 +85,17 @@ describe('alias del panel · activación', () => {
       resolvePlatformAdminAliases({
         platformAdminAliasesRequested: [ALIAS],
         cookieSameSite: 'Lax',
+        isProduction: true,
+      }),
+    ).toEqual([])
+  })
+
+  test('en producción con la cookie de CSRF en Lax se ignoran (el login daría 403)', () => {
+    expect(
+      resolvePlatformAdminAliases({
+        platformAdminAliasesRequested: [ALIAS],
+        cookieSameSite: 'None',
+        csrfCookieSameSite: 'Lax',
         isProduction: true,
       }),
     ).toEqual([])
