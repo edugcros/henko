@@ -203,3 +203,145 @@ describe('Análisis de mercado · un resultado guardado se avisa', () => {
     expect(screen.queryByText(/análisis guardado/i)).toBeNull()
   })
 })
+
+// ─── Caracterización ─────────────────────────────────────────────────────
+//
+// Lo que la pantalla le manda al backend y lo que muestra de lo que vuelve.
+// Fijado antes del rediseño para que cambiar la presentación no cambie el
+// contrato con la API.
+
+const RENTABILIDAD = {
+  viable: true,
+  currency: 'ARS',
+  totalUnitCost: 5200,
+  breakEvenPrice: 6100,
+  marketPosition: { level: 'AJUSTADO', message: 'El precio típico deja poco margen.' },
+  scenarios: {
+    atMin: { price: 4450, profit: -1650, marginPercent: -37.1, profitable: false },
+    atMedian: { price: 8000, profit: 1900, marginPercent: 23.75, profitable: true },
+  },
+}
+
+describe('Análisis de mercado · lo que se manda', () => {
+  test('sin costo cargado, los costos viajan en null', async () => {
+    await analizar()
+
+    expect(mockAnalyze).toHaveBeenCalledWith({
+      product: 'Queso de Campo',
+      country: 'AR',
+      forceRefresh: false,
+      costs: null,
+    })
+  })
+
+  test('Enter con el desplegable cerrado analiza', async () => {
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba{Escape}{Enter}')
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
+    expect(mockAnalyze.mock.calls[0][0].product).toBe('Yerba')
+  })
+
+  test('sin producto el botón no analiza', () => {
+    render(<MarketIntelligencePage />)
+
+    expect(screen.getByRole('button', { name: /^Analizar$/i }).disabled).toBe(true)
+  })
+
+  test('"Analizar de nuevo" pide datos frescos', async () => {
+    mockAnalyze.mockResolvedValue({ success: true, data: { ...RESULTADO, fromCache: true } })
+    await analizar()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Analizar de nuevo/i }))
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalledTimes(2))
+    expect(mockAnalyze.mock.calls[1][0].forceRefresh).toBe(true)
+  })
+})
+
+describe('Análisis de mercado · lo que se muestra', () => {
+  test('el mensaje del backend llega tal cual (cuota agotada)', async () => {
+    mockAnalyze.mockRejectedValue({
+      response: { status: 429, data: { message: 'Llegaste al límite de análisis del mes.' } },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText('Llegaste al límite de análisis del mes.')).toBeDefined()
+  })
+
+  test('sin mensaje del backend, un error genérico entendible', async () => {
+    mockAnalyze.mockRejectedValue(new Error('Network Error'))
+
+    await analizar()
+
+    expect(await screen.findByText(/No se pudo completar el análisis/i)).toBeDefined()
+  })
+
+  test('la rentabilidad muestra equilibrio, posición y escenarios con signo', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: { ...RESULTADO, profitability: RENTABILIDAD },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText('Ajustado')).toBeDefined()
+    expect(screen.getByText('El precio típico deja poco margen.')).toBeDefined()
+    expect(screen.getByText('ARS 6.100')).toBeDefined()
+    expect(screen.getByText(/ARS 1\.900/)).toBeDefined()
+    expect(screen.getByText(/ARS -1\.650/)).toBeDefined()
+    expect(screen.getByText(/23\.8% de margen/)).toBeDefined()
+  })
+
+  test('una rentabilidad inviable muestra el motivo', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        profitability: { viable: false, message: 'Los porcentajes suman más de 100%.' },
+      },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText('Los porcentajes suman más de 100%.')).toBeDefined()
+  })
+
+  test('sin score no se muestra el desglose', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: { ...RESULTADO, demandScore: null, recommendation: 'DATOS INSUFICIENTES' },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText(/No se pudo medir la demanda de este producto/i)).toBeDefined()
+    expect(screen.queryByText(/Desglose del score/i)).toBeNull()
+  })
+
+  test('las ofertas llevan el link a la tienda de la que salió el precio', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        offers: [
+          {
+            title: 'Queso Ricolact 1kg',
+            link: 'https://tienda.example/q',
+            merchant: 'Tienda A',
+            price: 7900,
+          },
+        ],
+      },
+    })
+
+    await analizar()
+    await userEvent.click(await screen.findByText(/Ver de dónde salen estos precios/i))
+
+    const link = await screen.findByRole('link', { name: 'Queso Ricolact 1kg' })
+    expect(link.getAttribute('href')).toBe('https://tienda.example/q')
+    expect(link.getAttribute('rel')).toMatch(/noopener/)
+  })
+})
