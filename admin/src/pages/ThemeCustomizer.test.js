@@ -83,16 +83,18 @@ const nuevoEstado = (extra = {}) => ({
   ...extra,
 })
 
+const arbol = () => (
+  <MemoryRouter initialEntries={['/admin/diseñoweb']}>
+    <Routes>
+      <Route path="/admin/diseñoweb" element={<ThemeCustomizer />} />
+      <Route path="/admin" element={<div>Panel de administración</div>} />
+    </Routes>
+  </MemoryRouter>
+)
+
 const montar = (extra = {}) => {
   estado = nuevoEstado(extra)
-  return render(
-    <MemoryRouter initialEntries={['/admin/diseñoweb']}>
-      <Routes>
-        <Route path="/admin/diseñoweb" element={<ThemeCustomizer />} />
-        <Route path="/admin" element={<div>Panel de administración</div>} />
-      </Routes>
-    </MemoryRouter>,
-  )
+  return render(arbol())
 }
 
 beforeEach(() => {
@@ -167,21 +169,38 @@ describe('Diseño web · secciones', () => {
   })
 
   test('borrar de a una letra no deja guardado un pedazo del nombre', () => {
-    montar()
-    // El hook real cambia el tema con cada letra: se imita para que el campo lo vea.
+    const { rerender } = montar()
+    // El hook real cambia el tema con cada letra y Redux vuelve a dibujar: se imita.
     estado.updateField.mockImplementation((path, value) => {
       estado.theme = { ...estado.theme, general: { ...estado.theme.general, storeName: value } }
     })
     const campo = () => screen.getByLabelText(/^Nombre de la tienda/)
+    const escribir = value => {
+      fireEvent.change(campo(), { target: { value } })
+      rerender(arbol())
+    }
 
     fireEvent.focus(campo())
-    fireEvent.change(campo(), { target: { value: 'K' } })
-    fireEvent.change(campo(), { target: { value: '' } })
+    escribir('K')
+    escribir('')
 
     expect(estado.updateField).toHaveBeenLastCalledWith('general.storeName', 'Kiosco Lucía')
+    // Sigue vacío mientras se edita: la restauración no rellena el campo.
     expect(campo().value).toBe('')
 
+    escribir('Almacén Lucía')
+    expect(estado.updateField).toHaveBeenLastCalledWith('general.storeName', 'Almacén Lucía')
+    expect(campo().value).toBe('Almacén Lucía')
+  })
+
+  test('si se sale del campo vacío, vuelve a mostrarse el nombre anterior', () => {
+    montar()
+    const campo = () => screen.getByLabelText(/^Nombre de la tienda/)
+
+    fireEvent.focus(campo())
+    fireEvent.change(campo(), { target: { value: '' } })
     fireEvent.blur(campo())
+
     expect(campo().value).toBe('Kiosco Lucía')
   })
 

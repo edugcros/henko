@@ -228,6 +228,7 @@ const ThemeCustomizer = () => {
   const [storeNameDraft, setStoreNameDraft] = useState(null)
   const nameBeforeEditing = useRef('')
   const lastSentName = useRef('')
+  const restoringName = useRef(false)
 
   const {
     autoSaveEnabled,
@@ -255,6 +256,12 @@ const ThemeCustomizer = () => {
   // manda el del tema.
   const savedStoreName = theme?.general?.storeName
   useEffect(() => {
+    // La restauración al vaciar el campo también cambia el nombre del tema: esa
+    // no cuenta como "por fuera", o el campo se rellenaría mientras se escribe.
+    if (restoringName.current) {
+      restoringName.current = false
+      return
+    }
     setStoreNameDraft(null)
   }, [savedStoreName])
 
@@ -526,6 +533,7 @@ const ThemeCustomizer = () => {
               const previous = nameBeforeEditing.current
               if (previous.trim() && lastSentName.current !== previous) {
                 lastSentName.current = previous
+                restoringName.current = true
                 updateField('general.storeName', previous)
               }
               setStoreNameDraft(value)
