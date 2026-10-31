@@ -203,6 +203,12 @@ export const corsOptions = {
 
       const hostnameCandidates = getHostnameCandidates(origin)
 
+      // Alias del panel compartido (PLATFORM_ADMIN_ALIASES): el mismo panel,
+      // con otro nombre. Coincidencia exacta de host.
+      if (hostnameCandidates.some(host => env.platformAdminAliases.includes(host))) {
+        return callback(null, true)
+      }
+
       // Subdominios de la plataforma.
       if (hostnameCandidates.some(isAllowedRootDomain)) {
         return callback(null, true)

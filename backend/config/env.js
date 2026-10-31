@@ -165,6 +165,18 @@ if (missingBase.length > 0) {
 // ENV
 // =====================================================
 
+// Los alias del panel que se pueden usar: todos fuera de producción; en
+// producción, solo si las cookies de sesión son SameSite=None.
+export const resolvePlatformAdminAliases = ({
+  platformAdminAliasesRequested = [],
+  cookieSameSite,
+  isProduction,
+} = {}) => {
+  if (!platformAdminAliasesRequested.length) return []
+  if (isProduction && cookieSameSite !== 'None') return []
+  return [...new Set(platformAdminAliasesRequested)]
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
@@ -235,6 +247,15 @@ export const env = {
   corsCredentials: parseBoolean(process.env.CORS_CREDENTIALS, true),
   allowedOrigins: parseList(process.env.ALLOWED_ORIGINS),
   allowedRootDomains: parseList(process.env.ALLOWED_ROOT_DOMAINS),
+
+  // Otros nombres del MISMO panel compartido (ej. henko-admin.vercel.app), para
+  // entrar cuando el dominio principal no es alcanzable desde una red. Lista de
+  // hostnames exactos. Se activan recién al validar el entorno (ver abajo):
+  // sin cookies SameSite=None la sesión no viaja entre sitios y no servirían.
+  platformAdminAliasesRequested: parseList(process.env.PLATFORM_ADMIN_ALIASES)
+    .map(normalizeHostname)
+    .filter(host => host.split('.').length >= 3),
+  platformAdminAliases: [],
 
   allowLocalhost: parseBoolean(process.env.ALLOW_LOCALHOST, false),
   allowCustomDomains: parseBoolean(process.env.ALLOW_CUSTOM_DOMAINS, true),
@@ -417,6 +438,20 @@ export const env = {
   },
 
   logLevel: process.env.LOG_LEVEL || 'info',
+}
+
+// ALIAS DEL PANEL: SOLO SI LA SESIÓN PUEDE VIAJAR
+//
+// Un alias como henko-admin.vercel.app es otro sitio para el navegador. Con
+// cookies 'Lax' la sesión no viaja hasta la API y el alias solo mostraría el
+// login sin poder entrar. En vez de cortar el arranque (que tiraría la API
+// entera por un acceso de respaldo), se ignoran y queda dicho por qué.
+env.platformAdminAliases = resolvePlatformAdminAliases(env)
+
+if (env.platformAdminAliasesRequested.length && !env.platformAdminAliases.length) {
+  console.warn(
+    `[ENV] PLATFORM_ADMIN_ALIASES ignorado: requiere COOKIE_SAME_SITE=None (es ${env.cookieSameSite}).`,
+  )
 }
 
 // =====================================================
