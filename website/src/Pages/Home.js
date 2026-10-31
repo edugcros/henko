@@ -160,7 +160,7 @@ const PromotionalSpecialProduct = ({
 
   const cardBackground = isDark
     ? alpha(theme.palette.common.white, 0.08)
-    : alpha(themeColors.cardBackground, 0.9)
+    : themeColors.cardBackground
 
   const cardBorder = isDark
     ? alpha(theme.palette.common.white, 0.12)
@@ -495,8 +495,10 @@ const Home = () => {
   const pageBackground = backgroundColor
 
   const borderColor = alpha(themeColors.cardBorder, 0.58)
-  const mutedSurface = alpha(surfaceColor, 0.88)
-  const elevatedSurface = alpha(surfaceColor, 0.92)
+  // Opacos: el texto de estos paneles se audita contra "Card fondo". Con
+  // transparencia, el fondo de la página se mezclaba y bajaba el contraste.
+  const mutedSurface = surfaceColor
+  const elevatedSurface = surfaceColor
   const highlightSurface = alpha(textPrimary, 0.06)
   const interactiveHover = alpha(textPrimary, 0.05)
 
@@ -739,7 +741,7 @@ const Home = () => {
                     border: `1px solid ${borderColor}`,
                     boxShadow: '0 16px 44px rgba(15, 23, 42, 0.13)',
                     p: 0.85,
-                    bgcolor: alpha(surfaceColor, 0.96),
+                    bgcolor: surfaceColor,
                     color: textPrimary,
                     backdropFilter: 'blur(10px)',
                   }}

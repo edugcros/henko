@@ -55,6 +55,18 @@ describe('alcance de los colores del tema', () => {
     expect(src('Pages/Home.js')).not.toMatch(/color: themeColors\.primary/)
   })
 
+  test('los paneles del inicio son opacos: su texto se audita contra «Card fondo»', () => {
+    const home = src('Pages/Home.js')
+    expect(home).not.toMatch(/alpha\(surfaceColor/)
+    expect(home).not.toMatch(/alpha\(themeColors\.cardBackground/)
+  })
+
+  test('los avisos del carrito van sobre el fondo de la card, no sobre tintes o velos', () => {
+    const cart = src('Pages/Cart.js')
+    expect(cart).not.toMatch(/\$\{themeColors\.success\}20/)
+    expect(cart).not.toMatch(/rgba\(255,\s*255,\s*255,\s*0\.7\)/)
+  })
+
   test('el fondo de la página de inicio no mezcla el botón primario', () => {
     const home = src('Pages/Home.js')
     expect(home).not.toMatch(/alpha\(primaryAction/)

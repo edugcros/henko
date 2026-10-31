@@ -269,10 +269,23 @@ const CartItem = memo(
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: 'rgba(255,255,255,0.7)',
                   }}
                 >
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: themeColors.error }}>
+                  {/* Etiqueta opaca con el fondo de la card: "Error" se audita
+                      contra ese fondo. Sobre un velo translúcido encima de la
+                      foto el contraste dependía de la imagen. */}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 700,
+                      color: themeColors.error,
+                      bgcolor: themeColors.cardBackground,
+                      border: `1px solid ${themeColors.error}`,
+                      borderRadius: 1,
+                      px: 0.75,
+                      lineHeight: 1.6,
+                    }}
+                  >
                     Agotado
                   </Typography>
                 </Box>
@@ -927,7 +940,9 @@ const Cart = () => {
                       alignItems: 'center',
                       mb: 2,
                       p: 1.5,
-                      bgcolor: themeColors.success ? `${themeColors.success}20` : '#e7f4e4',
+                      // Borde de "Éxito" sobre el fondo de la card (el par auditado),
+                      // en vez de un tinte verde que bajaba el contraste del texto.
+                      border: `1px solid ${themeColors.success}`,
                       borderRadius: 1,
                     }}
                   >
