@@ -51,6 +51,10 @@ describe('alcance de los colores del tema', () => {
     expect(used.filter(role => !role.startsWith('header'))).toEqual([])
   })
 
+  test('el texto chico de los paneles del inicio no usa la marca (no se garantiza legible ahí)', () => {
+    expect(src('Pages/Home.js')).not.toMatch(/color: themeColors\.primary/)
+  })
+
   test('el fondo de la página de inicio no mezcla el botón primario', () => {
     const home = src('Pages/Home.js')
     expect(home).not.toMatch(/alpha\(primaryAction/)
