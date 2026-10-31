@@ -340,7 +340,7 @@ const CartItem = memo(
                       sx={{
                         display: 'block',
                         mt: 0.25,
-                        color: themeColors.link,
+                        color: themeColors.cardMutedText,
                         fontWeight: 600,
                       }}
                     >
@@ -899,7 +899,7 @@ const Cart = () => {
                   <span>
                     Subtotal ({totalQuantity} {totalQuantity === 1 ? 'producto' : 'productos'}):
                   </span>
-                  <Box component="span" sx={{ color: themeColors.cardPrice, ml: 1 }}>
+                  <Box component="span" sx={{ color: themeColors.price, ml: 1 }}>
                     ${totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>
@@ -976,7 +976,7 @@ const Cart = () => {
                   }}
                 >
                   <span>Total:</span>
-                  <Box component="span" sx={{ fontSize: '1.5rem', color: themeColors.cardPrice }}>
+                  <Box component="span" sx={{ fontSize: '1.5rem', color: themeColors.price }}>
                     $ {totalAmount.toLocaleString('es-AR')}
                   </Box>
                 </Typography>

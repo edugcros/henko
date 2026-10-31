@@ -610,7 +610,7 @@ const OurStore = () => {
                 sx={{
                   mb: 2,
                   fontWeight: 700,
-                  color: themeColors.text,
+                  color: themeColors.cardText,
                   textAlign: 'center',
                 }}
               >
@@ -646,14 +646,14 @@ const OurStore = () => {
                               px: `${spacingTheme.cardPadding}px`,
                               color: isSelectedCategory
                                 ? themeColors.actionPrimaryText
-                                : themeColors.text,
+                                : themeColors.cardText,
                             }}
                           >
                             <Typography
                               sx={{
                                 color: isSelectedCategory
                                   ? themeColors.actionPrimaryText
-                                  : themeColors.text,
+                                  : themeColors.cardText,
                                 fontWeight: 600,
                                 textTransform: 'uppercase',
                                 fontSize: 12,
@@ -790,7 +790,7 @@ const OurStore = () => {
                   <Divider sx={{ my: 2.5 }} />
                   <Typography
                     variant="subtitle2"
-                    sx={{ mb: 1.5, fontWeight: 800, color: themeColors.text }}
+                    sx={{ mb: 1.5, fontWeight: 800, color: themeColors.cardText }}
                   >
                     Filtrar por características
                   </Typography>
@@ -803,7 +803,7 @@ const OurStore = () => {
                           sx={{
                             display: 'block',
                             mb: 0.5,
-                            color: themeColors.text,
+                            color: themeColors.cardText,
                             fontWeight: 800,
                           }}
                         >
@@ -911,12 +911,14 @@ const OurStore = () => {
                     '& fieldset': {
                       borderColor: themeColors.border,
                     },
+                    // El foco de un campo es de la marca, como en el resto de los
+                    // inputs de MUI; antes usaba el color de los links.
                     '&:hover fieldset': {
-                      borderColor: themeColors.link,
+                      borderColor: themeColors.primary,
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: themeColors.link,
-                      boxShadow: `0 0 0 2px ${themeColors.link}33`,
+                      borderColor: themeColors.primary,
+                      boxShadow: `0 0 0 2px ${themeColors.primary}33`,
                     },
                   },
                 }}

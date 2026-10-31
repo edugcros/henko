@@ -74,6 +74,11 @@ export const getThemeColors = config => {
     salePrice: colors.salePrice,
     badgeBackground: colors.badgeBackground,
     badgeText: colors.badgeText,
+    // El pie de página tiene sus propios colores. Si la tienda todavía no los
+    // eligió, sigue pintado como antes (texto y fondo invertidos), para que
+    // el footer de una tienda existente no cambie solo.
+    footerBackground: colors.footerBackground || colors.text,
+    footerText: colors.footerText || colors.background,
   }
 }
 

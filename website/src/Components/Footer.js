@@ -44,9 +44,9 @@ const Footer = () => {
       : themeState.config || themeConfig || {}
   const themeColors = getThemeColors(activeConfig)
   const footerLinkSx = {
-    color: alpha(themeColors.background, 0.75),
+    color: alpha(themeColors.footerText, 0.75),
     display: 'block',
-    '&:hover': { color: themeColors.actionPrimary },
+    '&:hover': { color: themeColors.footerText },
   }
   const footer = activeConfig?.footer || {}
   const general = activeConfig?.general || {}
@@ -59,14 +59,13 @@ const Footer = () => {
     <Box
       component="footer"
       sx={{
-        // El footer está pintado para fondo oscuro: usa `background` como
-        // TINTA (acá abajo, y en los enlaces y datos de contacto) y apoya los
-        // separadores en alpha(background, 0.08). Antes el fondo salía de
-        // `actionPrimaryText`, que por defecto es blanco igual que `background`
-        // — o sea blanco sobre blanco. `text` es el mismo oscuro que ya usa la
-        // barra de copyright al pie, así que el footer queda de un solo color.
-        bgcolor: themeColors.text,
-        color: themeColors.background,
+        // El pie tiene sus propios colores (footerBackground / footerText).
+        // Antes se pintaba con el texto y el fondo de la página invertidos, así
+        // que editar "Texto principal" cambiaba el fondo del pie. Si la tienda
+        // todavía no los eligió, getThemeColors cae en esos mismos dos, y el
+        // footer se ve igual que antes.
+        bgcolor: themeColors.footerBackground,
+        color: themeColors.footerText,
         mt: 6,
         fontSize: 14,
         lineHeight: 1.6,
@@ -76,7 +75,7 @@ const Footer = () => {
       <Box
         sx={{
           py: 2,
-          borderBottom: `1px solid ${alpha(themeColors.background, 0.08)}`,
+          borderBottom: `1px solid ${alpha(themeColors.footerText, 0.08)}`,
         }}
       >
         <Container maxWidth="lg">
@@ -104,9 +103,9 @@ const Footer = () => {
                     placeholder="Tu correo electrónico"
                     size="small"
                     sx={{
-                      bgcolor: themeColors.background,
+                      bgcolor: themeColors.footerText,
                       borderRadius: 1,
-                      input: { color: themeColors.text },
+                      input: { color: themeColors.footerBackground },
                     }}
                   />
                   <Button
@@ -153,16 +152,16 @@ const Footer = () => {
               <Typography variant="subtitle1" fontWeight="600" mb={1.5}>
                 {general.storeName || 'Contacto'}
               </Typography>
-              <Typography variant="body2" sx={{ color: alpha(themeColors.background, 0.7) }}>
+              <Typography variant="body2" sx={{ color: alpha(themeColors.footerText, 0.7) }}>
                 {footer.description || general.tagline || 'Tu tienda de confianza.'}
               </Typography>
               {footer.phone && (
                 <Typography
                   variant="body2"
-                  sx={{ mt: 1, color: alpha(themeColors.background, 0.8) }}
+                  sx={{ mt: 1, color: alpha(themeColors.footerText, 0.8) }}
                 >
                   Tel:{' '}
-                  <a href={`tel:${footer.phone}`} style={{ color: themeColors.background }}>
+                  <a href={`tel:${footer.phone}`} style={{ color: themeColors.footerText }}>
                     {footer.phone}
                   </a>
                 </Typography>
@@ -170,10 +169,10 @@ const Footer = () => {
               {footer.email && (
                 <Typography
                   variant="body2"
-                  sx={{ mt: 0.5, color: alpha(themeColors.background, 0.8) }}
+                  sx={{ mt: 0.5, color: alpha(themeColors.footerText, 0.8) }}
                 >
                   Email:{' '}
-                  <a href={`mailto:${footer.email}`} style={{ color: themeColors.background }}>
+                  <a href={`mailto:${footer.email}`} style={{ color: themeColors.footerText }}>
                     {footer.email}
                   </a>
                 </Typography>
@@ -197,10 +196,10 @@ const Footer = () => {
                       color="inherit"
                       size="small"
                       sx={{
-                        bgcolor: alpha(themeColors.background, 0.08),
+                        bgcolor: alpha(themeColors.footerText, 0.08),
                         '&:hover': {
-                          bgcolor: alpha(themeColors.background, 0.15),
-                          color: themeColors.actionPrimary,
+                          bgcolor: alpha(themeColors.footerText, 0.15),
+                          color: themeColors.footerText,
                         },
                       }}
                     >
@@ -322,9 +321,9 @@ const Footer = () => {
       </Box>
 
       {/* Línea inferior */}
-      <Divider sx={{ bgcolor: alpha(themeColors.background, 0.08) }} />
-      <Box sx={{ py: 1.5, textAlign: 'center', bgcolor: themeColors.text }}>
-        <Typography variant="caption" sx={{ color: alpha(themeColors.background, 0.6) }}>
+      <Divider sx={{ bgcolor: alpha(themeColors.footerText, 0.08) }} />
+      <Box sx={{ py: 1.5, textAlign: 'center', bgcolor: themeColors.footerBackground }}>
+        <Typography variant="caption" sx={{ color: alpha(themeColors.footerText, 0.6) }}>
           © {new Date().getFullYear()} — Powered by henko
         </Typography>
       </Box>

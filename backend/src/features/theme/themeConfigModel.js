@@ -330,6 +330,17 @@ const colorSchema = new Schema(
     warning: { type: String, default: '#ed6c02', validate: { validator: isValidColor } },
     info: { type: String, default: '#0288d1', validate: { validator: isValidColor } },
     success: { type: String, default: '#2e7d32', validate: { validator: isValidColor } },
+    // Pie de página. Sin default a propósito: el storefront, si faltan, sigue
+    // usando texto/fondo invertidos como hacía antes, así una tienda que ya
+    // personalizó esos dos no ve cambiar su footer al desplegar esto.
+    footerBackground: {
+      type: String,
+      validate: { validator: isValidColor, message: 'Color de fondo del pie inválido' },
+    },
+    footerText: {
+      type: String,
+      validate: { validator: isValidColor, message: 'Color de texto del pie inválido' },
+    },
   },
   { _id: false },
 )

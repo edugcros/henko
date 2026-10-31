@@ -214,6 +214,8 @@ const normalizeTheme = (dbTheme = {}) => {
       salePrice: colors.salePrice || DEFAULTS.colors.salePrice,
       badgeBackground: colors.badgeBackground || DEFAULTS.colors.badgeBackground,
       badgeText: colors.badgeText || DEFAULTS.colors.badgeText,
+      footerBackground: colors.footerBackground || colors.text || DEFAULTS.colors.text,
+      footerText: colors.footerText || colors.background || DEFAULTS.colors.background,
     },
 
     typography: {
@@ -511,6 +513,18 @@ export const createStoreTheme = (dbTheme = {}, tenantId = 'default') => {
             border: `1px solid ${theme.colors.cardBorder}`,
             color: theme.colors.cardText,
           },
+        },
+      },
+      // Un <Link> de MUI sin color explícito toma palette.primary, o sea la
+      // "Marca primaria": editar los links generales no lo movía y editar la
+      // marca sí. Los que piden otro color (inherit en el header, etc.) quedan
+      // como están.
+      MuiLink: {
+        styleOverrides: {
+          root: ({ ownerState }) =>
+            !ownerState?.color || ownerState.color === 'primary'
+              ? { color: theme.colors.link, textDecorationColor: theme.colors.link }
+              : {},
         },
       },
       MuiPaper: {

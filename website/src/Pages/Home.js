@@ -166,17 +166,20 @@ const PromotionalSpecialProduct = ({
     ? alpha(theme.palette.common.white, 0.12)
     : alpha(themeColors.cardBorder, 0.58)
 
+  // Hover y texto con los colores de la card: antes el hover se teñía con el
+  // botón primario y el texto usaba el de la página.
   const cardHoverBackground = isDark
     ? alpha(theme.palette.common.white, 0.12)
-    : alpha(themeColors.actionPrimary, 0.06)
+    : alpha(themeColors.cardText, 0.05)
 
-  const contentColor = isDark ? theme.palette.common.white : themeColors.text
+  const contentColor = isDark ? theme.palette.common.white : themeColors.cardText
 
   const secondaryTextColor = isDark
     ? alpha(theme.palette.common.white, 0.7)
     : themeColors.cardMutedText
 
-  const currentPriceColor = themeColors.cardPrice
+  // Con descuento, el precio final es "Precio oferta".
+  const currentPriceColor = discountPercentage > 0 ? themeColors.salePrice : themeColors.cardPrice
 
   return (
     <Paper
@@ -198,7 +201,7 @@ const PromotionalSpecialProduct = ({
         transition: 'background-color .18s ease, transform .18s ease, border-color .18s ease',
         '&:hover': {
           bgcolor: cardHoverBackground,
-          borderColor: alpha(themeColors.actionPrimary, 0.25),
+          borderColor: alpha(themeColors.cardText, 0.2),
           transform: 'translateY(-1px)',
         },
       }}
@@ -225,8 +228,8 @@ const PromotionalSpecialProduct = ({
               label={item.customLabel}
               sx={{
                 height: 21,
-                bgcolor: themeColors.actionPrimary,
-                color: themeColors.actionPrimaryText,
+                bgcolor: themeColors.badgeBackground,
+                color: themeColors.badgeText,
                 fontWeight: 800,
                 fontSize: 10.5,
               }}
@@ -239,8 +242,8 @@ const PromotionalSpecialProduct = ({
               label={`${discountPercentage}% OFF`}
               sx={{
                 height: 21,
-                bgcolor: theme.palette.error.main,
-                color: theme.palette.error.contrastText,
+                bgcolor: themeColors.badgeBackground,
+                color: themeColors.badgeText,
                 fontWeight: 800,
                 fontSize: 10.5,
               }}
@@ -480,28 +483,22 @@ const Home = () => {
   const primaryAction = themeColors.actionPrimary
   const primaryActionText = themeColors.actionPrimaryText
 
-  const textPrimary = themeColors.text
-  const textSecondary = themeColors.textSecondary
+  // La página usa "Fondo de página" y "Texto principal". Todo lo que va dentro
+  // de los paneles (fondo de card) usa los textos de la card: antes usaba el
+  // texto de la página, ilegible con cards oscuras sobre fondo claro.
+  const pageText = themeColors.text
+  const textPrimary = themeColors.cardText
+  const textSecondary = themeColors.cardMutedText
 
-  const pageBackgroundTop = alpha(backgroundColor, 1)
-  const pageBackgroundMiddle = alpha(primaryAction, 0.035)
-  const pageBackgroundBottom = alpha(primaryAction, 0.16)
-
-  const pageBackground = `
-    linear-gradient(
-      180deg,
-      ${pageBackgroundTop} 0%,
-      ${pageBackgroundTop} 24%,
-      ${pageBackgroundMiddle} 66%,
-      ${pageBackgroundBottom} 100%
-    )
-  `
+  // Antes era un degradé que mezclaba hasta un 16% del botón primario en el
+  // fondo: editar el botón cambiaba el fondo de la página.
+  const pageBackground = backgroundColor
 
   const borderColor = alpha(themeColors.cardBorder, 0.58)
   const mutedSurface = alpha(surfaceColor, 0.88)
   const elevatedSurface = alpha(surfaceColor, 0.92)
-  const highlightSurface = alpha(primaryAction, 0.08)
-  const interactiveHover = alpha(primaryAction, 0.06)
+  const highlightSurface = alpha(textPrimary, 0.06)
+  const interactiveHover = alpha(textPrimary, 0.05)
 
   const sectionSx = {
     maxWidth: layoutConfig.maxWidth,
@@ -521,7 +518,7 @@ const Home = () => {
     <Box
       sx={{
         background: pageBackground,
-        color: textPrimary,
+        color: pageText,
         minHeight: '100vh',
       }}
     >
@@ -544,6 +541,7 @@ const Home = () => {
                 overflow: 'hidden',
                 borderRadius: { xs: 3, md: 4 },
                 bgcolor: elevatedSurface,
+                color: textPrimary,
                 backdropFilter: 'blur(10px)',
                 border: `1px solid ${borderColor}`,
                 boxShadow: '0 10px 28px rgba(15, 23, 42, 0.045)',
@@ -567,7 +565,7 @@ const Home = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  bgcolor: alpha(primaryAction, 0.018),
+                  bgcolor: alpha(textPrimary, 0.03),
                 }}
               >
                 <SafeImage
@@ -647,6 +645,7 @@ const Home = () => {
                   p: { xs: 0.85, sm: 1 },
                   borderRadius: { xs: 3, sm: 999 },
                   bgcolor: mutedSurface,
+                  color: textPrimary,
                   backdropFilter: 'blur(10px)',
                   border: `1px solid ${borderColor}`,
                   boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
@@ -690,7 +689,7 @@ const Home = () => {
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start" sx={{ ml: 1 }}>
-                            <BsSearch color={primaryAction} />
+                            <BsSearch color={textSecondary} />
                           </InputAdornment>
                         ),
                       }}
@@ -741,6 +740,7 @@ const Home = () => {
                     boxShadow: '0 16px 44px rgba(15, 23, 42, 0.13)',
                     p: 0.85,
                     bgcolor: alpha(surfaceColor, 0.96),
+                    color: textPrimary,
                     backdropFilter: 'blur(10px)',
                   }}
                 >
@@ -830,6 +830,7 @@ const Home = () => {
             p: { xs: 1.1, md: 1.4 },
             borderRadius: { xs: 3, md: 4 },
             bgcolor: elevatedSurface,
+            color: textPrimary,
             backdropFilter: 'blur(10px)',
             border: `1px solid ${borderColor}`,
             boxShadow: 'none',
@@ -856,7 +857,8 @@ const Home = () => {
                       width: 40,
                       height: 40,
                       fontSize: 20,
-                      color: primaryAction,
+                      // Iconografía editorial: "Acento".
+                      color: themeColors.accent,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -995,6 +997,7 @@ const Home = () => {
                     p: { xs: 1.75, md: 2.5 },
                     borderRadius: { xs: 3, md: 4 },
                     bgcolor: elevatedSurface,
+                    color: textPrimary,
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${borderColor}`,
                     boxShadow: 'none',
@@ -1045,6 +1048,7 @@ const Home = () => {
                         overflow: 'hidden',
                         borderRadius: { xs: 3, md: 4 },
                         bgcolor: elevatedSurface,
+                        color: textPrimary,
                         backdropFilter: 'blur(10px)',
                         border: `1px solid ${borderColor}`,
                         boxShadow: '0 10px 28px rgba(15, 23, 42, 0.035)',
@@ -1069,7 +1073,7 @@ const Home = () => {
                             <Typography
                               variant="overline"
                               sx={{
-                                color: primaryAction,
+                                color: themeColors.primary,
                                 letterSpacing: 1.7,
                                 fontWeight: 900,
                                 fontSize: 11,
@@ -1140,7 +1144,7 @@ const Home = () => {
                               height: '100%',
                               minHeight: { xs: 260, md: 440 },
                               p: { xs: 1.75, md: 2.5 },
-                              bgcolor: alpha(primaryAction, 0.018),
+                              bgcolor: alpha(textPrimary, 0.03),
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1186,6 +1190,7 @@ const Home = () => {
                     p: 2.5,
                     borderRadius: 3,
                     bgcolor: elevatedSurface,
+                    color: textPrimary,
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${borderColor}`,
                     boxShadow: 'none',
@@ -1229,6 +1234,7 @@ const Home = () => {
                     p: { xs: 1.75, md: 2.5 },
                     borderRadius: { xs: 3, md: 4 },
                     bgcolor: elevatedSurface,
+                    color: textPrimary,
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${borderColor}`,
                     boxShadow: 'none',

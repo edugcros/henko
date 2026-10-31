@@ -100,11 +100,11 @@ const createNotify = colors => ({
       toastId: options.toastId,
       style: {
         ...getToastBaseStyle(colors),
-        background: 'rgba(255,255,255,0.98)',
+        background: colors.cardBackground || '#fff',
         color: colors.cardText || colors.text || '#111827',
       },
       progressStyle: {
-        background: colors.actionPrimary || colors.primary || '#111827',
+        background: colors.success || '#16a34a',
       },
     }),
 
@@ -877,7 +877,7 @@ const HomeProductCard = React.memo(
                 size={18}
                 value={Number(item.totalrating) || 0}
                 edit={false}
-                color2={themeColors.warning || '#f59e0b'}
+                color2={themeColors.accent || '#f59e0b'}
               />
             </Box>
           )}
@@ -902,7 +902,8 @@ const HomeProductCard = React.memo(
                 variant="h6"
                 sx={{
                   fontWeight: 900,
-                  color: cardPrice,
+                  // Con promoción, el precio final es "Precio oferta"; sin ella, el de la card.
+                  color: hasPromotion ? themeColors.salePrice || cardPrice : cardPrice,
                   fontSize: '1.15rem',
                   lineHeight: 1.25,
                 }}

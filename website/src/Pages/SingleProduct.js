@@ -1470,7 +1470,7 @@ const SingleProduct = () => {
                   variant="subtitle1"
                   sx={{
                     mt: 1,
-                    color: themeColors.cardMutedText,
+                    color: themeColors.mutedText,
                     lineHeight: 1.65,
                   }}
                 >
@@ -1606,7 +1606,7 @@ const SingleProduct = () => {
                     <Typography
                       variant="body1"
                       sx={{
-                        color: themeColors.cardMutedText,
+                        color: themeColors.mutedText,
                         textDecoration: 'line-through',
                         fontWeight: 700,
                       }}
@@ -1615,7 +1615,13 @@ const SingleProduct = () => {
                     </Typography>
                   )}
 
-                  <Typography variant="h5" fontWeight={900} sx={{ color: themeColors.cardPrice }}>
+                  <Typography
+                    variant="h5"
+                    fontWeight={900}
+                    sx={{
+                      color: displayPrice.hasDiscount ? themeColors.salePrice : themeColors.price,
+                    }}
+                  >
                     Desde {formatPrice(displayPrice.finalMin)} hasta{' '}
                     {formatPrice(displayPrice.finalMax)}
                   </Typography>
@@ -1626,7 +1632,7 @@ const SingleProduct = () => {
                     <Typography
                       variant="body1"
                       sx={{
-                        color: themeColors.cardMutedText,
+                        color: themeColors.mutedText,
                         textDecoration: 'line-through',
                         fontWeight: 700,
                       }}
@@ -1635,7 +1641,13 @@ const SingleProduct = () => {
                     </Typography>
                   )}
 
-                  <Typography variant="h4" fontWeight={950} sx={{ color: themeColors.cardPrice }}>
+                  <Typography
+                    variant="h4"
+                    fontWeight={950}
+                    sx={{
+                      color: displayPrice?.hasDiscount ? themeColors.salePrice : themeColors.price,
+                    }}
+                  >
                     {formatPrice(displayPrice.final)}
                   </Typography>
                 </Box>
@@ -1664,7 +1676,7 @@ const SingleProduct = () => {
               )}
 
               {hasVariants && !normalizedSelectedVariant && (
-                <Typography variant="body2" sx={{ color: themeColors.cardMutedText, mt: 0.75 }}>
+                <Typography variant="body2" sx={{ color: themeColors.mutedText, mt: 0.75 }}>
                   Seleccioná opciones para ver precio exacto.
                 </Typography>
               )}
@@ -1678,7 +1690,7 @@ const SingleProduct = () => {
                     ? 'Stock según variante'
                     : `${displayStock} disponibles`
                 }
-                color={displayStock > 0 ? 'warning' : 'error'}
+                color={displayStock > 0 ? 'success' : 'error'}
                 variant="outlined"
               />
               {logisticsRows.slice(0, 2).map(row => (
@@ -1701,7 +1713,11 @@ const SingleProduct = () => {
               }}
             >
               <Stack direction="row" spacing={2} alignItems="center">
-                <Typography variant="h3" sx={{ color: themeColors.cardPrice }} fontWeight={950}>
+                <Typography
+                  variant="h3"
+                  sx={{ color: theme.palette.primary.main }}
+                  fontWeight={950}
+                >
                   {iaAnalysis.score}
                 </Typography>
                 <Box>
@@ -1797,7 +1813,7 @@ const SingleProduct = () => {
                     value={Number(iaAnalysis.avg) || 0}
                     edit={false}
                     half
-                    color2={themeColors.warning}
+                    color2={themeColors.accent}
                   />
                   <Typography variant="caption" color="text.secondary">
                     {iaAnalysis.count} opiniones
@@ -1831,7 +1847,7 @@ const SingleProduct = () => {
                     size={28}
                     value={userStar}
                     onChange={value => setUserStar(Math.trunc(Number(value)) || 0)}
-                    color2={themeColors.warning}
+                    color2={themeColors.accent}
                   />
                   <TextField
                     fullWidth
@@ -1992,7 +2008,7 @@ const SingleProduct = () => {
                         <Typography
                           variant="subtitle2"
                           fontWeight={950}
-                          sx={{ mb: 1, color: themeColors.cardMutedText }}
+                          sx={{ mb: 1, color: themeColors.mutedText }}
                         >
                           {group}
                         </Typography>
