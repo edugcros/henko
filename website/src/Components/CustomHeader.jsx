@@ -166,7 +166,6 @@ const CustomHeader = () => {
   // Colores
   const colors = useMemo(
     () => ({
-      primary: themeColors.primary,
       background: themeColors.headerBackground,
       text: themeColors.headerText,
       icon: themeColors.headerIcon,
@@ -191,6 +190,13 @@ const CustomHeader = () => {
   }, [activeConfig?.header?.logo])
 
   const contrastColor = colors.text
+
+  // Contadores de carrito y favoritos: con los colores del header ("Header
+  // iconos" de fondo y el fondo del header como tinta). Antes usaban la paleta
+  // de error, así que editar el color de "Error" movía el contador del carrito.
+  const counterSx = {
+    '& .MuiBadge-badge': { bgcolor: colors.icon, color: colors.background },
+  }
 
   const configuredHeaderBackground = colors.background || theme.palette.background.paper
 
@@ -317,7 +323,7 @@ const CustomHeader = () => {
             <ListItemButton component={Link} to={path} onClick={toggleDrawer(false)}>
               <Box display="flex" alignItems="center" gap={2}>
                 {badge > 0 ? (
-                  <Badge badgeContent={badge} color="error">
+                  <Badge badgeContent={badge} sx={counterSx}>
                     <Icon sx={{ fontSize: 24 }} />
                   </Badge>
                 ) : (
@@ -458,7 +464,7 @@ const CustomHeader = () => {
               <Tooltip key={label} title={label}>
                 <IconButton onClick={() => navigate(path)} sx={{ color: colors.icon }}>
                   {badge > 0 ? (
-                    <Badge badgeContent={badge} color="error">
+                    <Badge badgeContent={badge} sx={counterSx}>
                       <Icon />
                     </Badge>
                   ) : (
