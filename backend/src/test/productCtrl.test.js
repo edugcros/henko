@@ -730,3 +730,122 @@ describe('variantes · los atributos se guardan completos', () => {
     expect((await leer(id)).variantAttributes[0].values).toEqual(['M', 'L'])
   })
 })
+
+// ─── PR 4: el tipo de envío se conserva ─────────────────────────────────────
+//
+// AddProduct manda `shipping: { type, requiresShipping }`; el controlador lo
+// pasaba por normalizeText, que solo acepta texto, y un producto digital se
+// guardaba como 'standard'. Y en la edición, mandar solo la garantía rearmaba
+// toda la logística: tipo 'standard', peso y medidas en 0.
+
+describe('logística · el tipo de envío y los datos guardados se conservan', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+  const base = () => ({
+    title: `Curso ${Math.random()}`,
+    description: 'Curso online de mecánica',
+    marca: 'Henko',
+    categoria: 'Cursos',
+    subcategoria: 'Online',
+    price: 20000,
+    stock: 100,
+  })
+  const crear = async extra => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...base(), ...extra })
+    expect(res.statusCode).toBe(201)
+    return res.body.data._id
+  }
+  const editar = (id, body) => request(app).put(`/api/product/${id}`).set(headers()).send(body)
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'logistica-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('un producto digital creado desde AddProduct queda digital', async () => {
+    // El payload exacto de AddProduct (buildLogisticsPayload): objeto en
+    // logistics.shipping y repetido en la raíz.
+    const shipping = { type: 'digital', requiresShipping: false }
+    const id = await crear({
+      shipping,
+      weightKg: 0,
+      logistics: { weightKg: 0, dimensions: { length: 0, width: 0, height: 0 }, shipping },
+    })
+
+    expect((await leer(id)).logistics.shippingType).toBe('digital')
+  })
+
+  test('el formato plano de EditProduct sigue funcionando', async () => {
+    const id = await crear({ logistics: { shippingType: 'fragile', weightKg: 2 } })
+
+    const guardado = await leer(id)
+    expect(guardado.logistics.shippingType).toBe('fragile')
+    expect(guardado.logistics.weightKg).toBe(2)
+  })
+
+  test('un tipo desconocido cae en standard, como antes', async () => {
+    const id = await crear({ shipping: { type: 'teletransporte' } })
+
+    expect((await leer(id)).logistics.shippingType).toBe('standard')
+  })
+
+  test('editar solo la garantía no borra el tipo de envío, el peso ni las medidas', async () => {
+    const id = await crear({
+      logistics: {
+        shippingType: 'refrigerated',
+        weightKg: 3.5,
+        dimensionsCm: { length: 40, width: 30, height: 20 },
+      },
+    })
+
+    const res = await editar(id, { warranty: '6 meses' })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).logistics).toMatchObject({
+      shippingType: 'refrigerated',
+      weightKg: 3.5,
+      dimensionsCm: { length: 40, width: 30, height: 20 },
+      warranty: '6 meses',
+    })
+  })
+
+  test('editar con el objeto de AddProduct cambia el tipo', async () => {
+    const id = await crear({ logistics: { shippingType: 'standard' } })
+
+    await editar(id, { shipping: { type: 'digital', requiresShipping: false } })
+
+    expect((await leer(id)).logistics.shippingType).toBe('digital')
+  })
+
+  test('un cero explícito se respeta y no vuelve al valor guardado', async () => {
+    const id = await crear({ logistics: { weightKg: 4 } })
+
+    await editar(id, { logistics: { weightKg: 0 } })
+
+    expect((await leer(id)).logistics.weightKg).toBe(0)
+  })
+})
