@@ -1352,6 +1352,36 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
     expect(await costoGuardado(period)).toBeCloseTo(0, 6)
   })
 
+  test('una imagen de Cloudflare se cobra y se devuelve a SU tarifa, no a la de Gemini', async () => {
+    // Con una sola tarifa, cada fondo de Cloudflare sumaba USD 0,0336 al gasto
+    // de plataforma: ~1.490 imágenes gratis disparaban el techo de USD 50.
+    const period = '2061-03'
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+
+    await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      profile: { ...PERFIL, plan: 'pro' },
+      period,
+      operationId: 'imagen-cloudflare',
+      provider: 'cloudflare',
+    })
+    await asentar()
+
+    expect(await costoGuardado(period)).toBeCloseTo(0.00064, 8)
+
+    await refundAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      period,
+      operationId: 'imagen-cloudflare',
+      provider: 'cloudflare',
+    })
+    await asentar()
+
+    expect(await costoGuardado(period)).toBeCloseTo(0, 8)
+  })
+
   test('la fila de devolución guarda el monto original', async () => {
     // Si el libro guardara el recálculo, la auditoría veria dos numeros
     // coherentes entre si y ambos equivocados: el peor caso.

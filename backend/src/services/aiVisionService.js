@@ -28,6 +28,7 @@ import {
   getModelChain,
   isModelUnavailableError,
   markModelDead,
+  resolveVisionModel,
 } from './ai/geminiModels.js'
 
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim()
@@ -67,15 +68,9 @@ if (!GEMINI_API_KEY) {
   })
 }
 
-const DEFAULT_MODEL = 'gemini-3.8-flash'
 const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS')
   .trim()
   .toUpperCase()
-
-const normalizeGeminiModelName = value => {
-  const model = String(value || DEFAULT_MODEL).trim()
-  return model.replace(/^models\//, '')
-}
 
 // El análisis de fotos LEE una imagen y devuelve JSON: necesita un modelo de
 // texto con visión. GEMINI_IMAGE_MODEL / GOOGLE_IMAGE_MODEL son del modelo que
@@ -84,12 +79,8 @@ const normalizeGeminiModelName = value => {
 // análisis de producto probaba primero el generador, fallaba, y recién después
 // caía al respaldo — una llamada perdida por análisis, y el fallo además
 // descartaba ese modelo en la lista compartida con la generación de fondos.
-const MODEL_NAME = normalizeGeminiModelName(
-  process.env.AI_VISION_MODEL ||
-    process.env.GEMINI_MODEL ||
-    process.env.GOOGLE_MODEL ||
-    DEFAULT_MODEL,
-)
+// La precedencia (AI_VISION_MODEL y después el de texto) vive en geminiModels.
+const MODEL_NAME = resolveVisionModel()
 
 const MIN_CONFIDENCE = clampNumber(process.env.AI_MIN_CONFIDENCE, 0.65, 0.1, 0.95)
 const MIN_MATERIAL_CONFIDENCE_FOR_AUTOSAVE = clampNumber(

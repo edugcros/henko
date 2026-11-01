@@ -146,6 +146,26 @@ describe('webhook · firma por comercio', () => {
     ).toBe(false)
   })
 
+  test('el secreto global también se acepta con su otro nombre, MERCADOPAGO_WEBHOOK_SECRET', () => {
+    // config/env.js acepta los dos nombres; la verificación leía solo uno y un
+    // entorno con el otro descartaba como falsas todas las notificaciones.
+    const original = process.env.MP_WEBHOOK_SECRET
+    delete process.env.MP_WEBHOOK_SECRET
+    process.env.MERCADOPAGO_WEBHOOK_SECRET = 'secreto-con-el-otro-nombre'
+    try {
+      expect(
+        verifyMercadoPagoWebhookSignature(firmar({ secreto: 'secreto-con-el-otro-nombre' })),
+      ).toBe(true)
+      // La contraprueba: sin secretos la verificación se OMITE fuera de
+      // producción y daría true igual. Que rechace una firma ajena prueba que
+      // de verdad se está usando el secreto con el otro nombre.
+      expect(verifyMercadoPagoWebhookSignature(firmar({ secreto: 'un-secreto-ajeno' }))).toBe(false)
+    } finally {
+      process.env.MP_WEBHOOK_SECRET = original
+      delete process.env.MERCADOPAGO_WEBHOOK_SECRET
+    }
+  })
+
   test('sin cabeceras de firma se rechaza', () => {
     expect(
       verifyMercadoPagoWebhookSignature({ headers: {}, query: { 'data.id': '1' }, body: {} }),

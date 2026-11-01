@@ -163,6 +163,46 @@ export const normalizeModelName = value =>
     .trim()
     .replace(/^models\//, '')
 
+// ─── Qué modelo está configurado ─────────────────────────────────────────────
+//
+// UN SOLO LUGAR. Antes cada servicio armaba su propia cadena de variables, en
+// otro orden: el presupuesto miraba GEMINI_MODEL → GOOGLE_TEXT_MODEL →
+// GOOGLE_MODEL, el agente solo GEMINI_MODEL, la visión ignoraba
+// GOOGLE_TEXT_MODEL y config/env.js tenía dos campos más con defaults propios.
+// Con las variables en distinto valor, cada servicio usaba —y costeaba— un
+// modelo distinto sin que nada lo mostrara.
+//
+// GEMINI_MODEL / GEMINI_IMAGE_MODEL son los nombres vigentes. Los GOOGLE_* son
+// los viejos y se siguen leyendo, después, para no romper un entorno que
+// todavía los tenga.
+
+/** El modelo de texto por defecto: existe y responde (GET /v1beta/models, 01/11/2026). */
+export const DEFAULT_TEXT_MODEL = 'gemini-3.8-flash'
+
+/** El que GENERA imágenes (fondos de imageAiService). No sirve para texto ni para leer fotos. */
+export const DEFAULT_IMAGE_MODEL = 'gemini-3.1-flash-lite-image'
+
+/** Modelo de texto: agente, presupuesto, prompts y respaldo de la visión. */
+export const resolveTextModel = (source = process.env) =>
+  normalizeModelName(source.GEMINI_MODEL) ||
+  normalizeModelName(source.GOOGLE_TEXT_MODEL) ||
+  normalizeModelName(source.GOOGLE_MODEL) ||
+  DEFAULT_TEXT_MODEL
+
+/**
+ * Modelo que LEE las fotos de producto. Es de texto con visión: nunca cae al de
+ * imágenes, que solo genera (medido el 01/11/2026: con gemini-3-pro-image cada
+ * análisis probaba primero el generador, fallaba y recién después respondía).
+ */
+export const resolveVisionModel = (source = process.env) =>
+  normalizeModelName(source.AI_VISION_MODEL) || resolveTextModel(source)
+
+/** Modelo que genera los fondos con IA. */
+export const resolveImageModel = (source = process.env) =>
+  normalizeModelName(source.GEMINI_IMAGE_MODEL) ||
+  normalizeModelName(source.GOOGLE_IMAGE_MODEL) ||
+  DEFAULT_IMAGE_MODEL
+
 /** ¿Este modelo está en cooldown ahora mismo? Limpia la entrada si ya venció. */
 const isCoolingDown = model => {
   const until = cooldownModels.get(model)

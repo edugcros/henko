@@ -1,7 +1,13 @@
 import sharp from 'sharp'
 import logger from '../../config/logger.js'
 import { env } from '../../config/env.js'
-import { getModelChain, isModelUnavailable, markModelDead } from './ai/geminiModels.js'
+import {
+  getModelChain,
+  isModelUnavailable,
+  markModelDead,
+  resolveImageModel,
+  resolveTextModel,
+} from './ai/geminiModels.js'
 import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/backgroundRemoval.js'
 
 /**
@@ -126,7 +132,7 @@ Rules:
 
 User instruction (JSON string): ${JSON.stringify(userPrompt)}`
 
-  for (const model of getModelChain(env.ai?.geminiModel)) {
+  for (const model of getModelChain(resolveTextModel())) {
     try {
       const raw = await askGemini(geminiKey, model, instruction)
 
@@ -330,8 +336,6 @@ const removeBg = async imageBuffer => {
 // al modelo que la vuelva a dibujar. No se reintenta con proveedores pagos:
 // un error de cuota debe detenerse aquí, no disparar una segunda factura.
 
-const GEMINI_IMAGE_MODEL_DEFAULT = 'gemini-3.1-flash-lite-image'
-
 /**
  * Qué decirle al comercio cuando Gemini no genera el fondo, y qué hacer del
  * lado de la plataforma.
@@ -385,9 +389,7 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1', timeoutMs = 90000) 
     throw fail('GEMINI_API_KEY no está configurada para generar imágenes.', 503)
   }
 
-  const configuredModel = String(
-    env.ai?.geminiImageModel || env.ai?.googleImageModel || GEMINI_IMAGE_MODEL_DEFAULT,
-  ).trim()
+  const configuredModel = resolveImageModel()
   if (!/^[a-zA-Z0-9._-]+$/.test(configuredModel)) {
     throw fail('GEMINI_IMAGE_MODEL tiene un formato inválido.', 503)
   }
@@ -702,7 +704,8 @@ const generateBg = async (
         Math.min(provider.timeoutMs, remaining),
       )
       if (unavailableMarkedAt[name] <= startedAt) unavailableUntil[name] = 0
-      return buffer
+      // Quién generó importa para cobrar: cada proveedor tiene su tarifa.
+      return { buffer, provider: name }
     } catch (error) {
       lastError = error
       logger.warn('[IMAGE AI] El proveedor no generó el fondo, se prueba el siguiente', {
@@ -873,7 +876,11 @@ export const generateVariation = async (
 
   // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
   const cutout = await cutoutOf(normalized)
-  const background = await generateBg(optimizedPrompt, canvas.replicateRatio, deadline)
+  const { buffer: background, provider } = await generateBg(
+    optimizedPrompt,
+    canvas.replicateRatio,
+    deadline,
+  )
 
   // El producto se ajusta con "contain" (no deformarlo) dentro del canvas de
   // destino antes de componerlo — importante cuando el canvas cambia de
@@ -893,9 +900,9 @@ export const generateVariation = async (
     .png()
     .toBuffer()
 
-  logger.info('generateVariation OK', { outputBytes: buffer.length })
+  logger.info('generateVariation OK', { outputBytes: buffer.length, provider })
 
-  return { buffer, contentType: 'image/png' }
+  return { buffer, contentType: 'image/png', provider }
 }
 
 /**

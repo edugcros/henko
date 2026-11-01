@@ -13,6 +13,7 @@ import {
   getModelChain,
   isModelUnavailable,
   markModelDead,
+  resolveTextModel,
   supportsSearchGrounding,
 } from '../ai/geminiModels.js'
 
@@ -22,7 +23,6 @@ const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 
 const DEFAULT_GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
-const DEFAULT_MODEL = 'gemini-3.8-flash'
 const DEFAULT_PROVIDER = 'gemini'
 
 const REPETITIVE_OPENERS = [
@@ -94,7 +94,7 @@ const getGeminiApiBaseUrl = () => {
 }
 
 const normalizeGeminiModelName = value => {
-  const model = clean(value || process.env.GEMINI_MODEL || DEFAULT_MODEL)
+  const model = clean(value || resolveTextModel())
   return model.replace(/^models\//, '')
 }
 

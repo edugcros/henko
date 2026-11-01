@@ -19,6 +19,11 @@ import {
   isQuotaError,
   markModelDead,
   resetDeadModels,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_TEXT_MODEL,
+  resolveImageModel,
+  resolveTextModel,
+  resolveVisionModel,
 } from '../services/ai/geminiModels.js'
 
 beforeEach(() => {
@@ -298,4 +303,37 @@ describe('qué modelo puede buscar en Google', () => {
     expect(modelosLlamados.some(m => String(m).startsWith('gemma'))).toBe(false)
     expect(modelosLlamados.every(m => String(m).startsWith('gemini'))).toBe(true)
   }, 30000)
+})
+
+describe('geminiModels · qué modelo está configurado (un solo lugar)', () => {
+  test('texto: GEMINI_MODEL manda; los GOOGLE_* son respaldo, en ese orden', () => {
+    expect(resolveTextModel({})).toBe(DEFAULT_TEXT_MODEL)
+    expect(resolveTextModel({ GOOGLE_MODEL: 'b' })).toBe('b')
+    expect(resolveTextModel({ GOOGLE_MODEL: 'b', GOOGLE_TEXT_MODEL: 'a' })).toBe('a')
+    expect(resolveTextModel({ GOOGLE_MODEL: 'b', GOOGLE_TEXT_MODEL: 'a', GEMINI_MODEL: 'x' })).toBe(
+      'x',
+    )
+  })
+
+  test('un valor vacío o con espacios no tapa al siguiente, y se quita models/', () => {
+    expect(resolveTextModel({ GEMINI_MODEL: '   ', GOOGLE_MODEL: 'models/gemini-3.6-flash' })).toBe(
+      'gemini-3.6-flash',
+    )
+  })
+
+  test('visión: AI_VISION_MODEL, y si no el de texto; nunca el generador de imágenes', () => {
+    expect(resolveVisionModel({ AI_VISION_MODEL: 'v', GEMINI_MODEL: 't' })).toBe('v')
+    expect(resolveVisionModel({ GEMINI_MODEL: 't', GEMINI_IMAGE_MODEL: 'i' })).toBe('t')
+  })
+
+  test('imagen: GEMINI_IMAGE_MODEL, después GOOGLE_IMAGE_MODEL; nunca el de texto', () => {
+    expect(resolveImageModel({ GEMINI_MODEL: 't' })).toBe(DEFAULT_IMAGE_MODEL)
+    expect(resolveImageModel({ GOOGLE_IMAGE_MODEL: 'g' })).toBe('g')
+    expect(resolveImageModel({ GOOGLE_IMAGE_MODEL: 'g', GEMINI_IMAGE_MODEL: 'i' })).toBe('i')
+  })
+
+  test('los defaults son del tipo correcto', () => {
+    expect(DEFAULT_IMAGE_MODEL).toMatch(/image/)
+    expect(DEFAULT_TEXT_MODEL).not.toMatch(/image/)
+  })
 })

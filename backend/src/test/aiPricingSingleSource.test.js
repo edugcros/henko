@@ -19,6 +19,8 @@ import process from 'node:process'
 
 const { computeCostUsd, computeImageCostUsd, getAssumedInputRatio, getImagePrice, getModelPrice } =
   await import('../services/ai/aiModelPricing.js')
+const { DEFAULT_TEXT_MODEL, resolveTextModel, resolveVisionModel } =
+  await import('../services/ai/geminiModels.js')
 
 const SRC = path.resolve('src')
 
@@ -179,14 +181,21 @@ describe('costeo · con el modelo que respondió', () => {
     // La precedencia preguntaba primero por GEMINI_IMAGE_MODEL para costear
     // TOKENS. Un llamador que se olvidara del modelo pagaba 3x por un error de
     // orden, no por una decisión.
+    // Ahora costea con resolveTextModel, el mismo que usan los servicios.
     const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')
     const bloque = fuente.slice(
       fuente.indexOf('const getDefaultPricingModel'),
       fuente.indexOf('const resolvePricingModel'),
     )
 
-    expect(bloque).toContain('GEMINI_MODEL')
+    expect(bloque).toContain('resolveTextModel()')
     expect(bloque).not.toContain('GEMINI_IMAGE_MODEL')
+    expect(
+      resolveTextModel({
+        GEMINI_MODEL: 'gemini-3.1-flash-lite',
+        GEMINI_IMAGE_MODEL: 'gemini-3-pro-image',
+      }),
+    ).toBe('gemini-3.1-flash-lite')
   })
 
   test('el análisis de fotos no usa el modelo que GENERA imágenes', () => {
@@ -195,14 +204,13 @@ describe('costeo · con el modelo que respondió', () => {
     // primero, fallaba y caía al respaldo, y además lo descartaba en la lista
     // de modelos que comparte con la generación de fondos.
     const fuente = fs.readFileSync(path.join(SRC, 'services/aiVisionService.js'), 'utf8')
-    const bloque = fuente.slice(
-      fuente.indexOf('const MODEL_NAME = '),
-      fuente.indexOf('const MIN_CONFIDENCE'),
-    )
+    expect(fuente).toContain('const MODEL_NAME = resolveVisionModel()')
 
-    expect(bloque).toContain('process.env.GEMINI_MODEL')
-    expect(bloque).not.toContain('process.env.GEMINI_IMAGE_MODEL')
-    expect(bloque).not.toContain('process.env.GOOGLE_IMAGE_MODEL')
+    const soloImagen = { GEMINI_IMAGE_MODEL: 'gemini-3-pro-image', GOOGLE_IMAGE_MODEL: 'x-image' }
+    expect(resolveVisionModel(soloImagen)).toBe(DEFAULT_TEXT_MODEL)
+    expect(resolveVisionModel({ ...soloImagen, GEMINI_MODEL: 'gemini-3.5-flash' })).toBe(
+      'gemini-3.5-flash',
+    )
   })
 
   test('adivinar el modelo deja marca y no pasa desapercibido', () => {
@@ -807,5 +815,32 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     }
 
     expect(culpables).toEqual([])
+  })
+})
+
+describe('imágenes · cada proveedor con su tarifa', () => {
+  const original = process.env.AI_COST_USD_PER_IMAGE_EDIT
+  afterEach(() => {
+    if (original === undefined) delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    else process.env.AI_COST_USD_PER_IMAGE_EDIT = original
+  })
+
+  test('Cloudflare cuesta lo que cuesta, no la tarifa de Gemini', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBe(0.00064)
+    expect(getImagePrice(new Date(), 'gemini').perImage).toBe(0.0336)
+    expect(computeImageCostUsd(1490, new Date(), 'cloudflare')).toBeCloseTo(0.9536, 6)
+  })
+
+  test('el override es la estimación de Gemini y no pisa a Cloudflare', () => {
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
+    expect(getImagePrice(new Date(), 'gemini')).toEqual({ perImage: 0.05, source: 'env' })
+    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBe(0.00064)
+  })
+
+  test('un proveedor sin tarifa se costea como el más caro, nunca como gratis', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    expect(getImagePrice(new Date(), 'replicate').perImage).toBe(0.0336)
+    expect(getImagePrice(new Date(), null).perImage).toBe(0.0336)
   })
 })

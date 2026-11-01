@@ -79,6 +79,75 @@ beforeEach(() => {
   })
 })
 
+describe('imageAiCtrl · se cobra al precio de quien genera', () => {
+  // Cada proveedor tiene su tarifa (IMAGE_CATALOG). Con una sola, cada fondo de
+  // Cloudflare se anotaba a precio de Gemini y el disyuntor de plataforma se
+  // disparaba por gasto que no existía.
+  test('reserva al precio del proveedor que se intenta primero', async () => {
+    mockGenerativeStatus.mockReturnValue({ available: true, retryAt: null, provider: 'cloudflare' })
+    mockGenerate.mockResolvedValue({
+      buffer: Buffer.from('ok'),
+      contentType: 'image/png',
+      provider: 'cloudflare',
+    })
+
+    await correr()
+
+    expect(mockReserve).toHaveBeenCalledTimes(1)
+    expect(mockReserve).toHaveBeenCalledWith(expect.objectContaining({ provider: 'cloudflare' }))
+    expect(mockRefund).not.toHaveBeenCalled()
+  })
+
+  test('si genera otro proveedor, devuelve la reserva y cobra al precio del que generó', async () => {
+    mockGenerativeStatus.mockReturnValue({ available: true, retryAt: null, provider: 'cloudflare' })
+    mockGenerate.mockResolvedValue({
+      buffer: Buffer.from('ok'),
+      contentType: 'image/png',
+      provider: 'gemini',
+    })
+
+    const res = await correr()
+
+    expect(res.body.success).toBe(true)
+    expect(mockRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ operationId: OPERATION_ID, provider: 'cloudflare' }),
+    )
+    expect(mockReserve).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        provider: 'gemini',
+        operationId: `${OPERATION_ID}:gemini`,
+        forcePlatformBilling: true,
+      }),
+    )
+  })
+
+  test('si el recobro no entra, la imagen ya hecha se entrega igual', async () => {
+    mockGenerativeStatus.mockReturnValue({ available: true, retryAt: null, provider: 'cloudflare' })
+    mockGenerate.mockResolvedValue({
+      buffer: Buffer.from('ok'),
+      contentType: 'image/png',
+      provider: 'gemini',
+    })
+    mockReserve
+      .mockResolvedValueOnce({ allowed: true, operationId: OPERATION_ID })
+      .mockResolvedValueOnce({ allowed: false, reason: 'quota_exceeded' })
+
+    const res = await correr()
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.success).toBe(true)
+  })
+
+  test('si falla, la devolución usa el proveedor de la reserva', async () => {
+    mockGenerativeStatus.mockReturnValue({ available: true, retryAt: null, provider: 'cloudflare' })
+    mockGenerate.mockRejectedValue(new Error('caído'))
+
+    await expect(correr()).rejects.toThrow('caído')
+
+    expect(mockRefund).toHaveBeenCalledWith(expect.objectContaining({ provider: 'cloudflare' }))
+  })
+})
+
 describe('imageAiCtrl · cobro de la edición', () => {
   test('una generación exitosa cobra en un solo movimiento', async () => {
     mockGenerate.mockResolvedValue({

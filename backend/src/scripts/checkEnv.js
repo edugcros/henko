@@ -39,6 +39,11 @@ import dotenv from 'dotenv'
 // producción lanza ante la primera variable que falta — justo lo que este
 // script existe para informar sin morirse.
 import { isValidAwsAccountId } from '../services/email/emailShared.js'
+import {
+  resolveImageModel,
+  resolveTextModel,
+  resolveVisionModel,
+} from '../services/ai/geminiModels.js'
 
 // Las mismas dos líneas que config/env.js, y a propósito: hay que leer el
 // entorno ANTES de importarlo. En Render no hay archivo .env —las variables
@@ -498,6 +503,65 @@ for (const [grupo, filas] of porGrupo) {
   filas.forEach(fila => console.log(`   ${fila.texto}`))
   console.log('')
 }
+
+// ─── MODELOS DE GEMINI ───────────────────────────────────────────────────────
+//
+// Se informa el modelo que cada servicio va a usar DE VERDAD, con las mismas
+// funciones que el runtime (geminiModels.js), y se controla que sea del tipo
+// correcto. Pasó: el .env.production local tenía GEMINI_IMAGE_MODEL con un
+// modelo de TEXTO (gemini-3.1-flash-lite), y en producción el de visión llegó a
+// apuntar a un generador de imágenes. Ninguno de los dos da error al arrancar:
+// fallan recién en la primera llamada, en la cara del comercio.
+
+const esDeImagen = modelo => /image|banana/i.test(modelo)
+const MODELOS = [
+  {
+    uso: 'Texto (agente, prompts, presupuesto)',
+    modelo: resolveTextModel(),
+    nombres: ['GEMINI_MODEL', 'GOOGLE_TEXT_MODEL', 'GOOGLE_MODEL'],
+    tipoCorrecto: modelo => !esDeImagen(modelo),
+    error: 'es un modelo que GENERA imágenes; para texto no sirve',
+  },
+  {
+    uso: 'Lectura de fotos de producto',
+    modelo: resolveVisionModel(),
+    nombres: ['AI_VISION_MODEL'],
+    sinVariable: 'hereda el de texto',
+    tipoCorrecto: modelo => !esDeImagen(modelo),
+    error: 'es un generador de imágenes; para leer fotos hace falta uno de texto con visión',
+  },
+  {
+    uso: 'Generación de fondos',
+    modelo: resolveImageModel(),
+    nombres: ['GEMINI_IMAGE_MODEL', 'GOOGLE_IMAGE_MODEL'],
+    tipoCorrecto: esDeImagen,
+    error: 'es un modelo de TEXTO; no genera imágenes',
+  },
+]
+
+console.log('── Modelos de Gemini')
+for (const { uso, modelo, nombres, sinVariable, tipoCorrecto, error } of MODELOS) {
+  const cargadas = nombres.filter(hay)
+  const origen = cargadas[0] ? `de ${cargadas[0]}` : sinVariable || 'valor por defecto'
+
+  if (!tipoCorrecto(modelo)) {
+    console.log(`   ❌ ${uso}: ${modelo} (${origen}) — ${error}`)
+    faltantes.seria.push(cargadas[0] || uso)
+  } else {
+    console.log(`   ✅ ${uso}: ${modelo} (${origen})`)
+  }
+
+  // El nombre vigente y uno viejo con valores distintos: gana el vigente, pero
+  // quien lee el viejo en el panel cree que el sistema usa otro modelo.
+  const valores = new Set(cargadas.map(nombre => String(process.env[nombre]).trim()))
+  if (valores.size > 1) {
+    console.log(
+      `   🟡 ${cargadas.join(' y ')} tienen valores distintos: se usa ${cargadas[0]}; borrar los demás`,
+    )
+    faltantes.aviso.push(cargadas.slice(1).join(', '))
+  }
+}
+console.log('')
 
 /**
  * Cuándo un proveedor de correo está realmente en condiciones de enviar.
