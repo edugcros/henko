@@ -343,6 +343,10 @@ export const sanitizeAnalysis = analysis => {
       ? analysis.warnings.map(warning => normalizeString(warning)).filter(Boolean)
       : [],
     hasVariants: Boolean(analysis.hasVariants),
+    // El modelo que hizo el análisis. El esquema lo tiene (analysis.source)
+    // pero se descartaba acá, y el producto creado desde el análisis no sabía
+    // de qué modelo salió.
+    source: normalizeString(analysis.source || analysis.model).slice(0, 120) || null,
   }
 }
 
@@ -1086,7 +1090,10 @@ export const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     iaGenerated: true,
     aiOriginalOutput: analysis,
     aiConfidence: analysis.confidence ?? null,
-    aiSource: job.source,
+    // El modelo, como en createProduct. job.source es otra cosa: de dónde
+    // vino la imagen (p. ej. 'local-folder-agent'); queda solo si el análisis
+    // no lo dice.
+    aiSource: analysis.source || analysis.model || job.source,
     aiImageHash: job.imageHash,
     aiNeedsReview: true,
     // Sin el vínculo, borrar el análisis no desenganchaba este producto

@@ -1860,7 +1860,7 @@ export const buildProductPayloadFromAnalysis = ({
     iaGenerated: true,
     aiOriginalOutput: JSON.stringify(normalizedAnalysis),
     aiConfidence: normalizedAnalysis?.confidence ?? null,
-    aiSource: normalizedAnalysis?.source || normalizedAnalysis?.model || 'gemini',
+    aiSource: normalizedAnalysis?.source || normalizedAnalysis?.model || null,
     aiImageHash:
       normalizedAnalysis?.hash || normalizedAnalysis?.imageHash || job?.imageHash || null,
     aiNeedsReview:
@@ -1952,6 +1952,25 @@ export const describeProductAttemptFailure = (attempt, error, fallback) => {
   return `El producto quedó guardado como borrador, pero falló un paso: ${reason}. Volvé a guardar para terminarlo: no se va a duplicar. Si cambiaste datos, editalos después desde Editar producto.`
 }
 
+/**
+ * Confianza general de la IA en porcentaje, o null si el análisis no la trae.
+ *
+ * Se calculaba con `||` y un 85 por defecto: si la IA decía 0 (o no decía
+ * nada), el panel mostraba «85% confianza» y no pedía revisión. 0 es un valor
+ * real; sin dato no se inventa uno.
+ */
+export const resolveAiConfidencePercent = iaResult => {
+  const raw = iaResult?.confidence ?? iaResult?.confianza
+
+  if (raw === null || raw === undefined || raw === '') return null
+
+  const number = Number(raw)
+  if (!Number.isFinite(number)) return null
+
+  const ratio = number > 1 && number <= 100 ? number / 100 : number
+  return Math.round(Math.min(1, Math.max(0, ratio)) * 100)
+}
+
 const AIAnalysisPanel = ({
   iaResult,
   loading,
@@ -1965,7 +1984,6 @@ const AIAnalysisPanel = ({
   onApplyDynamicField,
   onApplyTags,
   onApplyVariants,
-  confidence = 85,
 }) => {
   const { token } = useToken()
 
@@ -2024,8 +2042,7 @@ const AIAnalysisPanel = ({
   const normalized = normalizeAiAnalysisForForm(iaResult)
   const { fields, dynamicFields, dynamicValues, hasExplicitVariants, variants, review, tags } =
     normalized
-  const safeConfidence = Number(review.confidence || iaResult.confidence || confidence / 100 || 0)
-  const confidencePercent = Math.round(Math.max(0, Math.min(1, safeConfidence)) * 100)
+  const confidencePercent = resolveAiConfidencePercent(iaResult)
   const materialPercent = Math.round(
     Math.max(0, Math.min(1, Number(review.materialConfidence || 0))) * 100,
   )
@@ -2034,7 +2051,9 @@ const AIAnalysisPanel = ({
   )
   const technicalDescription = fields.descripcionTecnica
   const commercialDescription = fields.descripcion
-  const shouldReview = review.requiresHumanReview || confidencePercent < 65
+  // Sin dato de confianza también se pide revisar.
+  const shouldReview =
+    review.requiresHumanReview || confidencePercent === null || confidencePercent < 65
 
   const formatSuggestedValue = value => {
     if (Array.isArray(value))
@@ -2364,7 +2383,9 @@ const AIAnalysisPanel = ({
               <RobotOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
               <span>Revisión inteligente de la IA</span>
               <Tag color={shouldReview ? 'warning' : 'success'} style={{ borderRadius: 999 }}>
-                {confidencePercent}% confianza
+                {confidencePercent === null
+                  ? 'Confianza sin dato'
+                  : `${confidencePercent}% confianza`}
               </Tag>
               {shouldReview && (
                 <Tag color="orange" style={{ borderRadius: 999 }}>
@@ -5567,7 +5588,10 @@ function AddProductForm() {
         iaGenerated: Boolean(normalizedIaResult),
         aiOriginalOutput: normalizedIaResult ? JSON.stringify(normalizedIaResult) : null,
         aiConfidence: normalizedIaResult?.confidence ?? null,
-        aiSource: normalizedIaResult?.source || 'gemini',
+        // Solo con análisis: un producto cargado a mano quedaba con 'gemini'.
+        aiSource: normalizedIaResult
+          ? normalizedIaResult.source || normalizedIaResult.model || null
+          : null,
         aiImageHash: normalizedIaResult?.hash || null,
         aiNeedsReview:
           normalizedIaResult?.needsReview === true ||
