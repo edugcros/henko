@@ -207,6 +207,36 @@ describe('resolución de costos · prefiere lo que ya sabe', () => {
     expect(provenance.paymentFeePercent).toBe(COST_SOURCE.OVERRIDE)
   })
 
+  test('un 0% explícito es override, no vacío: simula no pagar comisión', async () => {
+    const p = await makeProduct()
+    await seedOrders(10, { amountCents: 100000, feeCents: 6000 })
+
+    const { costs, provenance } = await resolveProductCostInputs({
+      tenantId: TENANT,
+      productId: p._id,
+      overrides: { paymentFeePercent: 0 },
+    })
+
+    expect(costs.paymentFeePercent).toBe(0)
+    expect(provenance.paymentFeePercent).toBe(COST_SOURCE.OVERRIDE)
+  })
+
+  test('vacío, null o negativo no es override: se usa la medida', async () => {
+    const p = await makeProduct()
+    await seedOrders(10, { amountCents: 100000, feeCents: 6000 })
+
+    for (const paymentFeePercent of ['', null, -2]) {
+      const { costs, provenance } = await resolveProductCostInputs({
+        tenantId: TENANT,
+        productId: p._id,
+        overrides: { paymentFeePercent },
+      })
+
+      expect(costs.paymentFeePercent).toBeCloseTo(6, 2)
+      expect(provenance.paymentFeePercent).toBe(COST_SOURCE.MEASURED)
+    }
+  })
+
   test('sin muestra la comisión queda en cero y se declara desconocida', async () => {
     const p = await makeProduct()
 

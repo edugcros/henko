@@ -167,10 +167,16 @@ export const resolveProductCostInputs = async ({ tenantId, productId = null, ove
   // Comisión de la pasarela: lo que mandaron, si no lo medido de las ventas.
   // Un override explícito gana incluso sobre la medición — el comerciante
   // puede estar simulando un acuerdo distinto al que tiene hoy.
-  const overrideFee = Number(overrides.paymentFeePercent)
+  //
+  // Un 0 explícito también es override: "¿y si no pagara comisión?" es una
+  // simulación válida, y tratarlo como vacío devolvía la tasa medida. Vacío es
+  // que el campo no venga (o venga '' o null), no que valga cero.
+  const rawFee = overrides.paymentFeePercent
+  const feeProvided = rawFee !== undefined && rawFee !== null && rawFee !== ''
+  const overrideFee = Number(rawFee)
   let paymentFeePercent
 
-  if (Number.isFinite(overrideFee) && overrideFee > 0) {
+  if (feeProvided && Number.isFinite(overrideFee) && overrideFee >= 0) {
     paymentFeePercent = overrideFee
     provenance.paymentFeePercent = COST_SOURCE.OVERRIDE
   } else {

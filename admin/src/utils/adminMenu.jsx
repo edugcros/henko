@@ -30,6 +30,7 @@ import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
+import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import PersonIcon from '@mui/icons-material/Person'
@@ -96,6 +97,9 @@ const MENU_STRUCTURE = [
     children: [
       { key: 'AddProduct', label: 'Crear producto', icon: AutoAwesomeIcon },
       { key: 'productlist', label: 'Lista de productos', icon: Inventory2Icon },
+      // Antes no tenía lugar y el menú la agregaba al final como
+      // "Market Intelligence", la etiqueta derivada de la ruta.
+      { key: 'market-intelligence', label: 'Análisis de mercado', icon: QueryStatsIcon },
       /*{
         key: 'product-analysis',
         label: 'Programación de imágenes',
