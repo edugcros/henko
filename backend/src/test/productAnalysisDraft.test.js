@@ -11,9 +11,13 @@ import mongoose from 'mongoose'
 import { normalizeVariantSuggestions } from '../services/aiVisionService.js'
 import {
   buildProductDraftFromJob,
+  createProductFromAnalysisJob,
   sanitizeAnalysis,
 } from '../controller/productAnalysisController.js'
 import Product from '../models/productModel.js'
+import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
+import CatalogCategory from '../models/catalogCategoryModel.js'
+import { normalizeCatalogKey } from '../services/catalogCategoryService.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
   buildAutonomousProductPayload,
@@ -162,5 +166,95 @@ describe('agente · el producto creado desde un análisis lleva SKU', () => {
         await Product.countDocuments({ tenantId: TENANT }).setOptions({ tenantId: TENANT }),
       ).toBe(2)
     })
+  })
+})
+
+// El alta automática (autoCreateProduct) hacía un Product.create pelado. Ahora
+// pasa por createProductRecord, el mismo servicio que el alta del panel.
+describe('alta automática desde un análisis · mismo servicio que el panel', () => {
+  const TENANT = new mongoose.Types.ObjectId()
+
+  const nuevoTrabajo = async (analysis = {}) => {
+    const [job] = await ProductAnalysisJob.create(
+      [
+        {
+          tenantId: TENANT,
+          imageUrl: 'https://cdn.test/casco.jpg',
+          originalFilename: 'casco.jpg',
+          source: 'local-folder-agent',
+          analysis: {
+            titulo: 'Casco integral AGV',
+            descripcion: 'Casco con visor',
+            categoria: 'Cascos',
+            subcategoria: 'Integrales',
+            marca: 'AGV',
+            source: 'gemini-3.1-flash-lite',
+            ...analysis,
+          },
+        },
+      ],
+      { tenantId: TENANT },
+    )
+    return job
+  }
+  const contar = filtro =>
+    Product.countDocuments({ tenantId: TENANT, ...filtro }).setOptions({ tenantId: TENANT })
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, CatalogCategory)
+    await ProductAnalysisJob.deleteMany({}).setOptions({ ignoreTenant: true })
+    await Product.createIndexes()
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('crea el producto, vincula el análisis y arma la plantilla de la subcategoría', async () => {
+    const job = await nuevoTrabajo()
+
+    const product = await createProductFromAnalysisJob({ job })
+
+    expect(product.aiAgentJobId.toString()).toBe(job._id.toString())
+    expect(product.seo.slug).toBe(product.slug)
+    expect(product.sku).toBeTruthy()
+    expect(job.createdProductId.toString()).toBe(product._id.toString())
+    // Lo que el Product.create pelado no hacía: la plantilla de la categoría.
+    const categoria = await CatalogCategory.findOne({
+      tenantId: TENANT,
+      normalizedName: normalizeCatalogKey('Cascos'),
+    })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(categoria).toBeTruthy()
+  })
+
+  test('si el análisis ya tiene producto, no crea otro aunque el trabajo no lo registre', async () => {
+    const job = await nuevoTrabajo({ titulo: 'Guantes Alpinestars' })
+    const primero = await createProductFromAnalysisJob({ job })
+
+    // El trabajo perdió el vínculo (p. ej. se guardó antes de que terminara).
+    job.createdProductId = null
+    const segundo = await createProductFromAnalysisJob({ job })
+
+    expect(segundo._id.toString()).toBe(primero._id.toString())
+    expect(await contar({ aiAgentJobId: job._id })).toBe(1)
+  })
+
+  test('el slug se hace único aunque ya exista uno igual en la tienda', async () => {
+    const job = await nuevoTrabajo({ titulo: 'Botas TCX Clima' })
+    const ocupado = `botas-tcx-clima-${String(job._id).slice(-8)}`
+    await Product.collection.insertOne({
+      tenantId: TENANT,
+      title: 'Otro producto',
+      slug: ocupado,
+      sku: `OTRO-${Date.now()}`,
+    })
+
+    const product = await createProductFromAnalysisJob({ job })
+
+    expect(product.slug).not.toBe(ocupado)
+    expect(product.slug.startsWith(ocupado)).toBe(true)
   })
 })
