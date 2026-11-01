@@ -1440,7 +1440,7 @@ function normalizeLogistics(value = {}) {
   }
 }
 
-function normalizeVariantSuggestions(value) {
+export function normalizeVariantSuggestions(value) {
   if (!Array.isArray(value)) return []
 
   return value
@@ -1467,9 +1467,10 @@ function normalizeVariantSuggestions(value) {
           }) || `Variante ${index + 1}`,
         attributes,
         price: normalizePrice(item.price || item.precio),
-        stock: Number.isFinite(Number(item.stock))
-          ? Math.max(0, Math.trunc(Number(item.stock)))
-          : null,
+        // La IA no conoce el inventario: una foto no dice cuántas unidades hay
+        // en el depósito, y el prompt ni siquiera lo pide. Si el modelo devuelve
+        // un número, lo inventó. El stock lo carga el comercio.
+        stock: null,
         sku: safeString(item.sku, { upper: true, maxLength: 80 }),
         confidence: clampConfidence(item.confidence, 0.45),
       }

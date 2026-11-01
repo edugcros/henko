@@ -1607,7 +1607,7 @@ const sanitizeDynamicValuesMap = values => {
   )
 }
 
-const normalizeAiAnalysisForForm = analysis => {
+export const normalizeAiAnalysisForForm = analysis => {
   // El backend (autonomousProductBuilder.js) ya calcula este mismo
   // resultado con un único motor, compartido con el pipeline 100%
   // autónomo del agente. Si vino en la respuesta, lo usamos tal cual en
@@ -1652,7 +1652,10 @@ const normalizeAiAnalysisForForm = analysis => {
     subcategoria: toTitleCase(analysis?.subcategoria || analysis?.subcategory || ''),
     marca: normalizeString(analysis?.marca || analysis?.brand || ''),
     precio: analysis?.precio_sugerido || analysis?.precio || analysis?.price || null,
-    cantidad: analysis?.cantidad || analysis?.stock || 1,
+    // Vacío a propósito: la IA no conoce el inventario y la visión nunca lo
+    // devuelve, así que esto caía en 1 SIEMPRE. El campo queda para que lo
+    // cargue el comercio (es obligatorio para guardar).
+    cantidad: null,
     condicion: analysis?.condicion || 'nuevo',
     color: Array.isArray(colorValue) ? colorValue.join(', ') : normalizeString(colorValue),
     material: normalizeString(materialValue),
@@ -1748,7 +1751,7 @@ const normalizeAiAnalysisForForm = analysis => {
   }
 }
 
-const buildProductPayloadFromAnalysis = ({
+export const buildProductPayloadFromAnalysis = ({
   analysis,
   job,
   user,
@@ -1799,7 +1802,8 @@ const buildProductPayloadFromAnalysis = ({
     subcategoria: toTitleCase(fields.subcategoria || 'General'),
     marca: normalizeString(fields.marca || 'sin marca'),
     price: Number(fields.precio || 0),
-    stock: Number(fields.cantidad || 1),
+    // Sin una cantidad cargada, cero: nunca una unidad que nadie contó.
+    stock: Math.max(0, Math.trunc(Number(fields.cantidad) || 0)),
     condicion: fields.condicion || 'nuevo',
     color: colorArray,
     material: fields.material,

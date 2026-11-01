@@ -100,6 +100,8 @@ const {
   buildProductReadiness,
   buildWizardSteps,
   getWizardCurrentStep,
+  normalizeAiAnalysisForForm,
+  buildProductPayloadFromAnalysis,
 } = await import('./AddProduct.js')
 
 const MB = 1024 * 1024
@@ -1250,5 +1252,40 @@ describe('Alta de producto · la pantalla', () => {
     montar()
 
     expect((await screen.findAllByText(/faltan:/i)).length).toBeGreaterThan(0)
+  })
+})
+
+// La IA no conoce el inventario: la visión nunca devuelve stock y el formulario
+// caía en `|| 1`, así que todo producto armado desde una foto salía con una
+// unidad que nadie había contado.
+describe('Alta de producto · la IA no inventa stock', () => {
+  const analisis = (extra = {}) => ({
+    titulo: 'Casco integral',
+    descripcion: 'Casco con visor',
+    categoria: 'Accesorios',
+    subcategoria: 'Cascos',
+    marca: 'AGV',
+    precio: 250000,
+    ...extra,
+  })
+
+  test('el formulario queda con la cantidad vacía para que la cargue el comercio', () => {
+    expect(normalizeAiAnalysisForForm(analisis()).fields.cantidad).toBeNull()
+  })
+
+  test('aunque el análisis traiga un número, la cantidad no lo toma', () => {
+    expect(
+      normalizeAiAnalysisForForm(analisis({ cantidad: 7, stock: 3 })).fields.cantidad,
+    ).toBeNull()
+  })
+
+  test('el guardado automático sin cantidad cargada crea el producto con stock 0, no 1', () => {
+    const payload = buildProductPayloadFromAnalysis({
+      analysis: analisis(),
+      job: { _id: 'j1', originalFilename: 'casco.jpg' },
+      user: { _id: 'u1' },
+    })
+
+    expect(payload.stock).toBe(0)
   })
 })

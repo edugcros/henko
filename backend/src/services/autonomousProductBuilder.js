@@ -499,7 +499,10 @@ const buildFormFieldsFromAi = (analysis, dynamicValues) => {
     subcategoria: toTitleCase(analysis?.subcategoria || analysis?.subcategory || ''),
     marca: normalizeString(analysis?.marca || analysis?.brand || ''),
     precio: analysis?.precio_sugerido || analysis?.precio || analysis?.price || null,
-    cantidad: analysis?.cantidad || analysis?.stock || 1,
+    // Vacío a propósito: la IA no conoce el inventario (ver aiVisionService).
+    // Antes caía en 1 SIEMPRE —la visión nunca devuelve stock— y un producto
+    // armado desde una foto salía con una unidad que nadie había contado.
+    cantidad: null,
     condicion: analysis?.condicion || 'nuevo',
     color: Array.isArray(colorValue) ? colorValue.join(', ') : normalizeString(colorValue),
     material: normalizeString(materialValue),
@@ -681,7 +684,8 @@ export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
     variants,
 
     price,
-    stock: hasVariants ? 0 : Number(analysis?.cantidad || analysis?.stock || 1),
+    // Sin stock confirmado por una persona, cero: no se vende lo que nadie contó.
+    stock: 0,
     color: colorArray,
     material,
 
