@@ -752,6 +752,23 @@ const variantAttributeSchema = new Schema(
       enum: ALLOWED_VARIANT_ATTRIBUTE_TYPES,
       default: 'select',
     },
+
+    // Los tres los normaliza productCtrl (normalizeVariantAttributesPayload) y
+    // los usan el admin, la sincronización de plantillas y la tienda. Sin
+    // declararlos, el modo strict de Mongoose los descartaba en silencio: el
+    // orden de los talles y los valores definidos se perdían al guardar.
+    values: {
+      type: [String],
+      default: [],
+    },
+    required: {
+      type: Boolean,
+      default: false,
+    },
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     _id: false,

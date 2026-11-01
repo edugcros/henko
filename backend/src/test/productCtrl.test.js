@@ -606,3 +606,127 @@ describe('stock · una venta mientras se edita no se pisa', () => {
     expect(updates.stock).toBe(10)
   })
 })
+
+// ─── PR 3: los atributos de variante se guardan completos ───────────────────
+//
+// El controlador normalizaba values, required y sortOrder, pero el esquema
+// solo declaraba name, label y type: el modo strict de Mongoose descartaba el
+// resto en silencio. Se perdían el orden de los talles y los valores definidos.
+
+describe('variantes · los atributos se guardan completos', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+
+  const atributos = [
+    {
+      name: 'talle',
+      label: 'Talle',
+      type: 'select',
+      values: ['S', 'M', 'L', 'XL'],
+      required: true,
+      sortOrder: 0,
+    },
+    {
+      name: 'color',
+      label: 'Color',
+      type: 'color',
+      values: ['Negro', 'Blanco'],
+      required: false,
+      sortOrder: 1,
+    },
+  ]
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'atributos-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  const crear = async () => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({
+        title: `Remera ${Math.random()}`,
+        description: 'Remera de algodón',
+        marca: 'Henko',
+        categoria: 'Indumentaria',
+        subcategoria: 'Remeras',
+        price: 15000,
+        hasVariants: true,
+        variantAttributes: atributos,
+        variants: [
+          {
+            attributes: { talle: 'M', color: 'Negro' },
+            price: 15000,
+            stock: 3,
+            sku: `R-M-${Math.random()}`,
+          },
+        ],
+      })
+    expect(res.statusCode).toBe(201)
+    return res.body.data._id
+  }
+
+  test('values, required y sortOrder sobreviven al alta', async () => {
+    const guardado = await leer(await crear())
+
+    expect(guardado.variantAttributes).toEqual([
+      expect.objectContaining({
+        name: 'talle',
+        values: ['S', 'M', 'L', 'XL'],
+        required: true,
+        sortOrder: 0,
+      }),
+      expect.objectContaining({
+        name: 'color',
+        values: ['Negro', 'Blanco'],
+        required: false,
+        sortOrder: 1,
+      }),
+    ])
+  })
+
+  test('una edición que no los manda los conserva', async () => {
+    const id = await crear()
+
+    const res = await request(app).put(`/api/product/${id}`).set(headers()).send({ price: 16000 })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).variantAttributes[0].values).toEqual(['S', 'M', 'L', 'XL'])
+  })
+
+  test('una edición que los manda los actualiza', async () => {
+    const id = await crear()
+
+    const res = await request(app)
+      .put(`/api/product/${id}`)
+      .set(headers())
+      .send({
+        variantAttributes: [{ ...atributos[0], values: ['M', 'L'] }, atributos[1]],
+      })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).variantAttributes[0].values).toEqual(['M', 'L'])
+  })
+})

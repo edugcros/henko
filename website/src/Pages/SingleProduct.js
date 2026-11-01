@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
+import { computeAvailableValues } from '@utils/variantOptions'
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'
 import {
   Box,
@@ -302,34 +303,16 @@ const ProductVariantSelector = ({ product, onVariantSelect, selectedVariant }) =
   }, [selections, variants, variantAttributes, onVariantSelect])
 
   const getAvailableValues = useCallback(
-    (attrName, currentSelections) => {
-      const otherSelections = { ...currentSelections }
-      delete otherSelections[attrName]
-
-      const compatibleVariants = variants.filter(variant => {
-        const attrs = normalizeAttributes(variant)
-
-        return Object.entries(otherSelections).every(([key, value]) => {
-          if (!value) return true
-          return String(attrs[key] || '') === String(value || '')
-        })
-      })
-
-      const values = new Set()
-      compatibleVariants.forEach(variant => {
-        const attrs = normalizeAttributes(variant)
-        const value = attrs[attrName]
-        if (value) values.add(String(value))
-      })
-
-      const declaredValues = safeArray(
-        variantAttributes.find(attr => attr.name === attrName)?.values,
-      )
-
-      return [...new Set([...declaredValues, ...values])].sort((a, b) =>
-        String(a).localeCompare(String(b)),
-      )
-    },
+    // Solo valores que existen en una variante compatible; los declarados por
+    // el comercio fijan el orden. Ver Utils/variantOptions.js.
+    (attrName, currentSelections) =>
+      computeAvailableValues({
+        attrName,
+        selections: currentSelections,
+        variants,
+        variantAttributes,
+        getAttributes: normalizeAttributes,
+      }),
     [variants, variantAttributes],
   )
 
