@@ -287,10 +287,13 @@ export const buildAnalyzeRequest = ({ product, country, forceRefresh, costs, cat
   const base = { product: product.trim(), country, forceRefresh }
 
   if (catalogProduct?._id) {
+    // Viaja todo lo que se cargó, ceros incluidos: un 0% de comisión de cobro
+    // es una simulación ("¿y si no pagara comisión?"), no un campo vacío, y
+    // omitirlo hacía que el backend usara la tasa medida.
     const overrides = Object.fromEntries(
       Object.keys(EMPTY_COSTS)
-        .filter(key => number(key) > 0)
-        .map(key => [key, number(key)]),
+        .filter(key => costs[key] !== '' && Number(costs[key]) >= 0)
+        .map(key => [key, Number(costs[key])]),
     )
     return { ...base, productId: catalogProduct._id, costs: overrides }
   }

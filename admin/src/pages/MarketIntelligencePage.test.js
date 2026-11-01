@@ -510,6 +510,20 @@ describe('Análisis de mercado · costos', () => {
     })
   })
 
+  test('buildAnalyzeRequest: con catálogo, un 0% de comisión de cobro viaja (no es vacío)', () => {
+    // Si se omitía, el backend usaba la comisión medida y no se podía simular
+    // "¿y si no pagara comisión?".
+    const pedido = buildAnalyzeRequest({
+      product: 'Queso',
+      country: 'AR',
+      forceRefresh: false,
+      costs: { ...EMPTY_COSTS, paymentFeePercent: '0' },
+      catalogProduct: QUESO,
+    })
+
+    expect(pedido.costs).toEqual({ paymentFeePercent: 0 })
+  })
+
   test('describeCostSource y percent', () => {
     expect(describeCostSource('paymentFeePercent', { paymentFeePercent: 'missing' })).toMatch(
       /cuenta 0%/,
