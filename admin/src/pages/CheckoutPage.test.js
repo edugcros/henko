@@ -19,14 +19,17 @@ process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 const mockGet = jest.fn()
 const mockPost = jest.fn()
 const mockInitMercadoPago = jest.fn()
+const mockNavigate = jest.fn()
+let mockQuery = 'plan=starter'
+let mockConfig = { mpPublicKey: 'APP_USR-abc' }
 
 jest.unstable_mockModule('../utils/axiosConfig', () => ({
   default: { get: mockGet, post: mockPost },
 }))
 
 jest.unstable_mockModule('react-router-dom', () => ({
-  useNavigate: () => jest.fn(),
-  useSearchParams: () => [new URLSearchParams('plan=starter')],
+  useNavigate: () => mockNavigate,
+  useSearchParams: () => [new URLSearchParams(mockQuery)],
 }))
 
 jest.unstable_mockModule('react-redux', () => ({
@@ -52,15 +55,17 @@ jest.unstable_mockModule('@mercadopago/sdk-react', () => ({
   ),
 }))
 
-const { default: CheckoutPage } = await import('./CheckoutPage.js')
+const { default: CheckoutPage, addOneMonth, trialDaysLeft } = await import('./CheckoutPage.js')
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockQuery = 'plan=starter'
+  mockConfig = { mpPublicKey: 'APP_USR-abc' }
 
   mockGet.mockImplementation(url => {
     if (url.includes('/subscriptions/config')) {
       return Promise.resolve({
-        data: { success: true, data: { mpPublicKey: 'APP_USR-abc' } },
+        data: { success: true, data: mockConfig },
       })
     }
 
@@ -190,5 +195,117 @@ describe('CheckoutPage · cuando la tarjeta no pasa', () => {
     expect(
       screen.queryByRole('link', { name: /autorizar en mercado pago/i }),
     ).not.toBeInTheDocument()
+  })
+})
+
+// ─── Rediseño: lo que la pantalla promete ────────────────────────────────
+
+describe('CheckoutPage · cuándo se cobra', () => {
+  // El backend crea la suscripción en 'authorized' y sin start_date: cobra en
+  // el acto (subscriptionPaymentService). La pantalla decía "los primeros 14
+  // días son gratis, después se cobrará", que era falso.
+  test('dice que se cobra hoy, no que hay 14 días gratis', async () => {
+    render(<CheckoutPage />)
+
+    expect(await screen.findByText('Hoy se cobra')).toBeInTheDocument()
+    expect(screen.queryByText(/14 días son gratis/i)).not.toBeInTheDocument()
+  })
+
+  test('en prueba, avisa que contratar ahora la termina', async () => {
+    mockConfig = {
+      mpPublicKey: 'APP_USR-abc',
+      subscriptionStatus: 'trialing',
+      trialEndsAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    }
+
+    render(<CheckoutPage />)
+
+    expect(await screen.findByText(/quedan 5 días de prueba gratis/i)).toBeInTheDocument()
+    expect(screen.getByText(/se cobra hoy y la prueba termina/i)).toBeInTheDocument()
+  })
+
+  test('addOneMonth no se pasa de mes', () => {
+    expect(addOneMonth(new Date(2026, 0, 31)).getMonth()).toBe(1)
+    expect(addOneMonth(new Date(2026, 0, 31)).getDate()).toBe(28)
+    expect(addOneMonth(new Date(2026, 10, 1)).getMonth()).toBe(11)
+  })
+
+  test('trialDaysLeft solo cuenta si está en prueba y no venció', () => {
+    const ahora = Date.parse('2026-11-01T12:00:00Z')
+
+    expect(trialDaysLeft('trialing', '2026-11-03T12:00:00Z', ahora)).toBe(2)
+    expect(trialDaysLeft('trialing', '2026-10-30T12:00:00Z', ahora)).toBeNull()
+    expect(trialDaysLeft('active', '2026-11-03T12:00:00Z', ahora)).toBeNull()
+    expect(trialDaysLeft('trialing', null, ahora)).toBeNull()
+  })
+})
+
+describe('CheckoutPage · un pago pendiente no es un pago aprobado', () => {
+  test('con status pending no dice "pago exitoso" ni manda al panel', async () => {
+    // El backend responde 202 con success: true y status 'pending' cuando
+    // Mercado Pago todavía no aprobó. Antes eso mostraba "¡Pago Exitoso!".
+    mockPost.mockResolvedValue({
+      data: { success: true, data: { subscriptionId: 'pre-9', status: 'pending' } },
+    })
+
+    render(<CheckoutPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /pagar/i }))
+
+    expect(await screen.findByText(/Tu pago está en revisión/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Ya estás en el plan/i)).not.toBeInTheDocument()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  test('aprobado, confirma la activación', async () => {
+    mockPost.mockResolvedValue({
+      data: { success: true, data: { subscriptionId: 'pre-1', status: 'active' } },
+    })
+
+    render(<CheckoutPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /pagar/i }))
+
+    expect(await screen.findByText(/Ya estás en el plan/i)).toBeInTheDocument()
+    expect(screen.getByText(/pre-1/)).toBeInTheDocument()
+  })
+})
+
+describe('CheckoutPage · no se cobra dos veces ni un plan que no existe', () => {
+  test('con la suscripción activa no aparece el formulario de pago', async () => {
+    // Un segundo alta crearía una segunda suscripción recurrente.
+    mockConfig = { mpPublicKey: 'APP_USR-abc', subscriptionStatus: 'active', currentPlan: 'pro' }
+
+    render(<CheckoutPage />)
+
+    expect(await screen.findByText(/Ya tenés una suscripción activa/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('brick')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Ir a Mi suscripción/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/mi-suscripcion')
+  })
+
+  test('un plan que no se vende no muestra el formulario', async () => {
+    mockQuery = 'plan=gratis'
+
+    render(<CheckoutPage />)
+
+    expect(await screen.findByText(/Ese plan no existe/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('brick')).not.toBeInTheDocument()
+  })
+
+  test('si el catálogo no carga, lo dice y deja reintentar (no "sin precio")', async () => {
+    let falla = true
+    const base = mockGet.getMockImplementation()
+    mockGet.mockImplementation(url =>
+      url.includes('/subscriptions/plans') && falla ? Promise.reject(new Error('red')) : base(url),
+    )
+
+    render(<CheckoutPage />)
+
+    expect(await screen.findByText(/No se pudo cargar el precio/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no tiene precio configurado/i)).not.toBeInTheDocument()
+
+    falla = false
+    await userEvent.click(screen.getByRole('button', { name: /Reintentar/i }))
+    expect(await screen.findByTestId('brick')).toHaveTextContent('monto: 1')
   })
 })
