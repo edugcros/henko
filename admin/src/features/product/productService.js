@@ -137,6 +137,23 @@ const createProduct = async productData => {
 }
 
 /**
+ * Lee la respuesta de la publicación de borradores.
+ *
+ * El backend publica solo lo que cumple la regla de publicación y devuelve el
+ * resto en `skipped`, con lo que le falta a cada uno. `publishedIds` son los
+ * pedidos que no volvieron ahí (incluye los que ya no eran borradores).
+ */
+export const splitBulkPublishResult = (productIds = [], response = {}) => {
+  const skipped = Array.isArray(response?.skipped) ? response.skipped : []
+  const skippedIds = new Set(skipped.map(item => String(item.productId)))
+  const publishedIds = new Set(
+    productIds.map(String).filter(productId => !skippedIds.has(productId)),
+  )
+
+  return { skipped, skippedIds, publishedIds }
+}
+
+/**
  * Publica un borrador: pasa a activo y visible.
  *
  * AddProduct crea el producto como borrador y lo publica recién cuando subió
@@ -149,7 +166,19 @@ const publishDraftProduct = async productId => {
     throw new Error('ID del producto requerido')
   }
 
-  return apiRequest('put', '/admin/drafts/bulk-publish', { productIds: [productId] })
+  const response = await apiRequest('put', '/admin/drafts/bulk-publish', {
+    productIds: [productId],
+  })
+
+  // El backend no publica un borrador incompleto: lo devuelve en `skipped` con
+  // lo que le falta (getPublishBlockers). Sin esto el alta decía «publicado».
+  const { skipped } = splitBulkPublishResult([productId], response)
+
+  if (skipped.length) {
+    throw new Error(`No se puede publicar todavía: ${skipped[0].blockers.join(' · ')}`)
+  }
+
+  return response
 }
 
 /**

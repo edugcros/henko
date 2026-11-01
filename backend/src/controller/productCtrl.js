@@ -1342,6 +1342,62 @@ const normalizeSku = value => {
   return clean
 }
 
+const DEFAULT_PRODUCT_TITLE = 'Producto sin título'
+
+/**
+ * Lo que le falta a un producto para poder publicarse. Vacío = se puede.
+ *
+ * Es la regla única: la aplican el backend al publicar (publicación de
+ * borradores y paso a activo desde la edición) y el formulario de AddProduct
+ * con los mismos textos (validateProductBasicsForSubmit). Un borrador no la
+ * necesita: se puede guardar sin stock, sin precio o sin fotos.
+ *
+ * No se aplica a lo que ya está publicado y se edita: un producto activo que
+ * no la cumple (datos viejos) se sigue pudiendo editar.
+ */
+export const getPublishBlockers = product => {
+  const blockers = []
+  const has = value => typeof value === 'string' && value.trim().length > 0
+  const title = typeof product?.title === 'string' ? product.title.trim() : ''
+
+  if (!title || title === DEFAULT_PRODUCT_TITLE) blockers.push('El título es obligatorio')
+  if (!has(product?.description)) blockers.push('La descripción comercial es obligatoria')
+  if (!has(product?.categoria)) blockers.push('La categoría es obligatoria')
+  if (!has(product?.subcategoria)) blockers.push('La subcategoría es obligatoria')
+  if (!has(product?.marca)) blockers.push('La marca es obligatoria')
+  if (!(product?.images?.length > 0)) blockers.push('Debes subir al menos una imagen')
+  // El precio base se exige también con variantes: es el que muestran los
+  // listados, y el formulario ya lo pedía.
+  if (!(Number(product?.price) > 0)) blockers.push('El precio debe ser mayor a 0.')
+
+  const activeVariants = product?.hasVariants
+    ? (product.variants || []).filter(variant => variant?.isActive !== false)
+    : []
+
+  if (product?.hasVariants) {
+    if (!activeVariants.length) {
+      blockers.push('El producto necesita al menos una variante activa.')
+    } else {
+      if (activeVariants.some(variant => !(Number(variant.price) > 0))) {
+        blockers.push('Todas las variantes activas necesitan un precio mayor a 0.')
+      }
+      if (!activeVariants.some(variant => Number(variant.stock) > 0)) {
+        blockers.push('Al menos una variante activa necesita stock mayor a 0.')
+      }
+    }
+  } else if (!(Number(product?.stock) > 0)) {
+    blockers.push('La cantidad en stock debe ser mayor a 0.')
+  }
+
+  return blockers
+}
+
+const publishBlockedError = blockers => {
+  const error = new Error(`No se puede publicar todavía: ${blockers.join(' · ')}`)
+  error.statusCode = 400
+  return error
+}
+
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9:_-]{8,100}$/
 
 const normalizeClientRequestId = value => {
@@ -1412,7 +1468,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
 
     if (alreadyCreated) return sendAlreadyCreatedProduct(res, alreadyCreated)
 
-    const finalTitle = normalizeText(req.body.title, 'Producto sin título')
+    const finalTitle = normalizeText(req.body.title, DEFAULT_PRODUCT_TITLE)
 
     const slug = await generateUniqueSlug({
       title: finalTitle,
@@ -1809,14 +1865,37 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
   }
 
   const objectIds = validIds.map(id => new mongoose.Types.ObjectId(String(id)))
+  const draftFilter = {
+    tenantId: new mongoose.Types.ObjectId(String(tenantId)),
+    status: 'draft',
+    isDeleted: { $ne: true },
+  }
+
+  // Se publica solo lo que cumple getPublishBlockers; lo demás queda como
+  // borrador y vuelve en `skipped` con lo que le falta. Antes se publicaba
+  // cualquier borrador: sin fotos, sin precio o sin stock.
+  const drafts = await Product.find({ ...draftFilter, _id: { $in: objectIds } })
+    .select(
+      'title description categoria subcategoria marca images price stock hasVariants variants',
+    )
+    .setOptions({ tenantId })
+    .lean()
+
+  const readyIds = []
+  const skipped = []
+
+  for (const draft of drafts) {
+    const blockers = getPublishBlockers(draft)
+
+    if (blockers.length) {
+      skipped.push({ productId: String(draft._id), title: draft.title, blockers })
+    } else {
+      readyIds.push(draft._id)
+    }
+  }
 
   const result = await Product.updateMany(
-    {
-      _id: { $in: objectIds },
-      tenantId: new mongoose.Types.ObjectId(String(tenantId)),
-      status: 'draft',
-      isDeleted: { $ne: true },
-    },
+    { ...draftFilter, _id: { $in: readyIds } },
     {
       $set: {
         status: 'active',
@@ -1845,9 +1924,12 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    message: `${result.modifiedCount} productos publicados.`,
+    message: skipped.length
+      ? `${result.modifiedCount} productos publicados. ${skipped.length} quedaron como borrador porque les falta información.`
+      : `${result.modifiedCount} productos publicados.`,
     published: result.modifiedCount,
     requested: validIds.length,
+    skipped,
   })
 })
 
@@ -2581,6 +2663,13 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
         applyStockBaselines({ product, updates, stockBaseline, variantBaselines }),
       )
       product.$locals.priceChange = contextoDePrecio
+
+      // Solo al PASAR a activo (publicar un borrador, reactivar uno
+      // archivado): editar algo que ya estaba publicado no se bloquea.
+      if (product.isModified('status') && product.status === 'active') {
+        const blockers = getPublishBlockers(product)
+        if (blockers.length) throw publishBlockedError(blockers)
+      }
 
       await product.save(session ? { session } : {})
     })

@@ -361,6 +361,27 @@ describe('Alta de producto · validación de variantes al enviar', () => {
     ).toBeNull()
   })
 
+  test('para publicar, al menos una variante activa necesita stock', () => {
+    expect(
+      validateVariantsForSubmit([
+        variante({ stock: 0 }),
+        variante({ combinacion: { color: 'Blanco', talle: 'M' }, sku: 'CASCO-2B', stock: 0 }),
+      ]),
+    ).toBe('Al menos una variante activa necesita stock mayor a 0.')
+  })
+
+  test('un borrador guarda variantes sin precio ni stock, pero bien formadas', () => {
+    const borrador = variantes => validateVariantsForSubmit(variantes, { publish: false })
+
+    expect(borrador([variante({ price: 0, stock: 0 })])).toBeNull()
+    expect(
+      borrador([
+        variante(),
+        variante({ nombre: 'Repetida', combinacion: { talle: 'M', color: 'Negro' }, sku: 'X-1' }),
+      ]),
+    ).toBe('Hay variantes duplicadas con la misma combinación: Repetida.')
+  })
+
   test('devuelve null cuando todo está bien', () => {
     expect(
       validateVariantsForSubmit([
@@ -410,6 +431,16 @@ describe('Alta de producto · validación de los datos básicos', () => {
     )
     expect(validateProductBasicsForSubmit({ values: { ...completo, precio: -4 } })).toBe(
       'El precio debe ser mayor a 0.',
+    )
+  })
+
+  test('un borrador se guarda sin precio ni stock, pero con los datos que exige el modelo', () => {
+    const borrador = values => validateProductBasicsForSubmit({ values, publish: false })
+
+    expect(borrador({ ...completo, precio: 0, cantidad: 0 })).toBeNull()
+    expect(borrador({ ...completo, marca: '' })).toBe('La marca es obligatoria')
+    expect(borrador({ ...completo, descripcion: ' ' })).toBe(
+      'La descripción comercial es obligatoria',
     )
   })
 
@@ -961,7 +992,7 @@ describe('Alta de producto · progreso de la carga', () => {
   test('con la carga vacía no hay nada hecho y no se puede publicar', () => {
     const progreso = buildProductReadiness({})
 
-    expect(progreso.requiredChecks).toHaveLength(7)
+    expect(progreso.requiredChecks).toHaveLength(8)
     expect(progreso.doneRequired).toBe(0)
     expect(progreso.percent).toBe(0)
     expect(progreso.isReady).toBe(false)
@@ -970,7 +1001,7 @@ describe('Alta de producto · progreso de la carga', () => {
   test('con todo lo obligatorio completo se puede publicar', () => {
     const progreso = buildProductReadiness(completo)
 
-    expect(progreso.doneRequired).toBe(7)
+    expect(progreso.doneRequired).toBe(8)
     expect(progreso.percent).toBe(100)
     expect(progreso.isReady).toBe(true)
   })
@@ -983,7 +1014,7 @@ describe('Alta de producto · progreso de la carga', () => {
     })
 
     expect(progreso.doneRequired).toBe(3)
-    expect(progreso.percent).toBe(43)
+    expect(progreso.percent).toBe(38)
     expect(progreso.isReady).toBe(false)
   })
 
@@ -996,18 +1027,28 @@ describe('Alta de producto · progreso de la carga', () => {
     expect(progreso.isReady).toBe(false)
   })
 
-  test('la marca, la ficha y las variantes no frenan la publicación', () => {
+  test('la ficha y las variantes no frenan la publicación', () => {
     const progreso = buildProductReadiness({
       ...completo,
-      brand: '',
       useTechnicalSheet: true,
       technicalFieldCount: 0,
       hasVariants: false,
     })
 
-    expect(progreso.checks.find(check => check.key === 'marca').done).toBe(false)
     expect(progreso.checks.find(check => check.key === 'ficha').done).toBe(false)
     expect(progreso.isReady).toBe(true)
+  })
+
+  // El guardado ya la exigía (y el modelo también): la barra llegaba al 100%
+  // con un producto que después no se podía guardar.
+  test('la marca es obligatoria, igual que al guardar', () => {
+    const progreso = buildProductReadiness({ ...completo, brand: '' })
+
+    expect(progreso.checks.find(check => check.key === 'marca')).toMatchObject({
+      done: false,
+      required: true,
+    })
+    expect(progreso.isReady).toBe(false)
   })
 
   test('con variantes el stock sale de las variantes y no del campo de stock', () => {
@@ -1029,6 +1070,16 @@ describe('Alta de producto · progreso de la carga', () => {
     expect(sinStock.isReady).toBe(false)
     expect(clave(conStock, 'stock').done).toBe(true)
     expect(conStock.isReady).toBe(true)
+  })
+
+  test('una variante desactivada no cuenta como stock', () => {
+    const progreso = buildProductReadiness({
+      ...completo,
+      hasVariants: true,
+      variants: [{ stock: 4, isActive: false }, { stock: 0 }],
+    })
+
+    expect(progreso.checks.find(check => check.key === 'stock').done).toBe(false)
   })
 
   test('activar variantes sin generar ninguna deja pendiente el chequeo de variantes', () => {
