@@ -87,10 +87,12 @@ const describe = err => {
 // ─── Gemini: prompt engineering ──────────────────────────
 
 const askGemini = async (key, model, prompt) => {
-  const res = await fetch(`${GEMINI_API}/${model}:generateContent?key=${key}`, {
+  // La key va en el header, nunca en la URL: una URL queda escrita en los logs
+  // de cualquier proxy o balanceador que la vea pasar.
+  const res = await fetch(`${GEMINI_API}/${model}:generateContent`, {
     method: 'POST',
     signal: AbortSignal.timeout(15000),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
   })
 

@@ -9,6 +9,7 @@
 // 2. getGeminiFinishInfo ahora también extrae groundingMetadata, para poder
 //    citar fuentes reales cuando se usa el tool de grounding.
 
+import logger from '../../../config/logger.js'
 import {
   getModelChain,
   isModelUnavailable,
@@ -276,55 +277,103 @@ const buildGeminiError = ({ response, data }) => {
   return error
 }
 
-const isQuotaExceededError = error => {
-  const message = String(
-    error?.message || error?.details?.error?.message || error?.details?.message || '',
-  ).toLowerCase()
+// ─── Reintentos y respaldo ──────────────────────────────────────────────────
+//
+// QUÉ SE REINTENTA EN EL MISMO MODELO Y QUÉ PASA AL SIGUIENTE
+//
+//   red (TypeError), 500/502/504   reintento corto en el mismo modelo: el
+//                                  pedido probablemente ni llegó
+//   timeout                        siguiente modelo, SIN reintentar: el pedido
+//                                  pudo haberse procesado y cobrado, y repetirlo
+//                                  en el mismo modelo lento duplica costo y
+//                                  espera. Tampoco pausa el modelo: un timeout
+//                                  no prueba que esté caído
+//   429, 503                       pausa el modelo (markModelDead) y siguiente
+//   404, 400 "not supported"       descarta el modelo y siguiente
+//   400, 401, 403                  corta: cambiar de modelo no lo arregla
+//
+// Antes un timeout agotaba tres intentos sobre el mismo modelo y la llamada
+// se rendía sin probar el respaldo (isModelUnavailable no lo reconocía), y un
+// 503 de saturación se insistía tres veces antes de cambiar.
+//
+// PRESUPUESTO TOTAL. El timeout era por intento: tres intentos de 15 s por
+// cada modelo de la cadena. Ahora la llamada entera tiene un límite
+// (AI_AGENT_LLM_TOTAL_BUDGET_MS, por defecto el doble del de un intento) y cada
+// intento recibe solo lo que queda. El agente contesta mientras alguien espera.
+//
+// La configuración se lee acá, en cada llamada. config/env.js tenía
+// llmTimeoutMs y llmMaxAttempts que nadie leía: dos versiones del mismo dato.
 
-  return (
-    message.includes('quota exceeded') ||
-    message.includes('exceeded your current quota') ||
-    message.includes('free_tier') ||
-    message.includes('generate_content_free_tier')
-  )
-}
+/**
+ * Menos tiempo que esto no alcanza para que un modelo conteste: no se empieza.
+ *
+ * Proporcional al timeout de un intento, con 2 s de tope. Fijo en 2 s, un
+ * timeout configurado por debajo de eso dejaba la cadena sin respaldo: con
+ * intentos de 1 s y el presupuesto por defecto (2 s), cuando el primer modelo
+ * agotaba su tiempo quedaba menos de 2 s y el siguiente nunca arrancaba.
+ */
+const minAttemptMs = attemptTimeoutMs => Math.min(2000, attemptTimeoutMs / 2)
 
-const isRetryableGeminiError = error => {
-  if (!error) return false
-  if (error?.code === 'AI_LLM_TIMEOUT') return true
-  if (error instanceof TypeError) return true
-  if (error?.statusCode === 429 && !isQuotaExceededError(error)) return true
-  return Number(error?.statusCode || 0) >= 500
-}
-
-const getRetryDelayMs = ({ attempt, error }) => {
-  const baseMs = Math.min(250 * 2 ** (attempt - 1), 2000)
-  const jitterMs = Math.floor(Math.random() * 120)
-
-  if (error?.statusCode === 429) return Math.min(baseMs + 750 + jitterMs, 3000)
-  return baseMs + jitterMs
-}
-
-const fetchGemini = async ({ url, apiKey, payload, timeoutOverrideMs }) => {
+const resolveAttemptTimeoutMs = timeoutOverrideMs =>
   // El default está pensado para el agente de ventas: un mensaje corto que
   // tiene que contestar mientras alguien espera del otro lado. Una llamada que
   // manda doce páginas de contexto no entra en esa medida, y cortarla a los 15
   // segundos tira a la basura la búsqueda que ya se pagó. Por eso el llamador
   // puede pedir su propio presupuesto.
-  const timeoutMs = Math.min(
+  Math.min(
     Math.max(
       toNumber(timeoutOverrideMs, toNumber(process.env.AI_AGENT_LLM_TIMEOUT_MS, 15000)),
       1000,
     ),
     120000,
   )
+
+const resolveTotalBudgetMs = attemptTimeoutMs =>
+  Math.min(
+    Math.max(
+      toNumber(process.env.AI_AGENT_LLM_TOTAL_BUDGET_MS, attemptTimeoutMs * 2),
+      attemptTimeoutMs,
+    ),
+    180000,
+  )
+
+const budgetExceededError = () =>
+  Object.assign(new Error('Gemini: se agotó el tiempo total de la llamada'), {
+    code: 'AI_LLM_BUDGET_EXCEEDED',
+    provider: DEFAULT_PROVIDER,
+  })
+
+/** ¿Vale la pena repetir en el MISMO modelo? Solo fallas de transporte. */
+const isRetryableGeminiError = error => {
+  if (!error) return false
+  if (error instanceof TypeError) return true
+  const status = Number(error?.statusCode || 0)
+  return status >= 500 && status !== 503
+}
+
+/** ¿Hay que probar el SIGUIENTE modelo de la cadena? */
+const shouldTryNextModel = error => {
+  if (!error) return false
+  if (error.code === 'AI_LLM_TIMEOUT') return true
+  if (error instanceof TypeError) return true
+  const status = Number(error.statusCode || 0)
+  return isModelUnavailable(status, String(error.message || '')) || status >= 500
+}
+
+const getRetryDelayMs = ({ attempt }) =>
+  Math.min(250 * 2 ** (attempt - 1), 2000) + Math.floor(Math.random() * 120)
+
+const fetchGemini = async ({ url, apiKey, payload, attemptTimeoutMs, deadline }) => {
   const maxAttempts = Math.min(Math.max(toNumber(process.env.AI_AGENT_LLM_MAX_ATTEMPTS, 3), 1), 5)
 
   let lastError
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const remaining = deadline - Date.now()
+    if (remaining < minAttemptMs(attemptTimeoutMs)) throw lastError || budgetExceededError()
+
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const timeout = setTimeout(() => controller.abort(), Math.min(attemptTimeoutMs, remaining))
 
     try {
       const response = await fetch(url, {
@@ -363,7 +412,10 @@ const fetchGemini = async ({ url, apiKey, payload, timeoutOverrideMs }) => {
       clearTimeout(timeout)
     }
 
-    await sleep(getRetryDelayMs({ attempt, error: lastError }))
+    const delay = getRetryDelayMs({ attempt })
+    // Esperar para reintentar no puede comerse el tiempo del respaldo.
+    if (deadline - Date.now() - delay < minAttemptMs(attemptTimeoutMs)) throw lastError
+    await sleep(delay)
   }
 
   throw lastError || new Error('Gemini API unavailable')
@@ -586,15 +638,25 @@ export const callGemini = async ({
 
   // Google retira modelos sin aviso (404) o agota su cuota (429). Un modelo
   // muerto en GEMINI_MODEL rompía el agente en silencio, así que recorremos
-  // la cadena de respaldos antes de darnos por vencidos.
+  // la cadena de respaldos antes de darnos por vencidos, dentro del
+  // presupuesto total (ver "Reintentos y respaldo").
+  const attemptTimeoutMs = resolveAttemptTimeoutMs(timeoutOverrideMs)
+  const deadline = Date.now() + resolveTotalBudgetMs(attemptTimeoutMs)
+
   let data
   let usedModel = model
   let lastError
 
   for (const candidate of candidates) {
+    if (deadline - Date.now() < minAttemptMs(attemptTimeoutMs)) {
+      lastError = lastError || budgetExceededError()
+      break
+    }
+
+    const startedAt = Date.now()
     try {
       const url = `${getGeminiApiBaseUrl()}/models/${candidate}:generateContent`
-      const result = await fetchGemini({ url, apiKey, payload, timeoutOverrideMs })
+      const result = await fetchGemini({ url, apiKey, payload, attemptTimeoutMs, deadline })
 
       data = result.data
       usedModel = candidate
@@ -602,6 +664,15 @@ export const callGemini = async ({
       break
     } catch (error) {
       const detail = String(error?.message || '')
+
+      // Qué modelo falló, con qué y cuánto tardó. Sin la key ni el contenido.
+      logger.warn('[AI AGENT] El modelo no respondió', {
+        requestedModel: model,
+        model: candidate,
+        status: error?.statusCode ?? null,
+        code: error?.code ?? null,
+        durationMs: Date.now() - startedAt,
+      })
 
       // La búsqueda con Google se mide aparte del modelo, y su 429 llega
       // idéntico al de una cuota de tokens. Verificado contra la API con la
@@ -619,12 +690,18 @@ export const callGemini = async ({
         throw error
       }
 
-      if (!isModelUnavailable(error?.statusCode, detail)) throw error
+      if (!shouldTryNextModel(error)) throw error
 
+      // Solo lo que el proveedor DIJO pausa o descarta el modelo (404, 429,
+      // 503). Un timeout o una caída de red deciden el respaldo de ESTA
+      // llamada nada más: no prueban que el modelo esté mal.
+      //
       // El tercer argumento es lo que permite distinguir un retiro de Google
       // (permanente) de una cuota agotada (temporal, con cooldown). Sin él,
       // un 429 dejaría el modelo descartado hasta reiniciar el proceso.
-      markModelDead(candidate, `${error?.statusCode}: ${detail.slice(0, 80)}`, error?.statusCode)
+      if (isModelUnavailable(error?.statusCode, detail)) {
+        markModelDead(candidate, `${error?.statusCode}: ${detail.slice(0, 80)}`, error?.statusCode)
+      }
       lastError = error
     }
   }
