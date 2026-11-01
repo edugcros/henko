@@ -10,6 +10,8 @@ import userEvent from '@testing-library/user-event'
 
 const mockRemoveBackground = jest.fn()
 const mockGenerateVariation = jest.fn()
+const mockCreateStudio = jest.fn()
+const mockGetStatus = jest.fn()
 const mockGetAdminProducts = jest.fn()
 const mockUploadProductImage = jest.fn()
 const mockSnackbar = jest.fn()
@@ -18,6 +20,8 @@ const mockGetAiBudget = jest.fn()
 jest.unstable_mockModule('../services/imageAiService', () => ({
   removeBackground: mockRemoveBackground,
   generateVariation: mockGenerateVariation,
+  createStudioBackground: mockCreateStudio,
+  getImageAiStatus: mockGetStatus,
   default: {},
 }))
 
@@ -49,6 +53,7 @@ const {
   default: ImageAiEditor,
   checkImageFile,
   describeQuota,
+  imageExtension,
   resetEditorResults,
 } = await import('./ImageAiEditor.js')
 
@@ -76,6 +81,8 @@ beforeEach(() => {
   mockGenerateVariation.mockResolvedValue({ image: RESULT_IMAGE, size: 4321 })
   mockGetAdminProducts.mockResolvedValue({ data: [{ _id: 'p1', title: 'Casco AGV K1' }] })
   mockUploadProductImage.mockResolvedValue({})
+  mockCreateStudio.mockResolvedValue({ image: 'data:image/jpeg;base64,/9j/4AAQ', size: 2048 })
+  mockGetStatus.mockResolvedValue({ generativeBackground: { available: true, retryAt: null } })
   mockGetAiBudget.mockResolvedValue({
     metrics: { imageEdits: { used: 8, limit: 500, unlimited: false, remaining: 492 } },
   })
@@ -325,7 +332,8 @@ describe('Editor de imágenes · cupo de fondos generados', () => {
     render(<ImageAiEditor />)
 
     expect(await screen.findByText('Te quedan 492 de 500 este mes')).toBeDefined()
-    expect(screen.getByText('No usa cuota')).toBeDefined()
+    // Quitar fondo y fondo de estudio: los dos corren en el servidor, sin cupo.
+    expect(screen.getAllByText('No usa cuota')).toHaveLength(2)
   })
 
   test('sin cupo no se puede generar, pero sí quitar el fondo', async () => {
@@ -369,5 +377,149 @@ describe('Editor de imágenes · cupo de fondos generados', () => {
     expect(describeQuota({ remaining: 1500, limit: 2000 }).text).toBe(
       'Te quedan 1.500 de 2.000 este mes',
     )
+  })
+})
+
+// ─── Fondos de estudio y IA generativa no disponible ─────────────────────
+//
+// Medido en producción el 31/10/2026: "Generar variación" fallaba en el 100%
+// de los intentos (Gemini sin cuota). Los fondos de estudio no dependen de
+// ningún proveedor; y si la IA no puede, la pantalla lo dice antes.
+
+describe('Editor de imágenes · fondo de estudio', () => {
+  test('manda la foto, el fondo elegido y el propósito', async () => {
+    render(<ImageAiEditor />)
+    const file = foto()
+
+    await userEvent.click(screen.getByText('Fondo de estudio'))
+    await subir(file)
+    await userEvent.click(screen.getByRole('radio', { name: 'Beige cálido' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Redes sociales' }))
+    await userEvent.click(screen.getByRole('button', { name: /^Armar fondo de estudio$/i }))
+
+    await waitFor(() =>
+      expect(mockCreateStudio).toHaveBeenCalledWith(file, {
+        style: 'beige',
+        color: null,
+        purpose: 'social',
+      }),
+    )
+    expect(await screen.findByText(/Fondo de estudio · Beige cálido/)).toBeDefined()
+  })
+
+  test('el color propio exige un código válido', async () => {
+    render(<ImageAiEditor />)
+
+    await userEvent.click(screen.getByText('Fondo de estudio'))
+    await subir(foto())
+    await userEvent.click(screen.getByRole('radio', { name: 'Tu color' }))
+    const codigo = screen.getByLabelText('Código del color')
+    await userEvent.clear(codigo)
+    await userEvent.type(codigo, '#12')
+
+    expect(screen.getByText(/Usá un código como #0b6bff/)).toBeDefined()
+    expect(screen.getByRole('button', { name: /^Armar fondo de estudio$/i }).disabled).toBe(true)
+
+    await userEvent.type(codigo, '3456')
+    await userEvent.click(screen.getByRole('button', { name: /^Armar fondo de estudio$/i }))
+
+    await waitFor(() =>
+      expect(mockCreateStudio.mock.calls[0][1]).toEqual({
+        style: 'color',
+        color: '#123456',
+        purpose: undefined,
+      }),
+    )
+  })
+
+  test('no usa cuota de IA', async () => {
+    render(<ImageAiEditor />)
+
+    await userEvent.click(screen.getByText('Fondo de estudio'))
+    await subir(foto())
+    await userEvent.click(screen.getByRole('button', { name: /^Armar fondo de estudio$/i }))
+    await screen.findByAltText(/Resultado con fondo de estudio/i)
+
+    // El cupo se consultó al entrar y no se volvió a consultar.
+    expect(mockGetAiBudget).toHaveBeenCalledTimes(1)
+    expect(mockGenerateVariation).not.toHaveBeenCalled()
+  })
+
+  test('al producto viaja como JPEG, marcado como fondo de estudio de catálogo', async () => {
+    render(<ImageAiEditor />)
+    await userEvent.click(screen.getByText('Fondo de estudio'))
+    await subir(foto())
+    await userEvent.click(screen.getByRole('button', { name: /^Armar fondo de estudio$/i }))
+    await screen.findByAltText(/Resultado con fondo de estudio/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /Usar en un producto/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByRole('combobox'), 'Casco')
+    await userEvent.click(await screen.findByText('Casco AGV K1'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /Agregar al producto/i }))
+
+    await waitFor(() => expect(mockUploadProductImage).toHaveBeenCalled())
+    const [, file, meta] = mockUploadProductImage.mock.calls[0]
+    expect(file.name).toMatch(/\.jpg$/)
+    expect(meta).toEqual({ aiGenerated: true, aiSource: 'studio', imagePurpose: 'store' })
+  })
+
+  test('imageExtension', () => {
+    expect(imageExtension('data:image/jpeg;base64,xx')).toBe('jpg')
+    expect(imageExtension('data:image/png;base64,xx')).toBe('png')
+    expect(imageExtension(undefined)).toBe('png')
+  })
+})
+
+describe('Editor de imágenes · IA generativa no disponible', () => {
+  test('se avisa antes de subir nada y se ofrece el fondo de estudio', async () => {
+    mockGetStatus.mockResolvedValue({
+      generativeBackground: { available: false, retryAt: '2026-11-01T15:30:00.000Z' },
+    })
+    render(<ImageAiEditor />)
+
+    expect(await screen.findByText('No disponible ahora')).toBeDefined()
+
+    await userEvent.click(screen.getByText('Generar variación'))
+    await subir(foto())
+    await userEvent.type(screen.getByLabelText(/Descripción del fondo/i), 'Sobre mármol')
+
+    expect(screen.getByText(/no está disponible en este momento/i)).toBeDefined()
+    expect(screen.getByRole('button', { name: /^Generar variación$/i }).disabled).toBe(true)
+
+    await userEvent.click(screen.getByRole('button', { name: /Usar fondo de estudio/i }))
+    expect(screen.getByRole('button', { name: /^Armar fondo de estudio$/i })).toBeDefined()
+  })
+
+  test('si el backend responde que no está disponible, la opción se desactiva', async () => {
+    mockGenerateVariation.mockRejectedValue({
+      response: {
+        data: {
+          code: 'IMAGE_GENERATION_UNAVAILABLE',
+          message: 'La generación de fondos no está disponible en este momento.',
+          retryAt: '2026-11-01T15:30:00.000Z',
+        },
+      },
+    })
+    render(<ImageAiEditor />)
+
+    await userEvent.click(screen.getByText('Generar variación'))
+    await subir(foto())
+    await userEvent.type(screen.getByLabelText(/Descripción del fondo/i), 'Sobre mármol')
+    await userEvent.click(screen.getByRole('button', { name: /^Generar variación$/i }))
+
+    expect(await screen.findByText('No disponible ahora')).toBeDefined()
+    expect(screen.getByRole('button', { name: /^Generar variación$/i }).disabled).toBe(true)
+  })
+
+  test('si no se puede consultar el estado, la opción queda habilitada', async () => {
+    mockGetStatus.mockRejectedValue(new Error('red'))
+    render(<ImageAiEditor />)
+
+    await userEvent.click(screen.getByText('Generar variación'))
+    await subir(foto())
+    await userEvent.type(screen.getByLabelText(/Descripción del fondo/i), 'Sobre mármol')
+
+    expect(screen.getByRole('button', { name: /^Generar variación$/i }).disabled).toBe(false)
   })
 })

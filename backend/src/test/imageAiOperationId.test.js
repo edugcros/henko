@@ -6,6 +6,8 @@ const TENANT_ID = '64b7f0000000000000000001'
 const mockReserve = jest.fn()
 const mockRefund = jest.fn()
 const mockGenerate = jest.fn()
+const mockStudio = jest.fn()
+const mockGenerativeStatus = jest.fn()
 
 jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   AI_METRICS: { IMAGE_EDITS: 'imageEdits' },
@@ -19,6 +21,13 @@ jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
 jest.unstable_mockModule('../services/imageAiService.js', () => ({
   generateVariation: mockGenerate,
   removeBackground: jest.fn(),
+  createStudioImage: mockStudio,
+  getGenerativeBackgroundStatus: mockGenerativeStatus,
+  describeGeminiImageFailure: () => ({
+    statusCode: 503,
+    message: 'La generación de fondos no está disponible en este momento.',
+  }),
+  STUDIO_STYLES: { blanco: { label: 'Blanco de estudio' } },
 }))
 
 jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
@@ -29,7 +38,8 @@ jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
   resolveTenantAiCredentials: async () => ({ apiKey: 'AIzaTEST' }),
 }))
 
-const { handleGenerateVariation } = await import('../controller/imageAiCtrl.js')
+const { handleGenerateVariation, handleStudioBackground } =
+  await import('../controller/imageAiCtrl.js')
 
 const pedido = () => ({
   file: { buffer: Buffer.from('imagen'), mimetype: 'image/png' },
@@ -60,6 +70,7 @@ const correr = async () => {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockGenerativeStatus.mockReturnValue({ available: true, retryAt: null })
 
   mockReserve.mockResolvedValue({
     allowed: true,
@@ -159,4 +170,60 @@ test('declara la función y el proveedor contra los que presupuesta', async () =
       forcePlatformBilling: true,
     }),
   )
+})
+
+describe('imageAiCtrl · la IA generativa sabida no disponible', () => {
+  test('corta antes de reservar cupo y de recortar el producto', async () => {
+    // Medido el 31/10/2026: cada intento recortaba 8–13 s para un 429 seguro.
+    mockGenerativeStatus.mockReturnValue({
+      available: false,
+      retryAt: '2026-11-01T12:30:00.000Z',
+    })
+
+    const res = await correr()
+
+    expect(res.statusCode).toBe(503)
+    expect(res.body.code).toBe('IMAGE_GENERATION_UNAVAILABLE')
+    expect(res.body.retryAt).toBe('2026-11-01T12:30:00.000Z')
+    expect(mockReserve).not.toHaveBeenCalled()
+    expect(mockGenerate).not.toHaveBeenCalled()
+  })
+})
+
+describe('imageAiCtrl · fondo de estudio', () => {
+  test('devuelve la imagen y no toca el cupo de IA', async () => {
+    mockStudio.mockResolvedValue({ buffer: Buffer.from('jpg'), contentType: 'image/jpeg' })
+    const res = respuesta()
+
+    await handleStudioBackground(
+      {
+        file: { buffer: Buffer.from('foto'), mimetype: 'image/jpeg' },
+        body: { style: 'blanco', purpose: 'social', color: '' },
+        user: { tenantId: TENANT_ID },
+      },
+      res,
+      err => {
+        if (err) throw err
+      },
+    )
+
+    expect(mockStudio).toHaveBeenCalledWith(expect.any(Buffer), {
+      style: 'blanco',
+      color: '',
+      purpose: 'social',
+    })
+    expect(res.body.data.image).toMatch(/^data:image\/jpeg;base64,/)
+    expect(mockReserve).not.toHaveBeenCalled()
+  })
+
+  test('sin imagen es un 400', async () => {
+    const res = respuesta()
+
+    await handleStudioBackground({ body: { style: 'blanco' } }, res, err => {
+      if (err) throw err
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(mockStudio).not.toHaveBeenCalled()
+  })
 })

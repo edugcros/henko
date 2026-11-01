@@ -5,9 +5,14 @@
 //
 // Lo que esta pantalla cuida:
 //
-//   - Qué cuesta cada cosa. Quitar el fondo corre en el servidor y no usa
-//     cuota; generar un fondo sí (imageEdits del plan). Se muestra cuánto
-//     queda antes de gastarlo, no después.
+//   - Que funcione aunque la IA generativa no. Medido en producción el
+//     31/10/2026: "Generar variación" fallaba en el 100% de los intentos
+//     (Gemini sin cuota). Los fondos de estudio se arman en el servidor sin
+//     proveedor externo, y si la IA está caída la pantalla lo dice ANTES de
+//     que el comercio suba nada (GET /image-ai/status).
+//   - Qué cuesta cada cosa. Quitar el fondo y los fondos de estudio corren en
+//     el servidor y no usan cuota; generar con IA sí (imageEdits del plan).
+//     Se muestra cuánto queda antes de gastarlo, no después.
 //   - No perder un resultado. Cada fondo generado ya se cobró: cambiar de foto
 //     no borra los resultados, irse a otra pantalla del panel y volver los
 //     conserva, y recargar o cerrar la pestaña con imágenes sin guardar pide
@@ -46,11 +51,17 @@ import {
   AutoAwesome as VariationIcon,
   SwapHoriz as SwapIcon,
   CheckCircle as CheckIcon,
+  Wallpaper as StudioIcon,
 } from '@mui/icons-material'
 import { useSnackbar } from 'notistack'
 import { useSelector } from 'react-redux'
 import { buildSessionKey } from '../features/auth/authSlice'
-import { removeBackground, generateVariation } from '../services/imageAiService'
+import {
+  createStudioBackground,
+  generateVariation,
+  getImageAiStatus,
+  removeBackground,
+} from '../services/imageAiService'
 import { getAiBudget } from '../services/aiBudgetService'
 import productService from '@features/product/productService'
 import { MAX_IMAGE_SIZE_MB, SUPPORTED_IMAGE_TYPES } from '../constants/imageUpload'
@@ -70,7 +81,47 @@ const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
 
 const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
 
-const MODES = { REMOVE_BG: 'remove-bg', VARIATION: 'variation' }
+const MODES = { REMOVE_BG: 'remove-bg', STUDIO: 'studio', VARIATION: 'variation' }
+
+// Las claves son las de STUDIO_STYLES en backend/src/services/imageAiService.js;
+// la muestra de color es solo para elegir, el fondo real lo dibuja el servidor.
+export const STUDIO_STYLES = [
+  {
+    key: 'blanco',
+    label: 'Blanco',
+    swatch: 'radial-gradient(circle at 50% 40%, #ffffff, #e6eaf0)',
+  },
+  {
+    key: 'gris',
+    label: 'Gris suave',
+    swatch: 'radial-gradient(circle at 50% 40%, #f5f6f8, #cdd2da)',
+  },
+  {
+    key: 'beige',
+    label: 'Beige cálido',
+    swatch: 'radial-gradient(circle at 50% 40%, #fcf6ee, #e2cdb0)',
+  },
+  { key: 'pastel', label: 'Pastel', swatch: 'linear-gradient(135deg, #fde2e4, #dbeafe)' },
+  {
+    key: 'oscuro',
+    label: 'Oscuro',
+    swatch: 'radial-gradient(circle at 50% 40%, #3b414d, #0c0e12)',
+  },
+  { key: 'color', label: 'Tu color', swatch: null },
+]
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+/** Extensión según el tipo de la imagen: los fondos de estudio son JPEG. */
+export const imageExtension = dataUrl =>
+  /^data:image\/jpe?g/i.test(String(dataUrl || '')) ? 'jpg' : 'png'
+
+/** Hora de reintento en palabras, o null. */
+const retryLabel = retryAt => {
+  const date = retryAt ? new Date(retryAt) : null
+  if (!date || Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+}
 
 const MAX_FILE_SIZE = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
@@ -330,6 +381,11 @@ const ImageAiEditor = () => {
   const [dragActive, setDragActive] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [quota, setQuota] = useState(null)
+  const [studioStyle, setStudioStyle] = useState('blanco')
+  const [brandColor, setBrandColor] = useState('#0b6bff')
+  // { available, retryAt } de GET /image-ai/status. null = no se sabe: la
+  // opción queda habilitada y, si falla, el backend responde con su mensaje.
+  const [generative, setGenerative] = useState(null)
 
   const [attachTarget, setAttachTarget] = useState(null)
   const [productQuery, setProductQuery] = useState('')
@@ -362,6 +418,16 @@ const ImageAiEditor = () => {
   useEffect(() => {
     loadQuota()
   }, [loadQuota])
+
+  // Si la IA generativa no puede generar ahora (sin cuota, credencial
+  // rechazada), se sabe ANTES de que el comercio suba una foto y espere.
+  useEffect(() => {
+    getImageAiStatus()
+      .then(status => {
+        if (mountedRef.current) setGenerative(status?.generativeBackground || null)
+      })
+      .catch(() => {})
+  }, [])
 
   // Lo de otra sesión se suelta (son imágenes en base64, pesan) y lo de esta
   // se guarda para cuando se vuelva a la pantalla.
@@ -439,28 +505,43 @@ const ImageAiEditor = () => {
   }
 
   const isRemoveBg = mode === MODES.REMOVE_BG
+  const isStudio = mode === MODES.STUDIO
+  const isVariation = mode === MODES.VARIATION
   const trimmedPrompt = prompt.trim()
-  const quotaExhausted = !isRemoveBg && Boolean(quota?.exhausted)
+  const generativeDown = generative?.available === false
+  const quotaExhausted = isVariation && Boolean(quota?.exhausted)
+  const studioReady = studioStyle !== 'color' || HEX_COLOR.test(brandColor)
   const canProcess =
-    Boolean(file) && !processing && !quotaExhausted && (isRemoveBg || Boolean(trimmedPrompt))
+    Boolean(file) &&
+    !processing &&
+    (isRemoveBg ||
+      (isStudio && studioReady) ||
+      (isVariation && !quotaExhausted && !generativeDown && Boolean(trimmedPrompt)))
 
   const handleProcess = async () => {
-    if (!file || processing) return
-    if (!isRemoveBg && !trimmedPrompt) return
+    if (!canProcess) return
 
     // Se fija todo al momento del clic: si mientras procesa se cambia de modo
     // o de descripción, el resultado igual se etiqueta con lo que se pidió.
     const request = {
       mode,
-      prompt: isRemoveBg ? null : trimmedPrompt,
+      prompt: isVariation ? trimmedPrompt : null,
       purpose: isRemoveBg ? '' : purpose,
+      style: isStudio ? studioStyle : null,
+      color: isStudio && studioStyle === 'color' ? brandColor : null,
     }
 
     try {
       setProcessing(true)
       const result = isRemoveBg
         ? await removeBackground(file)
-        : await generateVariation(file, request.prompt, request.purpose || undefined)
+        : isStudio
+          ? await createStudioBackground(file, {
+              style: request.style,
+              color: request.color,
+              purpose: request.purpose || undefined,
+            })
+          : await generateVariation(file, request.prompt, request.purpose || undefined)
 
       setResults(prev => [
         {
@@ -474,17 +555,27 @@ const ImageAiEditor = () => {
         },
         ...prev,
       ])
-      enqueueSnackbar(isRemoveBg ? 'Listo: fondo quitado' : 'Listo: fondo generado', {
-        variant: 'success',
-      })
-    } catch (error) {
       enqueueSnackbar(
-        error.response?.data?.message || error.message || 'No se pudo procesar la imagen',
-        { variant: 'error' },
+        isRemoveBg
+          ? 'Listo: fondo quitado'
+          : isStudio
+            ? 'Listo: fondo de estudio'
+            : 'Listo: fondo generado',
+        { variant: 'success' },
       )
+    } catch (error) {
+      const data = error.response?.data
+      // La IA generativa no puede ahora: se desactiva la opción con la hora de
+      // reintento, para que no se vuelva a probar a ciegas.
+      if (data?.code === 'IMAGE_GENERATION_UNAVAILABLE') {
+        setGenerative({ available: false, retryAt: data.retryAt || null })
+      }
+      enqueueSnackbar(data?.message || error.message || 'No se pudo procesar la imagen', {
+        variant: 'error',
+      })
     } finally {
       setProcessing(false)
-      if (!isRemoveBg) loadQuota()
+      if (isVariation) loadQuota()
     }
   }
 
@@ -494,7 +585,7 @@ const ImageAiEditor = () => {
   const handleDownload = r => {
     const a = document.createElement('a')
     a.href = r.image
-    a.download = `imagen-ia-${r.id}.png`
+    a.download = `imagen-ia-${r.id}.${imageExtension(r.image)}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -558,14 +649,28 @@ const ImageAiEditor = () => {
       setAttaching(true)
       const response = await fetch(attachTarget.image)
       const blob = await response.blob()
-      const imageFile = new File([blob], `ai-${attachTarget.mode}-${attachTarget.id}.png`, {
-        type: blob.type || 'image/png',
-      })
+      const extension = imageExtension(attachTarget.image)
+      const imageFile = new File(
+        [blob],
+        `ai-${attachTarget.mode}-${attachTarget.id}.${extension}`,
+        {
+          type: blob.type || (extension === 'jpg' ? 'image/jpeg' : 'image/png'),
+        },
+      )
+
+      // Un fondo de estudio sin propósito es una foto de catálogo ('store'),
+      // igual que el recorte sin fondo.
+      const imagePurpose =
+        attachTarget.mode === MODES.REMOVE_BG
+          ? 'store'
+          : attachTarget.mode === MODES.STUDIO
+            ? attachTarget.purpose || 'store'
+            : attachTarget.purpose || ''
 
       await productService.uploadProductImage(selectedProduct._id, imageFile, {
         aiGenerated: true,
         aiSource: attachTarget.mode,
-        imagePurpose: attachTarget.mode === MODES.REMOVE_BG ? 'store' : attachTarget.purpose || '',
+        imagePurpose,
       })
 
       markResult(attachTarget.id, { savedTo: selectedProduct.title })
@@ -586,6 +691,50 @@ const ImageAiEditor = () => {
   }
 
   const purposeHint = PURPOSE_OPTIONS.find(o => o.value === purpose)?.hint
+  const retryAt = retryLabel(generative?.retryAt)
+
+  const purposePicker = (
+    <>
+      <Typography sx={{ fontWeight: 700, fontSize: 13, color: BRAND.muted, mt: 2.5, mb: 1 }}>
+        Para qué la vas a usar
+      </Typography>
+      <Stack
+        role="radiogroup"
+        aria-label="Para qué la vas a usar"
+        direction="row"
+        sx={{ flexWrap: 'wrap', gap: 0.75 }}
+      >
+        {PURPOSE_OPTIONS.map(o => {
+          const active = purpose === o.value
+          return (
+            <ButtonBase
+              key={o.value || 'generic'}
+              role="radio"
+              aria-checked={active}
+              onClick={() => setPurpose(o.value)}
+              disabled={processing}
+              sx={{
+                px: 1.5,
+                py: 0.6,
+                borderRadius: 999,
+                fontFamily: theme => theme.typography.fontFamily,
+                fontSize: 13,
+                fontWeight: 700,
+                border: `1px solid ${active ? BRAND.blue : BRAND.line}`,
+                color: active ? '#fff' : BRAND.ink,
+                bgcolor: active ? BRAND.blue : '#fff',
+              }}
+            >
+              {o.label}
+            </ButtonBase>
+          )
+        })}
+      </Stack>
+      <Typography variant="body2" sx={{ color: BRAND.muted, mt: 1 }}>
+        {purposeHint}
+      </Typography>
+    </>
+  )
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1280, mx: 'auto', color: BRAND.ink }}>
@@ -609,8 +758,8 @@ const ImageAiEditor = () => {
           Editor de imágenes
         </Typography>
         <Typography sx={{ mt: 0.5, maxWidth: 680, color: BRAND.muted }}>
-          Quitale el fondo a una foto de producto o generale uno nuevo con IA, y sumá el resultado a
-          tu catálogo.
+          Quitale el fondo a una foto de producto, ponela sobre un fondo de estudio o generale uno
+          nuevo con IA, y sumá el resultado a tu catálogo.
         </Typography>
       </Box>
 
@@ -618,7 +767,7 @@ const ImageAiEditor = () => {
         sx={{
           display: 'grid',
           gap: 3,
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 7fr)' },
+          gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 5fr) minmax(0, 7fr)' },
           alignItems: 'start',
         }}
       >
@@ -636,13 +785,24 @@ const ImageAiEditor = () => {
                 onSelect={() => setMode(MODES.REMOVE_BG)}
               />
               <ModeOption
-                selected={!isRemoveBg}
+                selected={isStudio}
+                disabled={processing}
+                icon={StudioIcon}
+                title="Fondo de estudio"
+                desc="El producto sobre blanco, gris, beige, degradado, oscuro o tu color, con sombra suave."
+                cost={<Pill tone="green">No usa cuota</Pill>}
+                onSelect={() => setMode(MODES.STUDIO)}
+              />
+              <ModeOption
+                selected={isVariation}
                 disabled={processing}
                 icon={VariationIcon}
                 title="Generar variación"
                 desc="La IA le pone un fondo o una escena nueva al producto."
                 cost={
-                  quota ? (
+                  generativeDown ? (
+                    <Pill tone="amber">No disponible ahora</Pill>
+                  ) : quota ? (
                     <Pill tone={quota.exhausted ? 'amber' : 'blue'}>
                       {quota.exhausted ? 'Sin cupo este mes' : quota.text}
                     </Pill>
@@ -754,7 +914,9 @@ const ImageAiEditor = () => {
                       <Typography sx={{ fontWeight: 700, fontSize: 14, color: BRAND.ink }}>
                         {isRemoveBg
                           ? 'Quitando el fondo…'
-                          : 'Generando el fondo… puede tardar un minuto'}
+                          : isStudio
+                            ? 'Armando el fondo de estudio…'
+                            : 'Generando el fondo… puede tardar un minuto'}
                       </Typography>
                     </Box>
                   )}
@@ -804,7 +966,113 @@ const ImageAiEditor = () => {
             )}
           </Paper>
 
-          {!isRemoveBg && (
+          {isStudio && (
+            <Paper variant="outlined" component="section" sx={{ ...PANEL_SX, p: 2.5 }}>
+              <StepTitle n={3}>Elegí el fondo</StepTitle>
+              <Box
+                role="radiogroup"
+                aria-label="Fondo de estudio"
+                sx={{
+                  display: 'grid',
+                  gap: 1.25,
+                  gridTemplateColumns: {
+                    xs: 'repeat(3, minmax(0, 1fr))',
+                    sm: 'repeat(6, minmax(0, 1fr))',
+                  },
+                }}
+              >
+                {STUDIO_STYLES.map(option => {
+                  const active = studioStyle === option.key
+                  const swatch =
+                    option.swatch ||
+                    (HEX_COLOR.test(brandColor)
+                      ? brandColor
+                      : 'repeating-conic-gradient(#eef1fb 0 25%, #fff 0 50%) 0 0 / 12px 12px')
+                  return (
+                    <ButtonBase
+                      key={option.key}
+                      role="radio"
+                      aria-checked={active}
+                      aria-label={option.label}
+                      onClick={() => setStudioStyle(option.key)}
+                      disabled={processing}
+                      sx={{
+                        flexDirection: 'column',
+                        gap: 0.75,
+                        p: 0.75,
+                        borderRadius: 3,
+                        border: `2px solid ${active ? BRAND.blue : 'transparent'}`,
+                        '&.Mui-focusVisible': { outline: `3px solid ${BRAND.blue}33` },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: '100%',
+                          aspectRatio: '1',
+                          borderRadius: 2,
+                          border: `1px solid ${BRAND.line}`,
+                          background: swatch,
+                        }}
+                      />
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: BRAND.ink }}>
+                        {option.label}
+                      </Typography>
+                    </ButtonBase>
+                  )
+                })}
+              </Box>
+
+              {studioStyle === 'color' && (
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mt: 2 }}>
+                  <Box
+                    component="input"
+                    type="color"
+                    aria-label="Elegir color"
+                    value={HEX_COLOR.test(brandColor) ? brandColor : '#0b6bff'}
+                    onChange={e => setBrandColor(e.target.value)}
+                    disabled={processing}
+                    sx={{ width: 44, height: 40, p: 0, border: 0, background: 'none' }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Código del color"
+                    value={brandColor}
+                    onChange={e => setBrandColor(e.target.value.trim())}
+                    disabled={processing}
+                    error={!HEX_COLOR.test(brandColor)}
+                    helperText={HEX_COLOR.test(brandColor) ? ' ' : 'Usá un código como #0b6bff'}
+                    slotProps={{ htmlInput: { maxLength: 7 } }}
+                    sx={{ width: 180 }}
+                  />
+                </Stack>
+              )}
+
+              {purposePicker}
+            </Paper>
+          )}
+
+          {isVariation && generativeDown && (
+            <Alert
+              severity="warning"
+              sx={{ borderRadius: 3 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => setMode(MODES.STUDIO)}
+                  sx={{ textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
+                >
+                  Usar fondo de estudio
+                </Button>
+              }
+            >
+              La generación con IA no está disponible en este momento
+              {retryAt ? ` (se vuelve a probar sola a las ${retryAt})` : ''}. Los fondos de estudio
+              funcionan igual: son gratis y el producto queda exactamente como en tu foto.
+            </Alert>
+          )}
+
+          {isVariation && (
             <Paper variant="outlined" component="section" sx={{ ...PANEL_SX, p: 2.5 }}>
               <StepTitle n={3}>Cómo querés el fondo</StepTitle>
 
@@ -857,53 +1125,14 @@ const ImageAiEditor = () => {
                 })}
               </Stack>
 
-              <Typography
-                sx={{ fontWeight: 700, fontSize: 13, color: BRAND.muted, mt: 2.5, mb: 1 }}
-              >
-                Para qué la vas a usar
-              </Typography>
-              <Stack
-                role="radiogroup"
-                aria-label="Para qué la vas a usar"
-                direction="row"
-                sx={{ flexWrap: 'wrap', gap: 0.75 }}
-              >
-                {PURPOSE_OPTIONS.map(o => {
-                  const active = purpose === o.value
-                  return (
-                    <ButtonBase
-                      key={o.value || 'generic'}
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setPurpose(o.value)}
-                      disabled={processing}
-                      sx={{
-                        px: 1.5,
-                        py: 0.6,
-                        borderRadius: 999,
-                        fontFamily: theme => theme.typography.fontFamily,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        border: `1px solid ${active ? BRAND.blue : BRAND.line}`,
-                        color: active ? '#fff' : BRAND.ink,
-                        bgcolor: active ? BRAND.blue : '#fff',
-                      }}
-                    >
-                      {o.label}
-                    </ButtonBase>
-                  )
-                })}
-              </Stack>
-              <Typography variant="body2" sx={{ color: BRAND.muted, mt: 1 }}>
-                {purposeHint}
-              </Typography>
+              {purposePicker}
             </Paper>
           )}
 
           {quotaExhausted && (
             <Alert severity="warning" sx={{ borderRadius: 3 }}>
-              {quota.text} Quitar el fondo sigue disponible, y en Mi suscripción podés ver los
-              planes con más cupo.
+              {quota.text} Quitar el fondo y los fondos de estudio siguen disponibles, y en Mi
+              suscripción podés ver los planes con más cupo.
             </Alert>
           )}
 
@@ -917,9 +1146,15 @@ const ImageAiEditor = () => {
             startIcon={processing ? <CircularProgress size={18} color="inherit" /> : <MagicIcon />}
             sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 800, fontSize: 16, py: 1.5 }}
           >
-            {processing ? 'Procesando…' : isRemoveBg ? 'Quitar fondo' : 'Generar variación'}
+            {processing
+              ? 'Procesando…'
+              : isRemoveBg
+                ? 'Quitar fondo'
+                : isStudio
+                  ? 'Armar fondo de estudio'
+                  : 'Generar variación'}
           </Button>
-          {!isRemoveBg && file && !trimmedPrompt && !processing && (
+          {isVariation && !generativeDown && file && !trimmedPrompt && !processing && (
             <Typography variant="body2" sx={{ color: BRAND.muted, mt: -1.5, textAlign: 'center' }}>
               Describí el fondo para poder generarlo.
             </Typography>
@@ -1002,7 +1237,9 @@ const ImageAiEditor = () => {
                         alt={
                           r.mode === MODES.REMOVE_BG
                             ? 'Resultado sin fondo'
-                            : 'Resultado con fondo generado'
+                            : r.mode === MODES.STUDIO
+                              ? 'Resultado con fondo de estudio'
+                              : 'Resultado con fondo generado'
                         }
                         sx={{ maxWidth: '100%', maxHeight: 360, objectFit: 'contain' }}
                       />
@@ -1014,7 +1251,11 @@ const ImageAiEditor = () => {
                         sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.75 }}
                       >
                         <Typography sx={{ fontWeight: 800, fontSize: 14 }}>
-                          {r.mode === MODES.REMOVE_BG ? 'Sin fondo' : 'Fondo generado'}
+                          {r.mode === MODES.REMOVE_BG
+                            ? 'Sin fondo'
+                            : r.mode === MODES.STUDIO
+                              ? `Fondo de estudio · ${STUDIO_STYLES.find(o => o.key === r.style)?.label || r.style}`
+                              : 'Fondo generado'}
                         </Typography>
                         {r.purpose && (
                           <Pill>

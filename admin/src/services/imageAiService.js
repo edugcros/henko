@@ -28,4 +28,29 @@ export const generateVariation = async (file, prompt, purpose) => {
   return unwrap(response)
 }
 
-export default { removeBackground, generateVariation }
+/**
+ * Producto recortado sobre un fondo de estudio armado en el servidor, sin IA
+ * generativa: no usa cupo y funciona aunque Gemini no tenga cuota.
+ */
+export const createStudioBackground = async (file, { style, color, purpose } = {}) => {
+  const formData = new FormData()
+  formData.append('image', file)
+  formData.append('style', style)
+  if (color) formData.append('color', color)
+  if (purpose) formData.append('purpose', purpose)
+
+  const response = await api.post('/image-ai/studio-background', formData, {
+    // Mismo costo que quitar el fondo: el recorte local es lo que tarda.
+    timeout: 60000,
+  })
+
+  return unwrap(response)
+}
+
+/** Qué está disponible: si la IA generativa puede generar ahora mismo. */
+export const getImageAiStatus = async () => {
+  const response = await api.get('/image-ai/status')
+  return unwrap(response)
+}
+
+export default { removeBackground, generateVariation, createStudioBackground, getImageAiStatus }

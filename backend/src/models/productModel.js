@@ -489,7 +489,8 @@ const imageSchema = new Schema(
     },
     aiSource: {
       type: String,
-      enum: ['remove-bg', 'variation', ''],
+      // 'studio': fondo de estudio armado en el servidor, sin IA generativa.
+      enum: ['remove-bg', 'variation', 'studio', ''],
       default: '',
     },
     // Para qué uso comercial se generó (solo aplica a aiSource:'variation'

@@ -2654,7 +2654,7 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
     // endpoint (ver ImageAiEditor.js), marcando de dónde vino. Una subida
     // manual normal no manda estos campos — quedan false/'' igual que hoy.
     const aiGenerated = String(req.body?.aiGenerated || '') === 'true'
-    const aiSource = ['remove-bg', 'variation'].includes(req.body?.aiSource)
+    const aiSource = ['remove-bg', 'variation', 'studio'].includes(req.body?.aiSource)
       ? req.body.aiSource
       : ''
     const imagePurpose = ['store', 'ad', 'social', 'alternative'].includes(req.body?.imagePurpose)
