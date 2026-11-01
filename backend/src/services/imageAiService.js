@@ -379,7 +379,7 @@ export const buildGeminiImageError = status => {
   return error
 }
 
-const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
+const generateBgGemini = async (prompt, aspectRatio = '1:1', timeoutMs = 90000) => {
   const apiKey = String(env.ai?.geminiApiKey || '').trim()
   if (!apiKey) {
     throw fail('GEMINI_API_KEY no está configurada para generar imágenes.', 503)
@@ -398,7 +398,7 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
 
   const res = await fetch(url, {
     method: 'POST',
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey,
@@ -490,13 +490,30 @@ const cloudflareConfig = () => {
   }
 }
 
+/**
+ * ¿El 429 es por el cupo diario agotado? Workers AI distingue (ver
+ * developers.cloudflare.com/workers-ai/platform/errors/): 3036 es "usaste las
+ * 10.000 neuronas del día", 3040 es "falta de capacidad, reintentá". Los dos
+ * llegan como 429 en { errors: [{ code, message }] }.
+ */
+export const isCloudflareDailyLimit = body => {
+  try {
+    const codes = (JSON.parse(body)?.errors || []).map(error => Number(error?.code))
+    if (codes.includes(3036)) return true
+    if (codes.length) return false
+  } catch {
+    // No vino JSON: se decide por el texto.
+  }
+  return /daily free allocation/i.test(String(body || ''))
+}
+
 /** Próxima medianoche UTC: ahí Cloudflare renueva el cupo diario gratuito. */
 const nextUtcMidnight = now => {
   const date = new Date(now)
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)
 }
 
-const generateBgCloudflare = async prompt => {
+const generateBgCloudflare = async (prompt, timeoutMs = 60000) => {
   const { accountId, apiToken, model, configured } = cloudflareConfig()
   if (!configured) throw fail('Cloudflare Workers AI no está configurado.', 503)
 
@@ -504,7 +521,7 @@ const generateBgCloudflare = async prompt => {
   // recorta con "cover" al lienzo del propósito.
   const res = await fetch(`${CLOUDFLARE_API}/accounts/${accountId}/ai/run/${model}`, {
     method: 'POST',
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       Authorization: `Bearer ${apiToken}`,
       'Content-Type': 'application/json',
@@ -526,12 +543,16 @@ const generateBgCloudflare = async prompt => {
         action: 'Revisar CLOUDFLARE_AI_API_TOKEN: necesita permiso Workers AI (Read y Edit).',
       })
       markGenerativeBackgroundUnavailable('cloudflare')
-    } else if (res.status === 429) {
+    } else if (res.status === 429 && isCloudflareDailyLimit(body)) {
       logger.error('[IMAGE AI] Cloudflare: se agotó el cupo diario gratuito', {
         action: 'Se renueva a las 00:00 UTC. Para más imágenes por día, el plan Workers Paid.',
       })
       markGenerativeBackgroundUnavailable('cloudflare', Date.now(), nextUtcMidnight(Date.now()))
     }
+    // Cualquier otro 429 —sobre todo el 3040, falta de capacidad— es
+    // transitorio: falla este intento y la cadena sigue, pero no se pausa el
+    // proveedor. Pausarlo hasta medianoche por un pico de demanda dejaba la
+    // generación en Gemini (o sin generación) el resto del día.
 
     throw buildGeminiImageError(res.status === 401 || res.status === 403 ? 403 : 429)
   }
@@ -571,15 +592,34 @@ const GENERATIVE_COOLDOWN_MS = Number(process.env.IMAGE_AI_GENERATIVE_COOLDOWN_M
 const IMAGE_PROVIDERS = {
   cloudflare: {
     configured: () => cloudflareConfig().configured,
-    generate: (prompt, aspectRatio) => generateBgCloudflare(prompt, aspectRatio),
+    timeoutMs: 60000,
+    generate: (prompt, aspectRatio, timeoutMs) => generateBgCloudflare(prompt, timeoutMs),
   },
   gemini: {
     configured: () => Boolean(String(env.ai?.geminiApiKey || '').trim()),
-    generate: (prompt, aspectRatio) => generateBgGemini(prompt, aspectRatio),
+    timeoutMs: 90000,
+    generate: (prompt, aspectRatio, timeoutMs) => generateBgGemini(prompt, aspectRatio, timeoutMs),
   },
 }
 
 const unavailableUntil = { cloudflare: 0, gemini: 0 }
+// Cuándo se marcó cada pausa. Un éxito solo limpia una pausa marcada ANTES de
+// que ese pedido empezara: con pedidos en paralelo, uno viejo que termina bien
+// no puede borrar la pausa que acaba de poner otro (por ejemplo, el cupo
+// diario agotado).
+const unavailableMarkedAt = { cloudflare: 0, gemini: 0 }
+
+/**
+ * Plazo total de una generación, desde que entra el pedido. El panel espera
+ * 180 s (admin/src/services/imageAiService.js); con margen para responder,
+ * la cadena no puede pasarse de esto. Sin plazo, optimizar el prompt +
+ * Cloudflare (60 s) + Gemini (90 s) superaba los 180 s: el navegador mostraba
+ * error mientras el backend terminaba y se quedaba con el cupo.
+ */
+const generationBudgetMs = () => Number(process.env.IMAGE_AI_GENERATION_BUDGET_MS) || 150000
+
+// Menos que esto no alcanza para que un proveedor genere: mejor no empezar.
+const MIN_PROVIDER_MS = 15000
 
 /** El orden de la cadena. Cloudflare primero: entra en su cupo gratuito. */
 const providerOrder = () =>
@@ -595,6 +635,7 @@ export const markGenerativeBackgroundUnavailable = (
 ) => {
   if (!(provider in unavailableUntil)) return
   unavailableUntil[provider] = until ?? now + GENERATIVE_COOLDOWN_MS
+  unavailableMarkedAt[provider] = now
 }
 
 export const getGenerativeBackgroundStatus = (now = Date.now()) => {
@@ -614,6 +655,18 @@ export const getGenerativeBackgroundStatus = (now = Date.now()) => {
 export const resetGenerativeBackgroundStatus = () => {
   unavailableUntil.cloudflare = 0
   unavailableUntil.gemini = 0
+  unavailableMarkedAt.cloudflare = 0
+  unavailableMarkedAt.gemini = 0
+}
+
+/** Error para el comercio cuando ningún proveedor generó el fondo a tiempo. */
+const generationFailedError = () => {
+  const error = fail(
+    'No se pudo generar el fondo en este momento. Probá de nuevo en unos minutos. No se descontó de tu cupo.',
+    502,
+  )
+  error.expose = true
+  return error
 }
 
 /**
@@ -621,16 +674,34 @@ export const resetGenerativeBackgroundStatus = () => {
  * corta la generación: se prueba el siguiente. Si no responde ninguno, sale el
  * error del último (marcado `expose` para que el comercio lo lea).
  */
-const generateBg = async (prompt, aspectRatio = '1:1') => {
+const generateBg = async (
+  prompt,
+  aspectRatio = '1:1',
+  deadline = Date.now() + generationBudgetMs(),
+) => {
   let lastError = null
 
   for (const name of providerOrder()) {
     const provider = IMAGE_PROVIDERS[name]
     if (!provider.configured() || Date.now() < unavailableUntil[name]) continue
 
+    const remaining = deadline - Date.now()
+    if (remaining < MIN_PROVIDER_MS) {
+      logger.warn('[IMAGE AI] Sin tiempo para otro proveedor dentro del plazo', {
+        provider: name,
+        remainingMs: remaining,
+      })
+      break
+    }
+
+    const startedAt = Date.now()
     try {
-      const buffer = await provider.generate(prompt, aspectRatio)
-      unavailableUntil[name] = 0
+      const buffer = await provider.generate(
+        prompt,
+        aspectRatio,
+        Math.min(provider.timeoutMs, remaining),
+      )
+      if (unavailableMarkedAt[name] <= startedAt) unavailableUntil[name] = 0
       return buffer
     } catch (error) {
       lastError = error
@@ -642,7 +713,11 @@ const generateBg = async (prompt, aspectRatio = '1:1') => {
     }
   }
 
-  throw lastError || buildGeminiImageError(429)
+  if (!lastError) throw buildGeminiImageError(429)
+  // Un error ya redactado para el comercio sale tal cual; uno crudo —un
+  // timeout, una caída de red— se reemplaza, porque errorHandler taparía el
+  // 5xx en producción y el comercio no sabría que no se le cobró.
+  throw lastError.expose ? lastError : generationFailedError()
 }
 
 // ─── Fondos de estudio (sin IA generativa) ──────────────────
@@ -780,6 +855,9 @@ export const generateVariation = async (
   mimeType = 'image/png',
   { apiKey = null, purpose = null } = {},
 ) => {
+  // El plazo corre desde que entra el pedido: optimizar el prompt y recortar
+  // también consumen del tiempo que espera el panel.
+  const deadline = Date.now() + generationBudgetMs()
   const optimizedPrompt = await optimizePrompt(prompt, apiKey)
 
   logger.info('generateVariation', {
@@ -795,7 +873,7 @@ export const generateVariation = async (
 
   // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
   const cutout = await cutoutOf(normalized)
-  const background = await generateBg(optimizedPrompt, canvas.replicateRatio)
+  const background = await generateBg(optimizedPrompt, canvas.replicateRatio, deadline)
 
   // El producto se ajusta con "contain" (no deformarlo) dentro del canvas de
   // destino antes de componerlo — importante cuando el canvas cambia de

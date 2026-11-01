@@ -19,6 +19,7 @@ jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
 const {
   createStudioImage,
   generateVariation,
+  isCloudflareDailyLimit,
   getGenerativeBackgroundStatus,
   markGenerativeBackgroundUnavailable,
   resetGenerativeBackgroundStatus,
@@ -294,11 +295,20 @@ describe('IA generativa · Cloudflare Workers AI', () => {
 
     await conCloudflare(
       async url => {
-        if (String(url).includes('api.cloudflare.com')) {
-          return { ok: false, status: 429, text: async () => 'daily free allocation exceeded' }
+        const destino = new URL(url)
+        if (destino.hostname === 'api.cloudflare.com') {
+          return {
+            ok: false,
+            status: 429,
+            text: async () =>
+              JSON.stringify({
+                success: false,
+                errors: [{ code: 3036, message: 'You have used up your daily free allocation' }],
+              }),
+          }
         }
         // Gemini: optimizador de prompt (texto) y generación (imagen).
-        if (String(url).includes(':generateContent?key=')) {
+        if (destino.searchParams.has('key')) {
           return { ok: false, status: 500, text: async () => 'sin optimizar' }
         }
         return {
@@ -369,5 +379,101 @@ describe('IA generativa · Cloudflare Workers AI', () => {
     } finally {
       env.ai.geminiApiKey = originalKey
     }
+  })
+})
+
+describe('IA generativa · revisión de la cadena', () => {
+  test('isCloudflareDailyLimit distingue cupo diario (3036) de capacidad (3040)', () => {
+    const cuerpo = code => JSON.stringify({ success: false, errors: [{ code }] })
+
+    expect(isCloudflareDailyLimit(cuerpo(3036))).toBe(true)
+    expect(isCloudflareDailyLimit(cuerpo(3040))).toBe(false)
+    expect(isCloudflareDailyLimit('You have used up your daily free allocation')).toBe(true)
+    expect(isCloudflareDailyLimit('Capacity temporarily exceeded')).toBe(false)
+  })
+
+  test('un 429 por capacidad (3040) no pausa Cloudflare: es transitorio', async () => {
+    await conCloudflare(
+      async () => ({
+        ok: false,
+        status: 429,
+        text: async () =>
+          JSON.stringify({ success: false, errors: [{ code: 3040, message: 'Capacity' }] }),
+      }),
+      async () => {
+        const error = await generateVariation(await recorte(), 'fondo', 'image/png').catch(e => e)
+
+        expect(error.expose).toBe(true)
+        // Sigue disponible: el próximo pedido lo vuelve a intentar.
+        expect(getGenerativeBackgroundStatus()).toEqual({
+          available: true,
+          retryAt: null,
+          provider: 'cloudflare',
+        })
+      },
+    )
+  })
+
+  test('un éxito que termina tarde no borra una pausa marcada después de empezar', async () => {
+    const imagen = await jpegBase64()
+    let responder
+
+    await conCloudflare(
+      () =>
+        new Promise(resolve => {
+          responder = () =>
+            resolve({ ok: true, status: 200, json: async () => ({ result: { image: imagen } }) })
+        }),
+      async () => {
+        const enCurso = generateVariation(await recorte(), 'fondo', 'image/png')
+        await new Promise(r => setTimeout(r, 50))
+
+        // Mientras tanto, otro pedido agotó el cupo diario.
+        markGenerativeBackgroundUnavailable('cloudflare', Date.now(), Date.now() + 3600_000)
+        responder()
+        await enCurso
+
+        expect(getGenerativeBackgroundStatus().available).toBe(false)
+      },
+    )
+  })
+
+  test('sin tiempo dentro del plazo no se llama a ningún proveedor y el error es para el comercio', async () => {
+    process.env.IMAGE_AI_GENERATION_BUDGET_MS = '1000'
+    const llamadas = []
+    try {
+      await conCloudflare(
+        async url => {
+          llamadas.push(url)
+          return { ok: true, status: 200, json: async () => ({ result: { image: 'x' } }) }
+        },
+        async () => {
+          const error = await generateVariation(await recorte(), 'fondo', 'image/png').catch(e => e)
+
+          expect(error.expose).toBe(true)
+          expect(error.statusCode).toBe(503)
+          expect(llamadas).toHaveLength(0)
+        },
+      )
+    } finally {
+      delete process.env.IMAGE_AI_GENERATION_BUDGET_MS
+    }
+  })
+
+  test('un timeout crudo de un proveedor sale como mensaje para el comercio, no como 500', async () => {
+    await conCloudflare(
+      async () => {
+        const error = new Error('The operation was aborted due to timeout')
+        error.name = 'TimeoutError'
+        throw error
+      },
+      async () => {
+        const error = await generateVariation(await recorte(), 'fondo', 'image/png').catch(e => e)
+
+        expect(error.expose).toBe(true)
+        expect(error.message).toMatch(/No se descontó de tu cupo/)
+        expect(error.message).not.toMatch(/timeout|aborted/i)
+      },
+    )
   })
 })
