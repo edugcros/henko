@@ -102,6 +102,12 @@ describe('agente · el producto creado desde un análisis lleva SKU', () => {
     )
   })
 
+  test('el producto queda vinculado al análisis del que salió', () => {
+    const job = trabajo()
+
+    expect(String(buildProductDraftFromJob({ job }).aiAgentJobId)).toBe(String(job._id))
+  })
+
   describe('contra Mongo real, con el índice único activo', () => {
     beforeAll(async () => {
       await connectTestDB()

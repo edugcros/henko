@@ -1342,6 +1342,57 @@ const normalizeSku = value => {
   return clean
 }
 
+const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9:_-]{8,100}$/
+
+const normalizeClientRequestId = value => {
+  const clean = typeof value === 'string' ? value.trim() : ''
+  return CLIENT_REQUEST_ID_PATTERN.test(clean) ? clean : null
+}
+
+/**
+ * El producto que ya dejó un intento anterior de esta misma alta, si existe.
+ *
+ * El panel crea el producto y después sube imágenes, video y la imagen de
+ * cada variante en pedidos separados. Si falla uno de esos pasos y la persona
+ * vuelve a guardar, crear otra vez dejaba un duplicado (otro slug, otro SKU).
+ *
+ * - `clientRequestId`: el panel lo genera una vez por alta y lo repite en
+ *   cada reintento.
+ * - `aiAgentJobId`: un análisis termina en un solo producto, venga del panel
+ *   o del alta automática del servidor (que lo registra en el trabajo como
+ *   createdProductId).
+ */
+const findAlreadyCreatedProduct = async ({ tenantId, clientRequestId, aiAgentJobId }) => {
+  const alive = { tenantId, isDeleted: { $ne: true } }
+
+  if (clientRequestId) {
+    const byRequest = await Product.findOne({ ...alive, clientRequestId }).setOptions({ tenantId })
+    if (byRequest) return byRequest
+  }
+
+  if (!isValidObjectId(aiAgentJobId)) return null
+
+  const byJob = await Product.findOne({ ...alive, aiAgentJobId }).setOptions({ tenantId })
+  if (byJob) return byJob
+
+  const job = await ProductAnalysisJob.findOne({ _id: aiAgentJobId, tenantId })
+    .select('createdProductId')
+    .setOptions({ tenantId })
+    .lean()
+
+  if (!job?.createdProductId) return null
+
+  return Product.findOne({ ...alive, _id: job.createdProductId }).setOptions({ tenantId })
+}
+
+const sendAlreadyCreatedProduct = (res, product) =>
+  res.status(200).json({
+    success: true,
+    message: 'El producto ya estaba creado',
+    data: product,
+    replayed: true,
+  })
+
 // =====================================================
 // 🧠 CREATE PRODUCT + AI LEARNING
 // =====================================================
@@ -1351,6 +1402,15 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     assertSameResolvedTenant(req, tenantId)
 
     const userId = getRequestUserId(req)
+
+    const clientRequestId = normalizeClientRequestId(req.body.clientRequestId)
+    const alreadyCreated = await findAlreadyCreatedProduct({
+      tenantId,
+      clientRequestId,
+      aiAgentJobId: req.body.aiAgentJobId,
+    })
+
+    if (alreadyCreated) return sendAlreadyCreatedProduct(res, alreadyCreated)
 
     const finalTitle = normalizeText(req.body.title, 'Producto sin título')
 
@@ -1456,6 +1516,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       hasVariants,
 
       sku: productSku,
+      ...(clientRequestId ? { clientRequestId } : {}),
 
       images: [],
 
@@ -1500,7 +1561,28 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       updatedBy: userId,
     })
 
-    await product.save()
+    try {
+      await product.save()
+    } catch (saveError) {
+      // Dos pedidos del mismo intento a la vez (doble clic): pasa uno y el
+      // otro devuelve el producto que creó el primero. El choque puede venir
+      // del índice de clientRequestId o antes del de slug, porque los dos
+      // pedidos calcularon el mismo slug libre.
+      if (saveError?.code === 11000 && clientRequestId) {
+        const winner = await findAlreadyCreatedProduct({ tenantId, clientRequestId })
+        if (winner) return sendAlreadyCreatedProduct(res, winner)
+      }
+
+      if (saveError?.code === 11000 && saveError.keyPattern?.clientRequestId) {
+        return res.status(409).json({
+          success: false,
+          message:
+            'Este intento de alta ya se usó. Recargá la página y volvé a cargar el producto.',
+        })
+      }
+
+      throw saveError
+    }
 
     await registerProductCatalogChange({
       tenantId,
@@ -1733,6 +1815,7 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
       _id: { $in: objectIds },
       tenantId: new mongoose.Types.ObjectId(String(tenantId)),
       status: 'draft',
+      isDeleted: { $ne: true },
     },
     {
       $set: {
@@ -1744,6 +1827,17 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
       },
     },
   ).setOptions({ tenantId })
+
+  // updateMany no pasa por los hooks del modelo: sin esto, el agente de IA
+  // seguía respondiendo con el catálogo de antes de publicar.
+  if (result.modifiedCount > 0) {
+    await registerProductCatalogChange({
+      tenantId,
+      changeType: CATALOG_CHANGE_TYPES.PRODUCT_UPDATED,
+      actorId: getRequestUserId(req),
+      metadata: { productIds: validIds.map(String), published: result.modifiedCount },
+    })
+  }
 
   logger.info(
     `📢 Publicación en bloque: ${result.modifiedCount}/${validIds.length} productos | tenant=${tenantId}`,
@@ -2764,6 +2858,18 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
       })
     }
 
+    // Reintento de una subida que ya se guardó: se devuelve lo que hay, sin
+    // subir otra copia de la misma foto.
+    const clientUploadId = normalizeClientRequestId(req.body?.clientUploadId)
+
+    if (clientUploadId && product.images.some(image => image.clientUploadId === clientUploadId)) {
+      return res.status(200).json({
+        success: true,
+        data: product.images,
+        replayed: true,
+      })
+    }
+
     const driver = String(process.env.STORAGE_DRIVER || 'cloudinary').toLowerCase()
     const uploadedImages = []
 
@@ -2811,6 +2917,7 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
         isAiGenerated: aiGenerated,
         aiSource: aiGenerated ? aiSource : '',
         imagePurpose: aiGenerated ? imagePurpose : '',
+        ...(clientUploadId ? { clientUploadId } : {}),
       })
     }
 

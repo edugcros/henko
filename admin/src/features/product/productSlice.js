@@ -121,14 +121,14 @@ export const getAdminProducts = createAsyncThunk(
   },
 )
 
+// Sin avisos propios: el alta son varios pasos (crear, subir imágenes,
+// publicar) y el único que sabe cómo terminó todo es AddProduct, que muestra
+// un solo mensaje al final. Antes salían dos: este y el de la pantalla.
 export const createProducts = createAsyncThunk('product/create', async (productData, thunkAPI) => {
   try {
-    const response = await productService.createProduct(productData)
-    toast.success('Producto creado correctamente')
-    return response
+    return await productService.createProduct(productData)
   } catch (error) {
     const message = normalizeErrorMessage(error, 'Error al crear producto')
-    toast.error(message)
     return thunkAPI.rejectWithValue({ message })
   }
 })
@@ -156,14 +156,17 @@ export const updateAProduct = createAsyncThunk('product/update', async (payload,
 
 export const uploadProductImage = createAsyncThunk(
   'product/uploadImage',
-  async ({ productId, imageFile }, thunkAPI) => {
+  // `silent`: el alta de AddProduct sube varias imágenes y avisa una sola vez.
+  async ({ productId, imageFile, clientUploadId, silent = false }, thunkAPI) => {
     try {
-      const response = await productService.uploadProductImage(productId, imageFile)
-      toast.success('Imagen subida correctamente')
+      const response = await productService.uploadProductImage(productId, imageFile, {
+        clientUploadId,
+      })
+      if (!silent) toast.success('Imagen subida correctamente')
       return response
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error al subir imagen')
-      toast.error(message)
+      if (!silent) toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
   },
@@ -198,14 +201,14 @@ export const deleteProductImage = createAsyncThunk(
 
 export const uploadProductVideo = createAsyncThunk(
   'product/uploadVideo',
-  async ({ productId, videoFile }, thunkAPI) => {
+  async ({ productId, videoFile, silent = false }, thunkAPI) => {
     try {
       const response = await productService.uploadProductVideo(productId, videoFile)
-      toast.success('Video subido correctamente')
+      if (!silent) toast.success('Video subido correctamente')
       return response
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error al subir video')
-      toast.error(message)
+      if (!silent) toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
   },
@@ -228,7 +231,7 @@ export const deleteProductVideo = createAsyncThunk(
 
 export const assignVariantImage = createAsyncThunk(
   'product/assignVariantImage',
-  async ({ productId, variantId, image }, thunkAPI) => {
+  async ({ productId, variantId, image, silent = false }, thunkAPI) => {
     try {
       if (!productId) throw new Error('productId requerido')
       if (!variantId) throw new Error('variantId requerido')
@@ -248,7 +251,7 @@ export const assignVariantImage = createAsyncThunk(
       return response
     } catch (error) {
       const message = normalizeErrorMessage(error, 'Error asignando imagen a variante')
-      toast.error(message)
+      if (!silent) toast.error(message)
       return thunkAPI.rejectWithValue({ message })
     }
   },

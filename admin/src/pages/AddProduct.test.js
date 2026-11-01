@@ -102,6 +102,9 @@ const {
   getWizardCurrentStep,
   normalizeAiAnalysisForForm,
   buildProductPayloadFromAnalysis,
+  createProductAttempt,
+  runProductAttempt,
+  describeProductAttemptFailure,
 } = await import('./AddProduct.js')
 
 const MB = 1024 * 1024
@@ -1287,5 +1290,118 @@ describe('Alta de producto · la IA no inventa stock', () => {
     })
 
     expect(payload.stock).toBe(0)
+  })
+})
+
+describe('Alta de producto · reintentar no duplica', () => {
+  const pasos = registro => [
+    { key: 'image:1', run: jest.fn(async () => registro.push('image:1')) },
+    { key: 'image:2', run: jest.fn(async () => registro.push('image:2')) },
+  ]
+
+  test('crea el borrador una vez, corre los pasos en orden y publica al final', async () => {
+    const registro = []
+    const attempt = createProductAttempt('alta-test-0001')
+    const createDraft = jest.fn(async () => {
+      registro.push('crear')
+      return { data: { _id: 'p1' } }
+    })
+    const publish = jest.fn(async () => registro.push('publicar'))
+
+    await runProductAttempt({ attempt, createDraft, steps: pasos(registro), publish })
+
+    expect(createDraft).toHaveBeenCalledWith('alta-test-0001')
+    expect(registro).toEqual(['crear', 'image:1', 'image:2', 'publicar'])
+    expect(publish).toHaveBeenCalledWith('p1')
+  })
+
+  test('si falla un paso, el reintento sigue desde ahí sin volver a crear ni a subir', async () => {
+    const registro = []
+    const attempt = createProductAttempt()
+    const createDraft = jest.fn(async () => ({ data: { _id: 'p1' } }))
+    const publish = jest.fn(async () => {})
+    let falla = true
+    const steps = [
+      { key: 'image:1', run: jest.fn(async () => registro.push('image:1')) },
+      {
+        key: 'image:2',
+        run: jest.fn(async () => {
+          if (falla) throw new Error('timeout de Cloudinary')
+          registro.push('image:2')
+        }),
+      },
+    ]
+
+    await expect(runProductAttempt({ attempt, createDraft, steps, publish })).rejects.toThrow(
+      'timeout de Cloudinary',
+    )
+    expect(publish).not.toHaveBeenCalled()
+
+    falla = false
+    await runProductAttempt({ attempt, createDraft, steps, publish })
+
+    expect(createDraft).toHaveBeenCalledTimes(1)
+    expect(registro).toEqual(['image:1', 'image:2'])
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
+
+  test('el análisis se cierra después de publicar: si publicar falla, sigue abierto', async () => {
+    const registro = []
+    const attempt = createProductAttempt()
+    let fallaPublicar = true
+    const correr = () =>
+      runProductAttempt({
+        attempt,
+        createDraft: async () => ({ _id: 'p3' }),
+        steps: [{ key: 'image', run: async () => registro.push('image') }],
+        publish: async () => {
+          if (fallaPublicar) throw new Error('503')
+          registro.push('publicar')
+        },
+        finalSteps: [{ key: 'link-job', run: async () => registro.push('cerrar análisis') }],
+      })
+
+    await expect(correr()).rejects.toThrow('503')
+    expect(registro).toEqual(['image'])
+
+    fallaPublicar = false
+    await correr()
+
+    expect(registro).toEqual(['image', 'publicar', 'cerrar análisis'])
+  })
+
+  test('sin publicar, el producto queda como borrador', async () => {
+    const attempt = createProductAttempt()
+
+    await runProductAttempt({
+      attempt,
+      createDraft: async () => ({ _id: 'p2' }),
+      steps: [],
+      publish: null,
+    })
+
+    expect(attempt.productId).toBe('p2')
+    expect(attempt.done.has('publish')).toBe(false)
+  })
+
+  test('cada alta lleva un identificador distinto que el backend acepta', () => {
+    const a = createProductAttempt().clientRequestId
+    const b = createProductAttempt().clientRequestId
+
+    expect(a).not.toBe(b)
+    expect(a).toMatch(/^[A-Za-z0-9:_-]{8,100}$/)
+  })
+
+  test('el mensaje de error dice si el producto ya quedó guardado', () => {
+    const error = { response: { data: { message: 'Imagen muy pesada' } } }
+
+    expect(describeProductAttemptFailure(createProductAttempt(), error, 'Error')).toBe(
+      'Imagen muy pesada',
+    )
+
+    const aMitad = { ...createProductAttempt(), productId: 'p1' }
+    const mensaje = describeProductAttemptFailure(aMitad, error, 'Error')
+    expect(mensaje).toMatch(/quedó guardado como borrador/)
+    expect(mensaje).toMatch(/no se va a duplicar/)
   })
 })

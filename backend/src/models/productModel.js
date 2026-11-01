@@ -500,6 +500,14 @@ const imageSchema = new Schema(
       enum: ['store', 'ad', 'social', 'alternative', ''],
       default: '',
     },
+
+    // Lo manda el alta de AddProduct por cada archivo. Si la imagen se guardó
+    // pero la respuesta se perdió, el reintento con el mismo id no la vuelve
+    // a subir (ver uploadProductImage).
+    clientUploadId: {
+      type: String,
+      trim: true,
+    },
   },
   {
     _id: true,
@@ -1042,6 +1050,15 @@ const productSchema = new Schema(
       index: true,
     },
 
+    // Identificador que manda el panel en cada intento de alta. Si la creación
+    // quedó a medias (se creó el producto y falló la subida de una imagen) y la
+    // persona vuelve a guardar, el mismo identificador devuelve el producto que
+    // ya existe en lugar de crear un duplicado. Ver createProduct.
+    clientRequestId: {
+      type: String,
+      trim: true,
+    },
+
     aiAgentScheduledAt: {
       type: Date,
       default: null,
@@ -1105,6 +1122,12 @@ const productSchema = new Schema(
 
 productSchema.index({ tenantId: 1, slug: 1 }, { unique: true })
 productSchema.index({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
+// Parcial y no sparse: en un índice compuesto, sparse indexa igual el documento
+// sin clientRequestId (tenantId siempre existe) y chocarían todos entre sí.
+productSchema.index(
+  { tenantId: 1, clientRequestId: 1 },
+  { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } },
+)
 productSchema.index({ tenantId: 1, 'variants.sku': 1 }, { sparse: true })
 productSchema.index({ tenantId: 1, status: 1, visibility: 1, isDeleted: 1, createdAt: -1 })
 productSchema.index({
