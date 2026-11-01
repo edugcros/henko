@@ -136,7 +136,11 @@ User instruction (JSON string): ${JSON.stringify(userPrompt)}`
 
       if (optimized.length < 5) continue
 
-      logger.info('Prompt optimized', { model, originalLength: userPrompt.length, optimizedLength: optimized.length })
+      logger.info('Prompt optimized', {
+        model,
+        originalLength: userPrompt.length,
+        optimizedLength: optimized.length,
+      })
       return optimized
     } catch (err) {
       logger.warn('Gemini model unavailable, trying next', { error: describe(err) })
@@ -326,6 +330,38 @@ const removeBg = async imageBuffer => {
 
 const GEMINI_IMAGE_MODEL_DEFAULT = 'gemini-3.1-flash-lite-image'
 
+/**
+ * Qué decirle al comercio cuando Gemini no genera el fondo, y qué hacer del
+ * lado de la plataforma.
+ *
+ * La generación usa la key de PLATAFORMA (imageAiCtrl fuerza esa
+ * facturación), así que credencial y cuota son problema de HENKO, no del
+ * comercio. Antes el mensaje le decía al comerciante "Revisá la facturación y
+ * los límites de la API": algo que no puede hacer. Medido en producción el
+ * 31/10/2026: cada intento devolvía 429 por plan gratuito (limit: 0 para los
+ * modelos de imagen). El detalle va al log; al comercio, qué pasó y que no se
+ * le cobró (el controller devuelve el cupo cuando esto tira).
+ */
+export const describeGeminiImageFailure = status => {
+  if (status === 401 || status === 403 || status === 429) {
+    return {
+      statusCode: 503,
+      message:
+        'La generación de fondos no está disponible en este momento. No se descontó de tu cupo; probá más tarde o usá "Quitar fondo".',
+      platformAction:
+        status === 429
+          ? 'Sin cuota para el modelo de imagen: revisar facturación y límites del proyecto en Google AI Studio.'
+          : 'Credencial rechazada: revisar GEMINI_API_KEY y los permisos del proyecto.',
+    }
+  }
+
+  return {
+    statusCode: 502,
+    message: `No se pudo generar el fondo (${status}). No se descontó de tu cupo.`,
+    platformAction: null,
+  }
+}
+
 const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
   const apiKey = String(env.ai?.geminiApiKey || '').trim()
   if (!apiKey) {
@@ -367,16 +403,15 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
       body: body.slice(0, 500),
     })
 
-    if (res.status === 401 || res.status === 403) {
-      throw fail('Gemini rechazó la credencial o no tiene permiso para generar imágenes.', 503)
+    const failure = describeGeminiImageFailure(res.status)
+    if (failure.platformAction) {
+      logger.error('[IMAGE AI] La key de plataforma no puede generar imágenes', {
+        model: configuredModel,
+        status: res.status,
+        action: failure.platformAction,
+      })
     }
-    if (res.status === 429) {
-      throw fail(
-        'Gemini alcanzó el límite de uso o cuota. Revisá la facturación y los límites de la API.',
-        429,
-      )
-    }
-    throw fail(`Gemini no pudo generar el fondo (${res.status}).`, 502)
+    throw fail(failure.message, failure.statusCode)
   }
 
   const json = await res.json()
