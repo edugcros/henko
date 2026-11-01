@@ -23,6 +23,7 @@ const {
   generateVariation,
   isCloudflareDailyLimit,
   isCloudflareGlobalApiKey,
+  CLOUDFLARE_GLOBAL_API_KEY,
   getGenerativeBackgroundStatus,
   markGenerativeBackgroundUnavailable,
   resetGenerativeBackgroundStatus,
@@ -498,7 +499,7 @@ describe('Cloudflare · credencial y modelo', () => {
 
           expect(getGenerativeBackgroundStatus().provider).not.toBe('cloudflare')
           await generateVariation(await recorte(), 'fondo', 'image/png').catch(() => null)
-          expect(llamadas.some(url => url.includes('api.cloudflare.com'))).toBe(false)
+          expect(llamadas.some(url => new URL(url).hostname === 'api.cloudflare.com')).toBe(false)
         },
       )
     } finally {
@@ -506,9 +507,16 @@ describe('Cloudflare · credencial y modelo', () => {
     }
   })
 
-  test('isCloudflareGlobalApiKey: cfk_ sí; los tokens cfut_ y cfat_ no', () => {
+  test('isCloudflareGlobalApiKey: la Global API Key en los dos formatos; los tokens no', () => {
     expect(isCloudflareGlobalApiKey('cfk_abc')).toBe(true)
-    expect(isCloudflareGlobalApiKey('  CFK_abc ')).toBe(true)
+    expect(isCloudflareGlobalApiKey('  cfk_abc ')).toBe(true)
+    // Formato anterior a 2026: 37 a 45 hexadecimales en minúscula, sin prefijo.
+    expect(isCloudflareGlobalApiKey('a'.repeat(37))).toBe(true)
+    expect(isCloudflareGlobalApiKey('0123456789abcdef'.repeat(3).slice(0, 45))).toBe(true)
+    expect(isCloudflareGlobalApiKey('a'.repeat(36))).toBe(false)
+    expect(isCloudflareGlobalApiKey('a'.repeat(46))).toBe(false)
+    // Un token viejo: 40 alfanuméricos con mayúsculas.
+    expect(isCloudflareGlobalApiKey('Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0h')).toBe(false)
     expect(isCloudflareGlobalApiKey('cfut_abc')).toBe(false)
     expect(isCloudflareGlobalApiKey('cfat_abc')).toBe(false)
     expect(isCloudflareGlobalApiKey('')).toBe(false)
@@ -518,7 +526,7 @@ describe('Cloudflare · credencial y modelo', () => {
     // checkEnv no puede importar imageAiService (cargaría config/env.js antes
     // de terminar el informe); las dos reglas tienen que coincidir.
     const fuente = fs.readFileSync(path.resolve('src/scripts/checkEnv.js'), 'utf8')
-    expect(fuente).toContain('const CLOUDFLARE_GLOBAL_API_KEY = /^cfk_/i')
+    expect(fuente).toContain(`const CLOUDFLARE_GLOBAL_API_KEY = ${CLOUDFLARE_GLOBAL_API_KEY}`)
     expect(fuente).toContain('valido: valor => !CLOUDFLARE_GLOBAL_API_KEY.test(')
   })
 
@@ -537,7 +545,7 @@ describe('Cloudflare · credencial y modelo', () => {
     } finally {
       delete process.env.CLOUDFLARE_IMAGE_MODEL
     }
-    expect(urls.find(url => url.includes('api.cloudflare.com'))).toContain(
+    expect(urls.find(url => new URL(url).hostname === 'api.cloudflare.com')).toContain(
       '/ai/run/@cf/black-forest-labs/flux-1-schnell',
     )
   })

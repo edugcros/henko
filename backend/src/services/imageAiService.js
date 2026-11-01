@@ -486,15 +486,24 @@ const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
 const CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell'
 
 /**
- * ¿Es la Global API Key de la cuenta en vez de un token?
+ * Forma de la Global API Key de Cloudflare, en sus dos formatos
+ * (developers.cloudflare.com/fundamentals/api/get-started/token-formats/):
  *
- * Cloudflare marca cada credencial con su prefijo (developers.cloudflare.com/
- * fundamentals/api/get-started/token-formats/): cfk_ es la Global API Key,
- * cfut_ y cfat_ son tokens. La Global API Key tiene acceso a TODA la cuenta
- * —DNS, dominios, facturación— y además no autentica como Bearer, así que con
- * ella Workers AI responde 401. Se rechaza antes de mandarla a ningún lado.
+ *   desde 2026   cfk_ + 40 caracteres + checksum (los tokens son cfut_ y cfat_)
+ *   antes        37 a 45 caracteres hexadecimales en minúscula, sin prefijo
+ *                (los tokens viejos son 40 alfanuméricos con mayúsculas)
+ *
+ * La Global API Key tiene acceso a TODA la cuenta —DNS, dominios,
+ * facturación— y además no autentica como Bearer, así que con ella Workers AI
+ * responde 401. Se rechaza antes de mandarla a ningún lado.
+ *
+ * checkEnv.js repite esta expresión (no puede importar este módulo); un test
+ * exige que sean iguales.
  */
-export const isCloudflareGlobalApiKey = value => /^cfk_/i.test(String(value || '').trim())
+export const CLOUDFLARE_GLOBAL_API_KEY = /^(?:cfk_.+|[0-9a-f]{37,45})$/
+
+export const isCloudflareGlobalApiKey = value =>
+  CLOUDFLARE_GLOBAL_API_KEY.test(String(value || '').trim())
 
 let warnedGlobalApiKey = false
 
@@ -505,7 +514,7 @@ const cloudflareConfig = () => {
 
   if (globalKey && !warnedGlobalApiKey) {
     warnedGlobalApiKey = true
-    logger.error('[IMAGE AI] CLOUDFLARE_AI_API_TOKEN tiene la Global API Key (cfk_), no un token', {
+    logger.error('[IMAGE AI] CLOUDFLARE_AI_API_TOKEN tiene la Global API Key, no un token', {
       action:
         'Revocarla y crear un token con "Create a Workers AI API Token" (empieza con cfut_ o cfat_).',
     })

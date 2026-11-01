@@ -98,9 +98,11 @@ const formaDeMercadoPago = nombre => {
 // `rompe` es lo que pasa si falta, en una línea. Un informe que dice
 // «FALTA REDIS_URL» y nada más obliga a ir a buscar al código qué significa.
 
-// Prefijo de la Global API Key de Cloudflare (cfk_): acceso a toda la cuenta y
-// no autentica en Workers AI. Ver isCloudflareGlobalApiKey en imageAiService.
-const CLOUDFLARE_GLOBAL_API_KEY = /^cfk_/i
+// La Global API Key de Cloudflare en sus dos formatos (cfk_… desde 2026, y
+// 37 a 45 hexadecimales en minúscula antes): acceso a toda la cuenta y no
+// autentica en Workers AI. Es la MISMA expresión que CLOUDFLARE_GLOBAL_API_KEY
+// de imageAiService; un test exige que coincidan.
+const CLOUDFLARE_GLOBAL_API_KEY = /^(?:cfk_.+|[0-9a-f]{37,45})$/
 
 const CATALOGO = [
   // ── Base de datos y sesión ────────────────────────────────────────────
@@ -329,7 +331,7 @@ const CATALOGO = [
     // que las dos coincidan.
     valido: valor => !CLOUDFLARE_GLOBAL_API_KEY.test(String(valor || '').trim()),
     malFormado:
-      'es la Global API Key (cfk_), con acceso a toda la cuenta: revocarla y cargar un token de Workers AI (cfut_ o cfat_)',
+      'es la Global API Key, con acceso a toda la cuenta: revocarla y cargar un token de Workers AI (cfut_ o cfat_)',
   },
   {
     grupo: 'Proveedores',
