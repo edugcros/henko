@@ -708,9 +708,8 @@ describe('historial de pagos · los cobros salen de /authorized_payments', () =>
     await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
 
     expect(res.statusCode).toBe(200)
-    expect(mockSearch).toHaveBeenCalledWith({
-      options: expect.objectContaining({ preapproval_id: 'preap-1' }),
-    })
+    // Exactamente esto: Mercado Pago rechaza `limit` con 400 en este endpoint.
+    expect(mockSearch).toHaveBeenCalledWith({ options: { preapproval_id: 'preap-1' } })
     expect(mockPreApprovalGet).not.toHaveBeenCalled()
     expect(res.body.data.invoices).toEqual([
       {
@@ -797,5 +796,20 @@ describe('historial de pagos · los cobros salen de /authorized_payments', () =>
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data).toEqual({ plan: 'pro', status: 'past_due' })
+  })
+
+  test('muestra como mucho los últimos 24 cobros', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch.mockResolvedValue({
+      results: Array.from({ length: 30 }, (_, i) =>
+        cobro({ id: i, debit_date: new Date(Date.UTC(2024, i, 4)).toISOString() }),
+      ),
+    })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.body.data.invoices).toHaveLength(24)
+    expect(res.body.data.invoices[0].id).toBe('29')
   })
 })

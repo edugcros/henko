@@ -732,7 +732,10 @@ export const cancelSubscription = async (req, res) => {
   }
 }
 
-// Un comercio cobra una vez por mes: 24 son dos años de historial.
+// Un comercio cobra una vez por mes: 24 son dos años de historial. Se recorta
+// acá y NO se manda como `limit`: /authorized_payments/search lo rechaza con
+// 400 "Invalid value for limit" (medido en producción el 01/11/2026), y el
+// historial entero salía como "Error obteniendo facturación".
 const INVOICE_HISTORY_LIMIT = 24
 
 /**
@@ -769,7 +772,7 @@ export const getSubscriptionInvoices = async (req, res) => {
     let search
     try {
       search = await invoiceClient.search({
-        options: { preapproval_id: mpSubId, limit: INVOICE_HISTORY_LIMIT },
+        options: { preapproval_id: mpSubId },
       })
     } catch (mpError) {
       logger.error('Error obteniendo cobros de la suscripción en MP:', {
@@ -785,6 +788,7 @@ export const getSubscriptionInvoices = async (req, res) => {
       .filter(invoice => String(invoice?.preapproval_id || '') === String(mpSubId))
       .map(mapSubscriptionInvoice)
       .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
+      .slice(0, INVOICE_HISTORY_LIMIT)
 
     return sendResponse(res, 200, true, 'Facturas obtenidas', {
       invoices,
