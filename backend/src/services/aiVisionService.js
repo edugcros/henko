@@ -62,10 +62,7 @@ if (!GEMINI_API_KEY) {
     },
   )
 } else {
-  logger.info('[AI VISION] GEMINI_API_KEY validada', {
-    length: GEMINI_API_KEY.length,
-    model: 'ver MODEL_NAME',
-  })
+  logger.info('[AI VISION] GEMINI_API_KEY validada', { length: GEMINI_API_KEY.length })
 }
 
 const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS')
@@ -81,6 +78,8 @@ const DEFAULT_CURRENCY = String(process.env.AI_VISION_DEFAULT_CURRENCY || 'ARS')
 // descartaba ese modelo en la lista compartida con la generación de fondos.
 // La precedencia (AI_VISION_MODEL y después el de texto) vive en geminiModels.
 const MODEL_NAME = resolveVisionModel()
+
+logger.info('[AI VISION] Modelo configurado', { model: MODEL_NAME })
 
 const MIN_CONFIDENCE = clampNumber(process.env.AI_MIN_CONFIDENCE, 0.65, 0.1, 0.95)
 const MIN_MATERIAL_CONFIDENCE_FOR_AUTOSAVE = clampNumber(
