@@ -1089,6 +1089,10 @@ export const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
     aiSource: job.source,
     aiImageHash: job.imageHash,
     aiNeedsReview: true,
+    // Sin el vínculo, borrar el análisis no desenganchaba este producto
+    // (deleteAnalysisJob busca por aiAgentJobId) y el alta desde el panel no
+    // podía reconocer que ese análisis ya tenía producto (createProduct).
+    aiAgentJobId: job._id,
     createdBy: userId || job.createdBy || null,
   }
 }

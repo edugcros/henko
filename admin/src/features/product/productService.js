@@ -137,6 +137,22 @@ const createProduct = async productData => {
 }
 
 /**
+ * Publica un borrador: pasa a activo y visible.
+ *
+ * AddProduct crea el producto como borrador y lo publica recién cuando subió
+ * todo lo demás, para que un alta que falla a mitad de camino no deje en la
+ * tienda un producto sin fotos. Usa la publicación en bloque, que solo toca
+ * borradores y avisa al catálogo del agente de IA.
+ */
+const publishDraftProduct = async productId => {
+  if (!productId) {
+    throw new Error('ID del producto requerido')
+  }
+
+  return apiRequest('put', '/admin/drafts/bulk-publish', { productIds: [productId] })
+}
+
+/**
  * Actualiza producto.
  *
  * Acepta:
@@ -378,6 +394,7 @@ const assignVariantImage = async ({ productId, variantId, image }) => {
 
 const productService = {
   createProduct,
+  publishDraftProduct,
   updateAProduct,
   deleteProduct,
   uploadProductImage,

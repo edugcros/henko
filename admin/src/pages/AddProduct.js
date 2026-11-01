@@ -1863,6 +1863,69 @@ export const buildProductPayloadFromAnalysis = ({
   return enforceTechnicalSheetPersistence(payload, includeTechnicalSheet)
 }
 
+const newClientRequestId = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `alta-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+
+/**
+ * Un alta de producto que se puede reintentar sin duplicar nada.
+ *
+ * El alta son varios pedidos: crear el producto, subir cada imagen, el video,
+ * asignar la imagen de cada variante, cerrar el análisis y publicar. Antes, si
+ * fallaba uno, volver a guardar creaba OTRO producto (otro slug, otro SKU) y
+ * el primero quedaba publicado y sin fotos.
+ *
+ * Ahora:
+ * - el producto se crea como borrador y se publica al final, así lo que falla
+ *   a mitad de camino no llega a la tienda;
+ * - el intento recuerda el producto creado y los pasos terminados, y un
+ *   reintento sigue desde el paso que falló;
+ * - `clientRequestId` viaja en el alta: si la respuesta se perdió, el backend
+ *   devuelve el producto que ya creó en vez de crear otro.
+ */
+export const createProductAttempt = (clientRequestId = newClientRequestId()) => ({
+  clientRequestId,
+  productId: null,
+  product: null,
+  uploads: new Map(),
+  done: new Set(),
+})
+
+export const runProductAttempt = async ({ attempt, createDraft, steps = [], publish = null }) => {
+  if (!attempt.productId) {
+    const created = await createDraft(attempt.clientRequestId)
+    const product = created?.data || created
+
+    if (!product?._id) {
+      throw new Error('No se pudo obtener el ID del producto creado')
+    }
+
+    attempt.productId = product._id
+    attempt.product = product
+  }
+
+  for (const step of steps) {
+    if (attempt.done.has(step.key)) continue
+    await step.run(attempt)
+    attempt.done.add(step.key)
+  }
+
+  if (publish && !attempt.done.has('publish')) {
+    await publish(attempt.productId)
+    attempt.done.add('publish')
+  }
+
+  return attempt
+}
+
+export const describeProductAttemptFailure = (attempt, error, fallback) => {
+  const reason = error?.response?.data?.message || error?.message || fallback
+
+  if (!attempt?.productId) return reason
+
+  return `El producto quedó guardado como borrador, pero falló un paso: ${reason}. Volvé a guardar para terminarlo: no se va a duplicar. Si cambiaste datos, editalos después desde Editar producto.`
+}
+
 const AIAnalysisPanel = ({
   iaResult,
   loading,
@@ -3411,6 +3474,10 @@ function AddProductForm() {
   const inputRef = useRef(null)
   const autoAgentRef = useRef(false)
   const autoAgentFailedJobsRef = useRef(new Set())
+  // Alta en curso del formulario y de cada ítem de la cola de revisión (por
+  // job): un reintento sigue desde el paso que falló. Ver runProductAttempt.
+  const productAttemptRef = useRef(null)
+  const agentAttemptsRef = useRef(new Map())
   const imagePreviewsRef = useRef([])
   const lastAnalyzedImageSignatureRef = useRef('')
   const categoryConfigDebounceRef = useRef(null)
@@ -4769,6 +4836,7 @@ function AddProductForm() {
     setSubmitErrors([])
     lastAnalyzedImageSignatureRef.current = ''
     technicalSheetSnapshotRef.current = null
+    productAttemptRef.current = null
     resetIa()
     dispatch(resetState())
   }, [dispatch, form, imagePreviews, notifyFormMutation, resetIa, videoPreviewUrl])
@@ -4945,26 +5013,46 @@ function AddProductForm() {
   // Requiere aprobación explícita del usuario: ver autoAgentReviewQueue.
   const commitAgentReviewItem = useCallback(
     async ({ job, imageFile, payload }) => {
-      const created = await dispatch(createProducts(payload)).unwrap()
-      const createdPayload = created?.data || created
-      const productId = createdPayload?._id
+      const attempts = agentAttemptsRef.current
 
-      if (!productId) {
-        throw new Error('No se pudo obtener el ID del producto creado')
+      if (!attempts.has(job._id)) {
+        // Derivado del job y no aleatorio: un análisis da un solo producto,
+        // aunque se apruebe dos veces o desde otra pestaña.
+        attempts.set(job._id, createProductAttempt(`agent-review-${job._id}`))
       }
 
-      await dispatch(
-        uploadProductImage({
-          productId,
-          imageFile,
-        }),
-      ).unwrap()
+      const attempt = attempts.get(job._id)
+      const published = payload?.status === 'active'
 
-      await api.post(`/product-analysis/${job._id}/complete-add-product`, {
-        productId,
+      await runProductAttempt({
+        attempt,
+        createDraft: clientRequestId =>
+          dispatch(
+            createProducts({
+              ...payload,
+              status: 'draft',
+              visibility: 'hidden',
+              clientRequestId,
+            }),
+          ).unwrap(),
+        steps: [
+          {
+            key: 'image',
+            run: ({ productId }) =>
+              dispatch(uploadProductImage({ productId, imageFile, silent: true })).unwrap(),
+          },
+          {
+            key: 'link-job',
+            run: ({ productId }) =>
+              api.post(`/product-analysis/${job._id}/complete-add-product`, { productId }),
+          },
+        ],
+        publish: published ? productService.publishDraftProduct : null,
       })
 
-      return productId
+      attempts.delete(job._id)
+
+      return { productId: attempt.productId, published }
     },
     [dispatch],
   )
@@ -4987,14 +5075,19 @@ function AddProductForm() {
     async item => {
       setReviewItemBusyId(item.id)
       try {
-        await commitAgentReviewItem(item)
+        const { published } = await commitAgentReviewItem(item)
+        const name = item.payload?.title || item.job.originalFilename || item.id
         message.success(
-          `Producto publicado: ${item.payload?.title || item.job.originalFilename || item.id}`,
+          published ? `Producto publicado: ${name}` : `Producto guardado como borrador: ${name}`,
         )
         removeReviewItem(item.id)
       } catch (error) {
         message.error(
-          error?.response?.data?.message || error?.message || 'No se pudo publicar el producto',
+          describeProductAttemptFailure(
+            agentAttemptsRef.current.get(item.job._id),
+            error,
+            'No se pudo publicar el producto',
+          ),
         )
       } finally {
         setReviewItemBusyId(null)
@@ -5008,7 +5101,13 @@ function AddProductForm() {
       setReviewItemBusyId(item.id)
       try {
         await discardAgentReviewItem(item.job)
-        message.info('Producto descartado, no se publicó')
+        const halfDone = agentAttemptsRef.current.get(item.job._id)?.productId
+        agentAttemptsRef.current.delete(item.job._id)
+        message.info(
+          halfDone
+            ? 'Producto descartado. El borrador que quedó de un intento anterior sigue en Productos: borralo desde ahí si no lo querés.'
+            : 'Producto descartado, no se publicó',
+        )
         removeReviewItem(item.id)
       } catch (error) {
         message.error(
@@ -5429,92 +5528,13 @@ function AddProductForm() {
         aiAgentScheduledAt:
           currentAgentJob?.scheduledAt || currentAgentJob?.metadata?.addProductAt || null,
         aiAutomationMode: currentAgentJob ? 'agent-assisted' : 'manual',
-
-        status: publishProduct ? 'active' : 'draft',
-        visibility: publishProduct ? 'visible' : 'hidden',
+        // Sin status: se crea siempre como borrador y, si corresponde, se
+        // publica al final (ver runProductAttempt).
       }
 
       const payloadForCreate = enforceTechnicalSheetPersistence(productPayload, useTechnicalSheet)
-      const created = await dispatch(createProducts(payloadForCreate)).unwrap()
-      const createdPayload = created?.data || created
-      const productId = createdPayload?._id
 
-      if (!productId) {
-        throw new Error('No se pudo obtener el ID del producto creado')
-      }
-
-      const uploadedByUid = new Map()
-
-      for (const file of fileList) {
-        if (!file?.originFileObj) continue
-
-        const uploadResult = await dispatch(
-          uploadProductImage({
-            productId,
-            imageFile: file.originFileObj,
-          }),
-        ).unwrap()
-
-        const imagesArray = Array.isArray(uploadResult?.data)
-          ? uploadResult.data
-          : Array.isArray(uploadResult)
-            ? uploadResult
-            : []
-
-        const uploadedImage = imagesArray[imagesArray.length - 1]
-
-        if (uploadedImage?.url) {
-          uploadedByUid.set(file.uid, uploadedImage)
-        }
-      }
-
-      if (videoFile) {
-        try {
-          setVideoUploading(true)
-          await dispatch(
-            uploadProductVideo({
-              productId,
-              videoFile: getUploadFileObject(videoFile),
-            }),
-          ).unwrap()
-        } catch (videoError) {
-          message.warning(
-            'El producto se creó, pero el video no pudo subirse. Podés reintentarlo luego desde Editar producto.',
-          )
-        } finally {
-          setVideoUploading(false)
-        }
-      }
-
-      if (hasVariants && variants.length > 0) {
-        const createdVariants = safeArray(createdPayload?.variants)
-
-        for (const localVariant of variants) {
-          if (!localVariant.imageSourceUid) continue
-
-          const selectedUploadedImage = uploadedByUid.get(localVariant.imageSourceUid)
-          if (!selectedUploadedImage?.url) continue
-
-          const createdVariant = createdVariants.find(
-            variant =>
-              variant.key === localVariant.key ||
-              buildVariantKey(variant.attributes || {}) === localVariant.key,
-          )
-
-          if (!createdVariant?._id) continue
-
-          await dispatch(
-            assignVariantImage({
-              productId,
-              variantId: createdVariant._id,
-              image: {
-                public_id: selectedUploadedImage.public_id,
-                url: selectedUploadedImage.url,
-              },
-            }),
-          ).unwrap()
-        }
-      }
+      if (!productAttemptRef.current) productAttemptRef.current = createProductAttempt()
 
       // El job puede venir de la cola del agente (currentAgentJob) o de una
       // subida manual arrastrada al dropzone (lastAnalysisJobId) — en
@@ -5522,23 +5542,133 @@ function AddProductForm() {
       // aparezca en el historial de /admin/product-analysis.
       const linkedAnalysisJobId = currentAgentJob?._id || lastAnalysisJobId
 
-      if (linkedAnalysisJobId) {
-        await api.post(`/product-analysis/${linkedAnalysisJobId}/complete-add-product`, {
-          productId,
-        })
-      }
+      const imageSteps = fileList
+        .filter(file => file?.originFileObj)
+        .map(file => ({
+          key: `image:${file.uid}`,
+          run: async ({ productId, uploads }) => {
+            const uploadResult = await dispatch(
+              uploadProductImage({
+                productId,
+                imageFile: file.originFileObj,
+                silent: true,
+              }),
+            ).unwrap()
 
+            const imagesArray = Array.isArray(uploadResult?.data)
+              ? uploadResult.data
+              : Array.isArray(uploadResult)
+                ? uploadResult
+                : []
+
+            const uploadedImage = imagesArray[imagesArray.length - 1]
+
+            if (uploadedImage?.url) {
+              uploads.set(file.uid, uploadedImage)
+            }
+          },
+        }))
+
+      // El video no frena el alta: si falla se avisa y se sigue, como antes.
+      const videoSteps = videoFile
+        ? [
+            {
+              key: 'video',
+              run: async ({ productId }) => {
+                try {
+                  setVideoUploading(true)
+                  await dispatch(
+                    uploadProductVideo({
+                      productId,
+                      videoFile: getUploadFileObject(videoFile),
+                      silent: true,
+                    }),
+                  ).unwrap()
+                } catch {
+                  message.warning(
+                    'El producto se creó, pero el video no pudo subirse. Podés reintentarlo luego desde Editar producto.',
+                  )
+                } finally {
+                  setVideoUploading(false)
+                }
+              },
+            },
+          ]
+        : []
+
+      const variantImageSteps = hasVariants
+        ? variants
+            .filter(localVariant => localVariant.imageSourceUid)
+            .map(localVariant => ({
+              key: `variant-image:${localVariant.key}`,
+              run: async ({ productId, product, uploads }) => {
+                const selectedUploadedImage = uploads.get(localVariant.imageSourceUid)
+                if (!selectedUploadedImage?.url) return
+
+                const createdVariant = safeArray(product?.variants).find(
+                  variant =>
+                    variant.key === localVariant.key ||
+                    buildVariantKey(variant.attributes || {}) === localVariant.key,
+                )
+
+                if (!createdVariant?._id) return
+
+                await dispatch(
+                  assignVariantImage({
+                    productId,
+                    variantId: createdVariant._id,
+                    image: {
+                      public_id: selectedUploadedImage.public_id,
+                      url: selectedUploadedImage.url,
+                    },
+                    silent: true,
+                  }),
+                ).unwrap()
+              },
+            }))
+        : []
+
+      const linkJobSteps = linkedAnalysisJobId
+        ? [
+            {
+              key: 'link-job',
+              run: ({ productId }) =>
+                api.post(`/product-analysis/${linkedAnalysisJobId}/complete-add-product`, {
+                  productId,
+                }),
+            },
+          ]
+        : []
+
+      await runProductAttempt({
+        attempt: productAttemptRef.current,
+        createDraft: clientRequestId =>
+          dispatch(
+            createProducts({
+              ...payloadForCreate,
+              status: 'draft',
+              visibility: 'hidden',
+              clientRequestId,
+            }),
+          ).unwrap(),
+        steps: [...imageSteps, ...videoSteps, ...variantImageSteps, ...linkJobSteps],
+        publish: publishProduct ? productService.publishDraftProduct : null,
+      })
+
+      const outcome = publishProduct ? 'Producto publicado' : 'Producto guardado como borrador'
       message.success(
-        hasVariants
-          ? `Producto creado correctamente con ${variants.length} variantes`
-          : 'Producto creado correctamente',
+        hasVariants && variants.length > 0
+          ? `${outcome} con ${variants.length} variantes`
+          : outcome,
       )
 
       resetProductWorkspace()
       await waitForUiReset()
       await fetchAgentQueue()
     } catch (error) {
-      message.error(error?.message || 'Error al crear producto')
+      message.error(
+        describeProductAttemptFailure(productAttemptRef.current, error, 'Error al crear producto'),
+      )
     } finally {
       setSavingProduct(false)
     }

@@ -1,7 +1,9 @@
+import mongoose from 'mongoose'
 import request from 'supertest'
 
 import app from '../../app.js'
 import Product from '../models/productModel.js'
+import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
@@ -864,5 +866,170 @@ describe('logística · el tipo de envío y los datos guardados se conservan', (
     await editar(id, { logistics: { weightKg: 0 } })
 
     expect((await leer(id)).logistics.weightKg).toBe(0)
+  })
+})
+
+describe('alta recuperable · reintentar no duplica el producto', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const base = () => ({
+    title: 'Casco integral AGV',
+    description: 'Casco de prueba',
+    marca: 'AGV',
+    categoria: 'Cascos',
+    subcategoria: 'Integrales',
+    price: 150000,
+    stock: 3,
+  })
+  const crear = extra =>
+    request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...base(), ...extra })
+  const contar = filtro =>
+    Product.countDocuments({ tenantId: ctx.tenant._id, ...filtro }).setOptions({
+      tenantId: ctx.tenant._id,
+    })
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    await ProductAnalysisJob.deleteMany({}).setOptions({ ignoreTenant: true })
+    await Product.createIndexes()
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'alta-recuperable-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('el mismo clientRequestId devuelve el producto ya creado, no otro', async () => {
+    const clientRequestId = 'alta-1111-2222-3333'
+
+    const primero = await crear({ clientRequestId })
+    const reintento = await crear({ clientRequestId, title: 'Otro título' })
+
+    expect(primero.statusCode).toBe(201)
+    expect(reintento.statusCode).toBe(200)
+    expect(reintento.body.replayed).toBe(true)
+    expect(reintento.body.data._id).toBe(primero.body.data._id)
+    expect(await contar({ clientRequestId })).toBe(1)
+  })
+
+  test('intentos distintos crean productos distintos', async () => {
+    const a = await crear({ clientRequestId: 'alta-aaaa-0001' })
+    const b = await crear({ clientRequestId: 'alta-bbbb-0002' })
+
+    expect(a.statusCode).toBe(201)
+    expect(b.statusCode).toBe(201)
+    expect(b.body.data._id).not.toBe(a.body.data._id)
+  })
+
+  test('un clientRequestId con formato inválido se ignora y no bloquea el alta', async () => {
+    const a = await crear({ clientRequestId: 'x' })
+    const b = await crear({ clientRequestId: 'x' })
+
+    expect(a.statusCode).toBe(201)
+    expect(b.statusCode).toBe(201)
+    expect(a.body.data.clientRequestId).toBeUndefined()
+  })
+
+  test('dos pedidos simultáneos del mismo intento dejan un solo producto', async () => {
+    const clientRequestId = 'alta-doble-clic-0001'
+
+    const respuestas = await Promise.all([crear({ clientRequestId }), crear({ clientRequestId })])
+
+    expect(respuestas.map(r => r.statusCode).sort()).toEqual([200, 201])
+    expect(respuestas[0].body.data._id).toBe(respuestas[1].body.data._id)
+    expect(await contar({ clientRequestId })).toBe(1)
+  })
+
+  test('un análisis ya convertido en producto no crea un segundo producto', async () => {
+    const aiAgentJobId = new mongoose.Types.ObjectId().toString()
+
+    const primero = await crear({ aiAgentJobId })
+    const reintento = await crear({ aiAgentJobId })
+
+    expect(primero.statusCode).toBe(201)
+    expect(reintento.statusCode).toBe(200)
+    expect(reintento.body.data._id).toBe(primero.body.data._id)
+  })
+
+  test('reconoce el producto que el servidor creó solo desde ese análisis', async () => {
+    const existente = await Product.create({
+      ...base(),
+      tenantId: ctx.tenant._id,
+      slug: `creado-por-el-servidor-${Date.now()}`,
+      sku: `SERVIDOR-${Date.now()}`,
+      status: 'draft',
+      visibility: 'hidden',
+    })
+    const [job] = await ProductAnalysisJob.create(
+      [
+        {
+          tenantId: ctx.tenant._id,
+          imageUrl: 'https://res.cloudinary.com/demo/image/upload/casco.jpg',
+          createdProductId: existente._id,
+        },
+      ],
+      { tenantId: ctx.tenant._id },
+    )
+
+    const res = await crear({ aiAgentJobId: String(job._id) })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data._id).toBe(String(existente._id))
+  })
+
+  test('si el producto de ese análisis se borró, se puede crear de nuevo', async () => {
+    const aiAgentJobId = new mongoose.Types.ObjectId().toString()
+    const primero = await crear({ aiAgentJobId })
+    await Product.updateOne(
+      { _id: primero.body.data._id },
+      { $set: { isDeleted: true } },
+    ).setOptions({ tenantId: ctx.tenant._id })
+
+    const otra = await crear({ aiAgentJobId })
+
+    expect(otra.statusCode).toBe(201)
+    expect(otra.body.data._id).not.toBe(primero.body.data._id)
+  })
+
+  test('publicar el borrador lo deja visible, y un borrador borrado no se publica', async () => {
+    const borrador = await crear({ status: 'draft', visibility: 'hidden' })
+    const borrado = await crear({ status: 'draft', visibility: 'hidden' })
+    await Product.updateOne(
+      { _id: borrado.body.data._id },
+      { $set: { isDeleted: true } },
+    ).setOptions({ tenantId: ctx.tenant._id })
+
+    const res = await request(app)
+      .put('/api/product/admin/drafts/bulk-publish')
+      .set(headers())
+      .send({ productIds: [borrador.body.data._id, borrado.body.data._id] })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.published).toBe(1)
+    const publicado = await Product.findById(borrador.body.data._id)
+      .setOptions({ tenantId: ctx.tenant._id })
+      .lean()
+    expect(publicado.status).toBe('active')
+    expect(publicado.visibility).toBe('visible')
+    expect(publicado.publishedAt).toBeTruthy()
   })
 })
