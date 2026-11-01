@@ -360,9 +360,14 @@ describe('producto · ida y vuelta (alta → lectura → edición → lectura)',
       stock: 7,
     })
 
-    await editar(id, { title: 'Campera impermeable 2026' })
+    const res = await editar(id, { title: 'Campera impermeable 2026' })
 
-    expect((await leer(id)).stock).toBe(7)
+    // La edición tiene que haber pasado de verdad: un PUT rechazado tampoco
+    // tocaría el stock, y el test pasaría sin probar nada.
+    expect(res.statusCode).toBe(200)
+    const despues = await leer(id)
+    expect(despues.title).toBe('Campera impermeable 2026')
+    expect(despues.stock).toBe(7)
   })
 
   test('mandar stock explícito lo reemplaza (comportamiento actual que se conserva)', async () => {
@@ -374,8 +379,9 @@ describe('producto · ida y vuelta (alta → lectura → edición → lectura)',
       stock: 7,
     })
 
-    await editar(id, { stock: 3 })
+    const res = await editar(id, { stock: 3 })
 
+    expect(res.statusCode).toBe(200)
     expect((await leer(id)).stock).toBe(3)
   })
 
