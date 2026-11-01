@@ -460,8 +460,35 @@ const normalizeSeoPayload = ({
   }
 }
 
-const normalizeLogisticsPayload = body => {
+/**
+ * El tipo de envío llega en dos formas: texto plano (`shippingType: 'digital'`,
+ * lo que manda EditProduct) u objeto (`shipping: { type: 'digital',
+ * requiresShipping: false }`, lo que manda AddProduct). Antes el objeto pasaba
+ * por normalizeText, que solo acepta texto, y caía en 'standard': un producto
+ * digital se guardaba con envío físico, y el agente de ventas se lo decía así
+ * al cliente (aiAgentPromptService lee logistics.shippingType).
+ */
+const readShippingType = value => {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object' && typeof value.type === 'string') return value.type
+  return undefined
+}
+
+const firstPresent = (...values) => values.find(v => v !== undefined && v !== null && v !== '')
+
+// Para los textos: un '' que VINO es "borrar" (el comercio vació la garantía),
+// no "no lo mandó". Solo se saltea lo ausente.
+const firstDefined = (...values) => values.find(v => v !== undefined && v !== null)
+
+/**
+ * `previous` es la logística guardada: en una edición, lo que no viene se
+ * conserva. Antes se rearmaba todo el bloque y bastaba mandar solo la garantía
+ * para que el tipo de envío volviera a 'standard' y el peso y las medidas a 0.
+ * En el alta no hay `previous` y el resultado es el de siempre.
+ */
+const normalizeLogisticsPayload = (body, previous = {}) => {
   const rawLogistics = normalizePlainObject(body?.logistics)
+  const before = normalizePlainObject(previous)
   const rawDimensions = normalizePlainObject(
     rawLogistics.dimensionsCm ||
       rawLogistics.dimensions ||
@@ -469,31 +496,61 @@ const normalizeLogisticsPayload = body => {
       body?.dimensions ||
       body?.logisticsDimensions,
   )
+  const previousDimensions = normalizePlainObject(before.dimensionsCm)
 
   const shippingType = normalizeText(
-    rawLogistics.shippingType || rawLogistics.shipping || body?.shippingType || body?.shipping,
+    firstPresent(
+      readShippingType(rawLogistics.shippingType),
+      readShippingType(rawLogistics.shipping),
+      readShippingType(body?.shippingType),
+      readShippingType(body?.shipping),
+      readShippingType(before.shippingType),
+    ),
     'standard',
   )
 
   return {
     weightKg: toSafeNumber(
-      rawLogistics.weightKg || rawLogistics.weight || body?.weightKg || body?.weight,
+      firstPresent(
+        rawLogistics.weightKg,
+        rawLogistics.weight,
+        body?.weightKg,
+        body?.weight,
+        before.weightKg,
+      ),
       0,
     ),
+    // Cada medida por separado: mandar solo el largo no borra el ancho ni el alto.
     dimensionsCm: {
-      length: toSafeNumber(rawDimensions.length || rawDimensions.largo, 0),
-      width: toSafeNumber(rawDimensions.width || rawDimensions.ancho, 0),
-      height: toSafeNumber(rawDimensions.height || rawDimensions.alto, 0),
+      length: toSafeNumber(
+        firstPresent(rawDimensions.length, rawDimensions.largo, previousDimensions.length),
+        0,
+      ),
+      width: toSafeNumber(
+        firstPresent(rawDimensions.width, rawDimensions.ancho, previousDimensions.width),
+        0,
+      ),
+      height: toSafeNumber(
+        firstPresent(rawDimensions.height, rawDimensions.alto, previousDimensions.height),
+        0,
+      ),
     },
     shippingType: ALLOWED_LOGISTICS_SHIPPING_TYPES.includes(shippingType)
       ? shippingType
       : 'standard',
-    warranty: truncateText(rawLogistics.warranty || body?.warranty || body?.garantia, 300, ''),
+    warranty: truncateText(
+      firstDefined(rawLogistics.warranty, body?.warranty, body?.garantia, before.warranty),
+      300,
+      '',
+    ),
     originCountry: truncateText(
-      rawLogistics.originCountry ||
-        rawLogistics.countryOfOrigin ||
-        body?.originCountry ||
+      firstDefined(
+        rawLogistics.originCountry,
+        rawLogistics.countryOfOrigin,
+        body?.originCountry,
         body?.countryOfOrigin,
+        before.originCountry,
+      ),
       80,
       '',
     ),
@@ -2379,7 +2436,11 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
       req.body.countryOfOrigin !== undefined ||
       req.body.originCountry !== undefined
     ) {
-      updates.logistics = normalizeLogisticsPayload(req.body)
+      // Con la logística guardada como base: lo que no vino se conserva.
+      updates.logistics = normalizeLogisticsPayload(
+        req.body,
+        product.logistics?.toObject?.() || product.logistics || {},
+      )
     }
 
     updates.updatedBy = getRequestUserId(req)
