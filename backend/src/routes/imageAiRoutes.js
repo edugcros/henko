@@ -9,6 +9,7 @@ import {
   handleRemoveBackground,
   handleGenerateVariation,
   handleImageAiStatus,
+  handleStudioBackground,
 } from '../controller/imageAiCtrl.js'
 
 const router = express.Router()
@@ -21,11 +22,31 @@ const removeBackgroundLimiter = rateLimit({
   max: 12,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => `${req.tenantId || req.user?.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
+  keyGenerator: req =>
+    `${req.tenantId || req.user?.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
   message: {
     success: false,
     code: 'IMAGE_AI_RATE_LIMIT',
-    message: 'Alcanzaste el límite temporal de eliminación de fondos. Intentá nuevamente más tarde.',
+    message:
+      'Alcanzaste el límite temporal de eliminación de fondos. Intentá nuevamente más tarde.',
+  },
+})
+
+// Mismo costo que quitar el fondo (el recorte local es lo caro), con su
+// propio contador para que un uso no le coma el cupo temporal al otro.
+const studioBackgroundLimiter = rateLimit({
+  store: new SharedRateLimitStore('image-ai-studio'),
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req =>
+    `${req.tenantId || req.user?.tenantId || 'no-tenant'}:${ipKeyGenerator(req.ip)}`,
+  message: {
+    success: false,
+    code: 'IMAGE_AI_RATE_LIMIT',
+    message:
+      'Alcanzaste el límite temporal de fondos de estudio. Intentá nuevamente en unos minutos.',
   },
 })
 
@@ -42,6 +63,15 @@ router.post(
   removeBackgroundLimiter,
   uploadPhoto.single('image'),
   handleRemoveBackground,
+)
+
+// Fondo de estudio: el producto recortado sobre un fondo dibujado en el
+// servidor. Sin proveedor externo, así que sin cuota — igual que quitar fondo.
+router.post(
+  '/studio-background',
+  studioBackgroundLimiter,
+  uploadPhoto.single('image'),
+  handleStudioBackground,
 )
 
 // Generar fondo sí se paga por imagen. El middleware corta temprano al que ya

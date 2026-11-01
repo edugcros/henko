@@ -1,5 +1,12 @@
 import expressAsyncHandler from 'express-async-handler'
-import { removeBackground, generateVariation } from '../services/imageAiService.js'
+import {
+  createStudioImage,
+  describeGeminiImageFailure,
+  generateVariation,
+  getGenerativeBackgroundStatus,
+  removeBackground,
+  STUDIO_STYLES,
+} from '../services/imageAiService.js'
 import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
 import {
   AI_FEATURES,
@@ -30,6 +37,10 @@ export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
         process.env.GOOGLE_IMAGE_MODEL ||
         'gemini-3.1-flash-lite-image',
       localBackgroundRemoval: local,
+      // El panel lo usa para desactivar "Fondo con IA" con una explicación,
+      // en vez de dejar que el comercio suba una foto y espere para fallar.
+      generativeBackground: getGenerativeBackgroundStatus(),
+      studioStyles: Object.entries(STUDIO_STYLES).map(([key, { label }]) => ({ key, label })),
     },
   })
 })
@@ -73,6 +84,19 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
 
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim()
   const purpose = IMAGE_PURPOSES.has(req.body.purpose) ? req.body.purpose : null
+
+  // Ya se sabe que Gemini no puede generar (sin cuota o credencial
+  // rechazada): se corta acá, antes de reservar cupo y de recortar el
+  // producto, que eran 8–13 s de CPU por intento para un 429 seguro.
+  const generative = getGenerativeBackgroundStatus()
+  if (!generative.available) {
+    return res.status(503).json({
+      success: false,
+      code: 'IMAGE_GENERATION_UNAVAILABLE',
+      message: describeGeminiImageFailure(429).message,
+      retryAt: generative.retryAt,
+    })
+  }
 
   // La generación del fondo usa Gemini con la clave de plataforma. La clave
   // propia del tenant, si existe, solo se usa para optimizar el prompt. La
@@ -145,6 +169,37 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       contentType: result.contentType,
       size: result.buffer.length,
       prompt,
+      purpose,
+    },
+  })
+})
+
+/**
+ * Producto recortado sobre un fondo de estudio (blanco, gris, beige,
+ * degradado, oscuro o el color de la marca). Se arma en el servidor sin IA
+ * generativa: no usa cupo y funciona aunque Gemini no tenga cuota.
+ */
+export const handleStudioBackground = expressAsyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No se envió ninguna imagen' })
+  }
+
+  const style = String(req.body?.style || '').trim()
+  const purpose = IMAGE_PURPOSES.has(req.body?.purpose) ? req.body.purpose : null
+
+  const result = await createStudioImage(req.file.buffer, {
+    style,
+    color: req.body?.color,
+    purpose,
+  })
+
+  res.json({
+    success: true,
+    data: {
+      image: `data:${result.contentType};base64,${result.buffer.toString('base64')}`,
+      contentType: result.contentType,
+      size: result.buffer.length,
+      style,
       purpose,
     },
   })
