@@ -9,7 +9,10 @@
 
 import mongoose from 'mongoose'
 import { normalizeVariantSuggestions } from '../services/aiVisionService.js'
-import { buildProductDraftFromJob } from '../controller/productAnalysisController.js'
+import {
+  buildProductDraftFromJob,
+  sanitizeAnalysis,
+} from '../controller/productAnalysisController.js'
 import Product from '../models/productModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
@@ -100,6 +103,23 @@ describe('agente · el producto creado desde un análisis lleva SKU', () => {
     expect(buildProductDraftFromJob({ job: trabajo({ metadata: { sku: 'imp-77' } }) }).sku).toBe(
       'IMP-77',
     )
+  })
+
+  test('guarda el modelo que analizó, no el origen de la imagen', () => {
+    const conModelo = trabajo({
+      analysis: { ...trabajo().analysis, source: 'gemini-3.1-flash-lite' },
+    })
+
+    expect(buildProductDraftFromJob({ job: conModelo }).aiSource).toBe('gemini-3.1-flash-lite')
+    // Si el análisis no dice el modelo, queda el origen del trabajo, como antes.
+    expect(buildProductDraftFromJob({ job: trabajo() }).aiSource).toBe('local-folder-agent')
+  })
+
+  test('el análisis guardado conserva el modelo que lo hizo', () => {
+    expect(sanitizeAnalysis({ titulo: 'Casco', source: 'gemini-3.1-flash-lite' }).source).toBe(
+      'gemini-3.1-flash-lite',
+    )
+    expect(sanitizeAnalysis({ titulo: 'Casco' }).source).toBeNull()
   })
 
   test('el producto queda vinculado al análisis del que salió', () => {

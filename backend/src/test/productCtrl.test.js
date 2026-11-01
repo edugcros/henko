@@ -13,6 +13,7 @@ import { decrementLineStock } from '../services/orderInventoryService.js'
 import {
   applyStockBaselines,
   getPublishBlockers,
+  normalizeAiConfidence,
   PUBLISHABLE_PRODUCT_QUERY,
 } from '../controller/productCtrl.js'
 
@@ -1479,5 +1480,92 @@ describe('SEO · un solo slug y las intenciones del formulario se guardan', () =
     const id = await crear({ title: 'Casco intención rara', seoSearchIntent: 'viral' })
 
     expect((await leer(id)).seo.searchIntent).toBe('')
+  })
+})
+
+describe('procedencia · qué hizo la IA y qué una persona', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const base = () => ({
+    title: `Casco ${Math.random()}`,
+    description: 'Casco con visor',
+    marca: 'AGV',
+    categoria: 'Cascos',
+    subcategoria: 'Integrales',
+    price: 150000,
+    stock: 3,
+  })
+  const crear = extra =>
+    request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...base(), ...extra })
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'procedencia-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('la confianza queda entre 0 y 1, y el 0 es un valor real', () => {
+    expect(normalizeAiConfidence(0)).toBe(0)
+    expect(normalizeAiConfidence(0.72)).toBe(0.72)
+    expect(normalizeAiConfidence(85)).toBe(0.85)
+    expect(normalizeAiConfidence('0.4')).toBe(0.4)
+    expect(normalizeAiConfidence(150)).toBe(1)
+    expect(normalizeAiConfidence(-3)).toBe(0)
+    expect(normalizeAiConfidence('alta')).toBeNull()
+    expect(normalizeAiConfidence(null)).toBeNull()
+    expect(normalizeAiConfidence(undefined)).toBeNull()
+  })
+
+  test('un producto cargado a mano no queda marcado como hecho por la IA', async () => {
+    // Lo que mandaba el panel sin análisis: aiSource 'gemini' por defecto.
+    const res = await crear({ iaGenerated: false, aiSource: 'gemini', aiConfidence: null })
+
+    expect(res.statusCode).toBe(201)
+    const producto = await leer(res.body.data._id)
+    expect(producto.iaGenerated).toBe(false)
+    expect(producto.aiSource).toBeNull()
+    expect(producto.audit.createdSource).toBe('manual')
+  })
+
+  test('con análisis guarda el modelo y la confianza aunque sea 0', async () => {
+    const res = await crear({
+      aiOriginalOutput: JSON.stringify({ confidence: 0, source: 'gemini-3.1-flash-lite' }),
+    })
+
+    expect(res.statusCode).toBe(201)
+    const producto = await leer(res.body.data._id)
+    expect(producto.iaGenerated).toBe(true)
+    expect(producto.aiConfidence).toBe(0)
+    expect(producto.aiSource).toBe('gemini-3.1-flash-lite')
+  })
+
+  test('una confianza en porcentaje ya no hace fallar el alta', async () => {
+    const res = await crear({ iaGenerated: true, aiConfidence: 85, aiSource: 'gemini' })
+
+    expect(res.statusCode).toBe(201)
+    expect((await leer(res.body.data._id)).aiConfidence).toBe(0.85)
   })
 })

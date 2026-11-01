@@ -1106,7 +1106,6 @@ const sanitizeCreateProductInput = body => ({
   status: ALLOWED_PRODUCT_STATUSES.includes(body.status) ? body.status : 'active',
   visibility: ALLOWED_PRODUCT_VISIBILITIES.includes(body.visibility) ? body.visibility : 'visible',
   iaGenerated: parseBoolean(body.iaGenerated, false),
-  iaSource: normalizeText(body.iaSource, 'manual'),
 })
 
 /**
@@ -1207,7 +1206,6 @@ const sanitizeUpdateProductInput = body => {
     updates.visibility = body.visibility
   }
   if (body.iaGenerated !== undefined) updates.iaGenerated = parseBoolean(body.iaGenerated, false)
-  if (body.iaSource !== undefined) updates.iaSource = normalizeText(body.iaSource, 'manual')
   if (body.price !== undefined) updates.price = toSafeNumber(body.price, 0)
   // Bloque 8.5 — opcional, null borra el costo informado (permite volver a
   // "no informado" si el comercio se equivocó al cargarlo).
@@ -1365,6 +1363,21 @@ const normalizeSku = value => {
 }
 
 const DEFAULT_PRODUCT_TITLE = 'Producto sin título'
+
+/**
+ * Confianza de la IA entre 0 y 1, como la guarda el modelo (min 0, max 1).
+ * La IA ya la manda así, pero un cliente que la mande en porcentaje (85) hacía
+ * fallar el alta con un ValidationError. 0 es un valor real: no se reemplaza.
+ */
+export const normalizeAiConfidence = value => {
+  if (value === null || value === undefined || value === '') return null
+
+  const number = Number(value)
+  if (!Number.isFinite(number)) return null
+
+  const ratio = number > 1 && number <= 100 ? number / 100 : number
+  return Math.min(1, Math.max(0, ratio))
+}
 
 /**
  * Lo que le falta a un producto para poder publicarse. Vacío = se puede.
@@ -1593,11 +1606,15 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
 
     const hasVariants = parseBoolean(req.body.hasVariants, variants.length > 0)
 
-    const aiConfidence =
-      aiOriginal?.confidence ?? aiOriginal?.confianza ?? toSafeNumber(req.body.aiConfidence, null)
+    const aiConfidence = normalizeAiConfidence(
+      aiOriginal?.confidence ?? aiOriginal?.confianza ?? req.body.aiConfidence,
+    )
 
-    const aiSource =
-      aiOriginal?.source || aiOriginal?.model || normalizeText(req.body.aiSource, null)
+    // El modelo que hizo el análisis. Solo si hubo IA: el panel mandaba
+    // 'gemini' por defecto y un producto cargado a mano quedaba marcado así.
+    const aiSource = iaGenerated
+      ? aiOriginal?.source || aiOriginal?.model || normalizeText(req.body.aiSource, null)
+      : null
 
     const aiImageHash =
       aiOriginal?.hash || aiOriginal?.imageHash || normalizeText(req.body.aiImageHash, null)

@@ -105,6 +105,7 @@ const {
   createProductAttempt,
   runProductAttempt,
   describeProductAttemptFailure,
+  resolveAiConfidencePercent,
 } = await import('./AddProduct.js')
 
 const MB = 1024 * 1024
@@ -1454,5 +1455,25 @@ describe('Alta de producto · reintentar no duplica', () => {
     const mensaje = describeProductAttemptFailure(aMitad, error, 'Error')
     expect(mensaje).toMatch(/quedó guardado como borrador/)
     expect(mensaje).toMatch(/no se va a duplicar/)
+  })
+})
+
+describe('Alta de producto · confianza de la IA en el panel', () => {
+  // Se calculaba con `||` y un 85 por defecto: un 0 de la IA se mostraba como 85%.
+  test('un 0 de la IA se muestra como 0%, no como 85%', () => {
+    expect(resolveAiConfidencePercent({ confidence: 0 })).toBe(0)
+  })
+
+  test('sin dato de confianza no se inventa uno', () => {
+    expect(resolveAiConfidencePercent({})).toBeNull()
+    expect(resolveAiConfidencePercent({ confidence: null })).toBeNull()
+    expect(resolveAiConfidencePercent({ confidence: 'alta' })).toBeNull()
+    expect(resolveAiConfidencePercent(null)).toBeNull()
+  })
+
+  test('lee la escala de 0 a 1 y también un porcentaje', () => {
+    expect(resolveAiConfidencePercent({ confidence: 0.724 })).toBe(72)
+    expect(resolveAiConfidencePercent({ confidence: 85 })).toBe(85)
+    expect(resolveAiConfidencePercent({ confianza: 0.5 })).toBe(50)
   })
 })
