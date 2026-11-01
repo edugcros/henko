@@ -844,3 +844,24 @@ describe('imágenes · cada proveedor con su tarifa', () => {
     expect(getImagePrice(new Date(), null).perImage).toBe(0.0336)
   })
 })
+
+describe('modelo de texto por defecto · correlativo al catálogo de precios', () => {
+  test('es gemini-3.1-flash-lite y tiene tarifa propia, no la de respaldo', () => {
+    // Si el default no estuviera en el catálogo, cada llamada se costearía con
+    // la tarifa supuesta y el disyuntor mediría otro número que el real.
+    expect(DEFAULT_TEXT_MODEL).toBe('gemini-3.1-flash-lite')
+
+    const precio = getModelPrice(DEFAULT_TEXT_MODEL, new Date('2026-11-01T12:00:00Z'))
+    expect(precio.fallback).toBeFalsy()
+    expect(precio.input).toBe(0.25)
+    expect(precio.output).toBe(1.5)
+  })
+
+  test('los modelos que deja de usar conservan su tarifa para la historia', () => {
+    // El libro y la conciliación costean con el catálogo las operaciones ya
+    // registradas con 3.6/3.7/3.8: sacar esas filas reescribiría lo que costaron.
+    for (const modelo of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) {
+      expect(getModelPrice(modelo, new Date('2026-10-15T12:00:00Z')).fallback).toBeFalsy()
+    }
+  })
+})

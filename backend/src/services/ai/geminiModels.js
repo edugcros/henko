@@ -73,7 +73,10 @@ import logger from '../../../config/logger.js'
  *   gemini-3.5-flash-lite  200 · 500/día · USD 0.30/2.50 por 1M
  *   gemini-3.1-flash-lite  200 · 500/día · USD 0.25/1.50 — degradación barata
  *   gemini-3.8-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
- *  gemini-3.7-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
+ *   gemini-3.7-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
+ *
+ * El 01/11/2026 el de texto por defecto pasó a 3.1-flash-lite: ver
+ * DEFAULT_TEXT_MODEL. 3.8-flash sigue existiendo, pero se saturaba.
  *
  * Gemma va último y no primero, aunque tenga la cuota más grande: es un modelo
  * abierto más chico, su techo real son ~16.000 tokens por minuto (con prompts
@@ -176,8 +179,22 @@ export const normalizeModelName = value =>
 // los viejos y se siguen leyendo, después, para no romper un entorno que
 // todavía los tenga.
 
-/** El modelo de texto por defecto: existe y responde (GET /v1beta/models, 01/11/2026). */
-export const DEFAULT_TEXT_MODEL = 'gemini-3.8-flash'
+/**
+ * El modelo de texto por defecto, elegido por medición y no por nombre.
+ *
+ * Era gemini-3.8-flash. Los Flash "grandes" (3.5 a 3.8) comparten un techo
+ * gratuito de 20 pedidos por día y se saturan: el 01/11/2026 tanto 3.5-flash
+ * como 3.8-flash dieron 503 "high demand" en producción y entraron en pausa.
+ * Medido ese día con imagen + responseSchema, tres llamadas cada uno:
+ *
+ *   gemini-3.1-flash-lite   6,7 s · 0,8 s · 3,9 s   500/día   USD 0,25/1,50
+ *   gemini-3.5-flash-lite  32 s  · 26 s  · 22 s    500/día   USD 0,30/2,50
+ *
+ * 3.1-flash-lite es el más rápido y el más barato del catálogo, y ya era el
+ * respaldo y el primero del modo economía. Los otros quedan detrás, en
+ * FALLBACK_MODELS.
+ */
+export const DEFAULT_TEXT_MODEL = 'gemini-3.1-flash-lite'
 
 /** El que GENERA imágenes (fondos de imageAiService). No sirve para texto ni para leer fotos. */
 export const DEFAULT_IMAGE_MODEL = 'gemini-3.1-flash-lite-image'
