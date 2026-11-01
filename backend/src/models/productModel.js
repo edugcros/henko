@@ -292,7 +292,11 @@ const normalizeSeoFields = product => {
     product.seo = {}
   }
 
-  product.seo.slug = normalizeText(product.seo.slug) || product.slug
+  // Copia de product.slug, siempre. Eran dos slugs independientes: el del
+  // producto (único, por el que la tienda lo busca) y este, que se editaba
+  // aparte y quedaba distinto (al crear con un slug ocupado, o al cambiar el
+  // título). Para cambiar el slug se cambia product.slug (ver updateProduct).
+  product.seo.slug = product.slug
   product.seo.metaTitle = normalizeText(product.seo.metaTitle) || product.title
   product.seo.metaDescription =
     normalizeText(product.seo.metaDescription) || String(product.description || '').slice(0, 320)
@@ -616,7 +620,17 @@ const seoSchema = new Schema(
     searchIntent: {
       type: String,
       trim: true,
-      enum: ['', 'informational', 'commercial', 'transactional', 'navigational'],
+      // Misma lista que ALLOWED_SEO_SEARCH_INTENTS en productCtrl.
+      enum: [
+        '',
+        'commercial',
+        'informational',
+        'comparative',
+        'local',
+        'brand',
+        'transactional',
+        'navigational',
+      ],
       default: '',
     },
     positioning: { type: String, trim: true, maxlength: 900, default: '' },
