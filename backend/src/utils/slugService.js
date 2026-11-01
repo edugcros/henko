@@ -66,3 +66,31 @@ export async function generateUniqueSlug({ title, tenantId, excludeId = null }) 
     counter += 1
   }
 }
+
+/**
+ * SKU de producto cuando el comercio no cargó uno: TÍTULO-TIENDA-ALEATORIO.
+ *
+ * Vive acá, con el slug, porque los dos son los identificadores que cada camino
+ * de alta tiene que poner igual. Estaba solo en productCtrl: el alta desde un
+ * análisis (productAnalysisController) creaba productos SIN SKU, y el índice
+ * único { tenantId, sku } —sparse en un índice compuesto indexa igual el
+ * documento con sku null, porque tenantId siempre existe— hacía fallar el
+ * segundo producto sin SKU de cada tienda.
+ */
+export const buildProductSku = ({ title, tenantId }) => {
+  const titlePart = String(title || 'PRODUCTO')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase()
+    .slice(0, 24)
+
+  const tenantPart = String(tenantId || '')
+    .slice(-6)
+    .toUpperCase()
+
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase()
+
+  return [titlePart || 'PRODUCTO', tenantPart, randomPart].filter(Boolean).join('-')
+}

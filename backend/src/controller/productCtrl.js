@@ -34,7 +34,7 @@ import {
 import { MAX_VIDEO_DURATION_SECONDS } from '../../config/videoUploadPolicy.js'
 import { getUserIdFromRequest, isValidObjectId } from '../utils/requestContext.js'
 import { validateMongoDbIdMiddleware } from '../utils/validation.js'
-import { generateUniqueSlug } from '../utils/slugService.js'
+import { buildProductSku, generateUniqueSlug } from '../utils/slugService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 import logger from '../../config/logger.js'
@@ -1340,24 +1340,6 @@ const normalizeSku = value => {
   if (['NULL', 'UNDEFINED', 'N/A', 'NA', 'SIN-SKU', 'SKU'].includes(clean)) return null
 
   return clean
-}
-
-const buildProductSku = ({ title, tenantId }) => {
-  const titlePart = String(title || 'PRODUCTO')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toUpperCase()
-    .slice(0, 24)
-
-  const tenantPart = String(tenantId || '')
-    .slice(-6)
-    .toUpperCase()
-
-  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase()
-
-  return [titlePart || 'PRODUCTO', tenantPart, randomPart].filter(Boolean).join('-')
 }
 
 // =====================================================
