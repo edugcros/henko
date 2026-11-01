@@ -8,7 +8,9 @@ import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/bac
  * Motores de imagen
  * ─────────────────
  * Quitar fondo:  RMBG local (gratis, sin API key) → Replicate solo si falla el recorte local
- * Generar fondo: Gemini Image (modelo configurable, por defecto Flash Lite Image)
+ * Generar fondo: cadena de proveedores (IMAGE_AI_PROVIDERS, por defecto
+ *                cloudflare → gemini). Cloudflare Workers AI (FLUX.1 schnell)
+ *                entra en su cupo diario gratuito; Gemini Image exige facturación.
  * Prompt:        Gemini optimiza el prompt del usuario a inglés
  *
  * La generación de fondo utiliza la clave Gemini de plataforma y no hace
@@ -425,7 +427,7 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
         status: res.status,
         action: failure.platformAction,
       })
-      markGenerativeBackgroundUnavailable()
+      markGenerativeBackgroundUnavailable('gemini')
     }
     throw buildGeminiImageError(res.status)
   }
@@ -451,9 +453,6 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
   const buffer = Buffer.from(imagePart.inlineData.data, 'base64')
   if (!buffer.length) throw fail('Gemini devolvió una imagen vacía.', 502)
 
-  // Respondió: si estaba marcada como no disponible, deja de estarlo.
-  resetGenerativeBackgroundStatus()
-
   logger.info('Background generado con Gemini', {
     model: configuredModel,
     bytes: buffer.length,
@@ -462,38 +461,188 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
   return buffer
 }
 
-const generateBg = (prompt, aspectRatio = '1:1') => generateBgGemini(prompt, aspectRatio)
-
-// ─── Disponibilidad de la generación con IA ─────────────────
+// ─── Generar fondo con Cloudflare Workers AI ───────────────
 //
-// Medido en producción el 31/10/2026: con la key de plataforma en el plan
+// FLUX.1 schnell en Workers AI. Verificado en la documentación de Cloudflare
+// (01/11/2026): está en el plan gratuito de Workers, que incluye 10.000
+// neuronas por día; una imagen de 1024×1024 con 4 pasos son ~58 neuronas
+// (4 bloques × 4,8 + 4 pasos × 9,6), o sea unas 170 imágenes diarias sin
+// costo. Se agregó porque Gemini Image no tiene cupo en el plan gratuito
+// (limit: 0) y el editor quedaba sin generación.
+//
+// Se activa con CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_AI_API_TOKEN (un token con
+// permiso Workers AI). Sin las dos, el proveedor se saltea.
+
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
+const CLOUDFLARE_IMAGE_MODEL_DEFAULT = '@cf/black-forest-labs/flux-1-schnell'
+
+const cloudflareConfig = () => {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  const apiToken = String(process.env.CLOUDFLARE_AI_API_TOKEN || '').trim()
+  const model = String(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_IMAGE_MODEL_DEFAULT).trim()
+
+  return {
+    accountId,
+    apiToken,
+    model,
+    configured:
+      /^[a-f0-9]{32}$/i.test(accountId) && Boolean(apiToken) && /^@cf\/[a-z0-9._/-]+$/i.test(model),
+  }
+}
+
+/** Próxima medianoche UTC: ahí Cloudflare renueva el cupo diario gratuito. */
+const nextUtcMidnight = now => {
+  const date = new Date(now)
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)
+}
+
+const generateBgCloudflare = async prompt => {
+  const { accountId, apiToken, model, configured } = cloudflareConfig()
+  if (!configured) throw fail('Cloudflare Workers AI no está configurado.', 503)
+
+  // FLUX.1 schnell no recibe proporción: genera cuadrado y la composición lo
+  // recorta con "cover" al lienzo del propósito.
+  const res = await fetch(`${CLOUDFLARE_API}/accounts/${accountId}/ai/run/${model}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(60000),
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt: String(prompt).slice(0, 2048), steps: 4 }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    // El token nunca va al log: solo el status y lo que respondió Cloudflare.
+    logger.error('Cloudflare image generation failed', {
+      model,
+      status: res.status,
+      body: body.slice(0, 300),
+    })
+
+    if (res.status === 401 || res.status === 403) {
+      logger.error('[IMAGE AI] Cloudflare rechazó el token', {
+        action: 'Revisar CLOUDFLARE_AI_API_TOKEN: necesita permiso Workers AI (Read y Edit).',
+      })
+      markGenerativeBackgroundUnavailable('cloudflare')
+    } else if (res.status === 429) {
+      logger.error('[IMAGE AI] Cloudflare: se agotó el cupo diario gratuito', {
+        action: 'Se renueva a las 00:00 UTC. Para más imágenes por día, el plan Workers Paid.',
+      })
+      markGenerativeBackgroundUnavailable('cloudflare', Date.now(), nextUtcMidnight(Date.now()))
+    }
+
+    throw buildGeminiImageError(res.status === 401 || res.status === 403 ? 403 : 429)
+  }
+
+  const json = await res.json().catch(() => null)
+  const image = json?.result?.image
+  if (!image) {
+    logger.warn('Cloudflare image generation returned no image', { model })
+    const error = fail(
+      'La IA no devolvió una imagen. Probá con otra descripción. No se descontó de tu cupo.',
+      502,
+    )
+    error.expose = true
+    throw error
+  }
+
+  const buffer = Buffer.from(image, 'base64')
+  if (!buffer.length) throw fail('Cloudflare devolvió una imagen vacía.', 502)
+
+  logger.info('Background generado con Cloudflare Workers AI', { model, bytes: buffer.length })
+  return buffer
+}
+
+// ─── Cadena de proveedores y disponibilidad ─────────────────
+//
+// Medido en producción el 31/10/2026: con la key de Gemini en el plan
 // gratuito, cada "Generar variación" recortaba el producto (8–13 s de CPU y
-// hasta 300 MB de memoria) para recibir después un 429 de Gemini. Ningún
-// intento podía salir bien y todos costaban lo mismo. Después de un 401, 403 o
-// 429 se recuerda que no está disponible: el controller corta antes de
+// hasta 300 MB de memoria) para recibir después un 429. Después de un 401,
+// 403 o 429 se recuerda que ESE proveedor no está disponible —un 429 de Gemini
+// no apaga Cloudflare—: si no queda ninguno, el controller corta antes de
 // reservar cupo y de recortar, y el panel lo muestra antes de que el comercio
-// suba nada. Se vuelve a probar sola pasado el cooldown, y un éxito la limpia.
+// suba nada. Cada proveedor se vuelve a probar solo pasado su pausa, y un
+// éxito la limpia.
+
 const GENERATIVE_COOLDOWN_MS = Number(process.env.IMAGE_AI_GENERATIVE_COOLDOWN_MS) || 30 * 60 * 1000
 
-let generativeUnavailableUntil = 0
+const IMAGE_PROVIDERS = {
+  cloudflare: {
+    configured: () => cloudflareConfig().configured,
+    generate: (prompt, aspectRatio) => generateBgCloudflare(prompt, aspectRatio),
+  },
+  gemini: {
+    configured: () => Boolean(String(env.ai?.geminiApiKey || '').trim()),
+    generate: (prompt, aspectRatio) => generateBgGemini(prompt, aspectRatio),
+  },
+}
 
-export const markGenerativeBackgroundUnavailable = (now = Date.now()) => {
-  generativeUnavailableUntil = now + GENERATIVE_COOLDOWN_MS
+const unavailableUntil = { cloudflare: 0, gemini: 0 }
+
+/** El orden de la cadena. Cloudflare primero: entra en su cupo gratuito. */
+const providerOrder = () =>
+  String(process.env.IMAGE_AI_PROVIDERS || 'cloudflare,gemini')
+    .split(',')
+    .map(name => name.trim().toLowerCase())
+    .filter((name, index, list) => IMAGE_PROVIDERS[name] && list.indexOf(name) === index)
+
+export const markGenerativeBackgroundUnavailable = (
+  provider = 'gemini',
+  now = Date.now(),
+  until = null,
+) => {
+  if (!(provider in unavailableUntil)) return
+  unavailableUntil[provider] = until ?? now + GENERATIVE_COOLDOWN_MS
 }
 
 export const getGenerativeBackgroundStatus = (now = Date.now()) => {
-  const configured = Boolean(String(env.ai?.geminiApiKey || '').trim())
-  const coolingDown = now < generativeUnavailableUntil
+  const configured = providerOrder().filter(name => IMAGE_PROVIDERS[name].configured())
+  const ready = configured.filter(name => now >= unavailableUntil[name])
+  const pauses = configured.map(name => unavailableUntil[name]).filter(until => until > now)
 
   return {
-    available: configured && !coolingDown,
-    retryAt: coolingDown ? new Date(generativeUnavailableUntil).toISOString() : null,
+    available: ready.length > 0,
+    retryAt:
+      ready.length === 0 && pauses.length ? new Date(Math.min(...pauses)).toISOString() : null,
+    provider: ready[0] || null,
   }
 }
 
 /** Solo para tests: el estado vive en el módulo. */
 export const resetGenerativeBackgroundStatus = () => {
-  generativeUnavailableUntil = 0
+  unavailableUntil.cloudflare = 0
+  unavailableUntil.gemini = 0
+}
+
+/**
+ * El fondo, del primer proveedor de la cadena que responda. Uno que falla no
+ * corta la generación: se prueba el siguiente. Si no responde ninguno, sale el
+ * error del último (marcado `expose` para que el comercio lo lea).
+ */
+const generateBg = async (prompt, aspectRatio = '1:1') => {
+  let lastError = null
+
+  for (const name of providerOrder()) {
+    const provider = IMAGE_PROVIDERS[name]
+    if (!provider.configured() || Date.now() < unavailableUntil[name]) continue
+
+    try {
+      const buffer = await provider.generate(prompt, aspectRatio)
+      unavailableUntil[name] = 0
+      return buffer
+    } catch (error) {
+      lastError = error
+      logger.warn('[IMAGE AI] El proveedor no generó el fondo, se prueba el siguiente', {
+        provider: name,
+        status: error?.statusCode,
+        error: error?.message,
+      })
+    }
+  }
+
+  throw lastError || buildGeminiImageError(429)
 }
 
 // ─── Fondos de estudio (sin IA generativa) ──────────────────

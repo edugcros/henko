@@ -303,6 +303,20 @@ const CATALOGO = [
   },
   {
     grupo: 'Proveedores',
+    nombres: ['CLOUDFLARE_ACCOUNT_ID'],
+    gravedad: 'aviso',
+    rompe:
+      'Generar variación depende solo de Gemini, que sin facturación no genera imágenes (con Cloudflare Workers AI entra en el cupo gratuito diario)',
+  },
+  {
+    grupo: 'Proveedores',
+    nombres: ['CLOUDFLARE_AI_API_TOKEN'],
+    gravedad: 'aviso',
+    pista: forma,
+    rompe: 'ídem: sin el token (permiso Workers AI) Cloudflare no genera fondos',
+  },
+  {
+    grupo: 'Proveedores',
     nombres: ['MP_ACCESS_TOKEN', 'MERCADOPAGO_ACCESS_TOKEN'],
     gravedad: 'critica',
     pista: formaDeMercadoPago,
