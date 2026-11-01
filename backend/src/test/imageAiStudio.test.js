@@ -55,6 +55,10 @@ const pixel = async (buffer, x, y) => {
 beforeEach(() => {
   jest.clearAllMocks()
   resetGenerativeBackgroundStatus()
+  // Cloudflare solo se activa en los tests que lo configuran.
+  delete process.env.CLOUDFLARE_ACCOUNT_ID
+  delete process.env.CLOUDFLARE_AI_API_TOKEN
+  delete process.env.IMAGE_AI_PROVIDERS
 })
 
 describe('fondos de estudio · el resultado', () => {
@@ -148,14 +152,18 @@ describe('IA generativa · disponibilidad', () => {
 
   test('con clave y sin fallas recientes está disponible', () => {
     conClave(() => {
-      expect(getGenerativeBackgroundStatus()).toEqual({ available: true, retryAt: null })
+      expect(getGenerativeBackgroundStatus()).toEqual({
+        available: true,
+        retryAt: null,
+        provider: 'gemini',
+      })
     })
   })
 
   test('después de un 429 no está disponible y dice cuándo se reintenta', () => {
     conClave(() => {
       const ahora = Date.parse('2026-11-01T12:00:00Z')
-      markGenerativeBackgroundUnavailable(ahora)
+      markGenerativeBackgroundUnavailable('gemini', ahora)
 
       const estado = getGenerativeBackgroundStatus(ahora + 60_000)
       expect(estado.available).toBe(false)
@@ -203,6 +211,162 @@ describe('IA generativa · un 429 real la marca como no disponible', () => {
       expect(mockRemoveLocal).not.toHaveBeenCalled()
     } finally {
       global.fetch = originalFetch
+      env.ai.geminiApiKey = originalKey
+    }
+  })
+})
+
+// ─── Cloudflare Workers AI ───────────────────────────────────────────────
+//
+// FLUX.1 schnell entra en el cupo diario gratuito de Workers AI (~170
+// imágenes por día). Contrato verificado en la documentación de Cloudflare:
+// POST /accounts/{id}/ai/run/@cf/black-forest-labs/flux-1-schnell con
+// { prompt, steps } → { result: { image: <JPEG en base64> } }.
+
+const CUENTA = '0123456789abcdef0123456789abcdef'
+
+const jpegBase64 = async () =>
+  (
+    await sharp({ create: { width: 64, height: 64, channels: 3, background: '#c8a27a' } })
+      .jpeg()
+      .toBuffer()
+  ).toString('base64')
+
+const conCloudflare = async (fetchImpl, fn, { gemini = '' } = {}) => {
+  const originalFetch = global.fetch
+  const originalKey = env.ai.geminiApiKey
+  process.env.CLOUDFLARE_ACCOUNT_ID = CUENTA
+  process.env.CLOUDFLARE_AI_API_TOKEN = 'cf-token-de-prueba'
+  env.ai.geminiApiKey = gemini
+  global.fetch = fetchImpl
+  try {
+    return await fn()
+  } finally {
+    global.fetch = originalFetch
+    env.ai.geminiApiKey = originalKey
+  }
+}
+
+describe('IA generativa · Cloudflare Workers AI', () => {
+  test('genera el fondo con FLUX.1 schnell y lo compone con el producto', async () => {
+    const imagen = await jpegBase64()
+    const llamadas = []
+
+    await conCloudflare(
+      async (url, options) => {
+        llamadas.push({ url, options })
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, result: { image: imagen } }),
+        }
+      },
+      async () => {
+        expect(getGenerativeBackgroundStatus().provider).toBe('cloudflare')
+
+        const { buffer, contentType } = await generateVariation(
+          await recorte(),
+          'sobre una mesa de madera',
+          'image/png',
+          { purpose: 'social' },
+        )
+        const meta = await sharp(buffer).metadata()
+
+        expect(contentType).toBe('image/png')
+        expect(meta.width).toBe(meta.height)
+      },
+    )
+
+    expect(llamadas).toHaveLength(1)
+    expect(llamadas[0].url).toBe(
+      `https://api.cloudflare.com/client/v4/accounts/${CUENTA}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
+    )
+    expect(llamadas[0].options.headers.Authorization).toBe('Bearer cf-token-de-prueba')
+    expect(JSON.parse(llamadas[0].options.body)).toEqual({
+      prompt: 'sobre una mesa de madera',
+      steps: 4,
+    })
+    expect(mockRemoveLocal).not.toHaveBeenCalled()
+  })
+
+  test('sin cupo diario pasa a Gemini y Cloudflare queda en pausa hasta las 00:00 UTC', async () => {
+    const imagen = await jpegBase64()
+
+    await conCloudflare(
+      async url => {
+        if (String(url).includes('api.cloudflare.com')) {
+          return { ok: false, status: 429, text: async () => 'daily free allocation exceeded' }
+        }
+        // Gemini: optimizador de prompt (texto) y generación (imagen).
+        if (String(url).includes(':generateContent?key=')) {
+          return { ok: false, status: 500, text: async () => 'sin optimizar' }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            candidates: [{ content: { parts: [{ inlineData: { data: imagen } }] } }],
+          }),
+        }
+      },
+      async () => {
+        const { buffer } = await generateVariation(await recorte(), 'fondo de mármol', 'image/png')
+        expect((await sharp(buffer).metadata()).format).toBe('png')
+
+        const estado = getGenerativeBackgroundStatus()
+        expect(estado.available).toBe(true)
+        expect(estado.provider).toBe('gemini')
+
+        // Cloudflare sigue en pausa aunque Gemini esté disponible.
+        const soloCloudflare = process.env.IMAGE_AI_PROVIDERS
+        process.env.IMAGE_AI_PROVIDERS = 'cloudflare'
+        const pausa = getGenerativeBackgroundStatus()
+        process.env.IMAGE_AI_PROVIDERS = soloCloudflare ?? ''
+        if (!soloCloudflare) delete process.env.IMAGE_AI_PROVIDERS
+
+        expect(pausa.available).toBe(false)
+        expect(new Date(pausa.retryAt).getUTCHours()).toBe(0)
+        expect(new Date(pausa.retryAt).getUTCMinutes()).toBe(0)
+      },
+      { gemini: 'AIzaTEST' },
+    )
+  })
+
+  test('un token rechazado sin otro proveedor deja la IA no disponible, con mensaje para el comercio', async () => {
+    await conCloudflare(
+      async () => ({ ok: false, status: 401, text: async () => 'Authentication error' }),
+      async () => {
+        const error = await generateVariation(await recorte(), 'fondo blanco', 'image/png').catch(
+          e => e,
+        )
+
+        expect(error.expose).toBe(true)
+        expect(error.statusCode).toBe(503)
+        expect(error.message).not.toMatch(/token|cloudflare/i)
+
+        const estado = getGenerativeBackgroundStatus()
+        expect(estado.available).toBe(false)
+        expect(estado.retryAt).not.toBeNull()
+      },
+    )
+  })
+
+  test('sin cuenta válida o sin token, Cloudflare no cuenta como configurado', async () => {
+    const originalKey = env.ai.geminiApiKey
+    env.ai.geminiApiKey = ''
+    try {
+      process.env.CLOUDFLARE_ACCOUNT_ID = 'no-es-un-id'
+      process.env.CLOUDFLARE_AI_API_TOKEN = 'x'
+      expect(getGenerativeBackgroundStatus()).toEqual({
+        available: false,
+        retryAt: null,
+        provider: null,
+      })
+
+      process.env.CLOUDFLARE_ACCOUNT_ID = CUENTA
+      process.env.CLOUDFLARE_AI_API_TOKEN = ''
+      expect(getGenerativeBackgroundStatus().available).toBe(false)
+    } finally {
       env.ai.geminiApiKey = originalKey
     }
   })
