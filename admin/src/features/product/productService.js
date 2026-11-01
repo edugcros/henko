@@ -202,13 +202,16 @@ const deleteProduct = async productId => {
 const uploadProductImage = async (
   productId,
   imageFile,
-  { aiGenerated, aiSource, imagePurpose } = {},
+  { aiGenerated, aiSource, imagePurpose, clientUploadId } = {},
 ) => {
   if (!productId || !imageFile) {
     throw new Error('Producto o imagen inválida')
   }
 
   const formData = new FormData()
+  // Va antes del archivo: el alta de AddProduct lo usa para que reintentar
+  // una subida que ya se guardó no deje la foto repetida.
+  if (clientUploadId) formData.append('clientUploadId', clientUploadId)
   formData.append('images', imageFile)
   if (aiGenerated) {
     formData.append('aiGenerated', 'true')

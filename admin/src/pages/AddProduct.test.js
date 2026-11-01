@@ -1345,6 +1345,31 @@ describe('Alta de producto · reintentar no duplica', () => {
     expect(publish).toHaveBeenCalledTimes(1)
   })
 
+  test('el análisis se cierra después de publicar: si publicar falla, sigue abierto', async () => {
+    const registro = []
+    const attempt = createProductAttempt()
+    let fallaPublicar = true
+    const correr = () =>
+      runProductAttempt({
+        attempt,
+        createDraft: async () => ({ _id: 'p3' }),
+        steps: [{ key: 'image', run: async () => registro.push('image') }],
+        publish: async () => {
+          if (fallaPublicar) throw new Error('503')
+          registro.push('publicar')
+        },
+        finalSteps: [{ key: 'link-job', run: async () => registro.push('cerrar análisis') }],
+      })
+
+    await expect(correr()).rejects.toThrow('503')
+    expect(registro).toEqual(['image'])
+
+    fallaPublicar = false
+    await correr()
+
+    expect(registro).toEqual(['image', 'publicar', 'cerrar análisis'])
+  })
+
   test('sin publicar, el producto queda como borrador', async () => {
     const attempt = createProductAttempt()
 

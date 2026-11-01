@@ -500,6 +500,14 @@ const imageSchema = new Schema(
       enum: ['store', 'ad', 'social', 'alternative', ''],
       default: '',
     },
+
+    // Lo manda el alta de AddProduct por cada archivo. Si la imagen se guardó
+    // pero la respuesta se perdió, el reintento con el mismo id no la vuelve
+    // a subir (ver uploadProductImage).
+    clientUploadId: {
+      type: String,
+      trim: true,
+    },
   },
   {
     _id: true,

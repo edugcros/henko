@@ -2858,6 +2858,18 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
       })
     }
 
+    // Reintento de una subida que ya se guardó: se devuelve lo que hay, sin
+    // subir otra copia de la misma foto.
+    const clientUploadId = normalizeClientRequestId(req.body?.clientUploadId)
+
+    if (clientUploadId && product.images.some(image => image.clientUploadId === clientUploadId)) {
+      return res.status(200).json({
+        success: true,
+        data: product.images,
+        replayed: true,
+      })
+    }
+
     const driver = String(process.env.STORAGE_DRIVER || 'cloudinary').toLowerCase()
     const uploadedImages = []
 
@@ -2905,6 +2917,7 @@ export const uploadProductImage = expressAsyncHandler(async (req, res) => {
         isAiGenerated: aiGenerated,
         aiSource: aiGenerated ? aiSource : '',
         imagePurpose: aiGenerated ? imagePurpose : '',
+        ...(clientUploadId ? { clientUploadId } : {}),
       })
     }
 

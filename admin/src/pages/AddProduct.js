@@ -1891,7 +1891,13 @@ export const createProductAttempt = (clientRequestId = newClientRequestId()) => 
   done: new Set(),
 })
 
-export const runProductAttempt = async ({ attempt, createDraft, steps = [], publish = null }) => {
+export const runProductAttempt = async ({
+  attempt,
+  createDraft,
+  steps = [],
+  publish = null,
+  finalSteps = [],
+}) => {
   if (!attempt.productId) {
     const created = await createDraft(attempt.clientRequestId)
     const product = created?.data || created
@@ -1913,6 +1919,12 @@ export const runProductAttempt = async ({ attempt, createDraft, steps = [], publ
   if (publish && !attempt.done.has('publish')) {
     await publish(attempt.productId)
     attempt.done.add('publish')
+  }
+
+  for (const step of finalSteps) {
+    if (attempt.done.has(step.key)) continue
+    await step.run(attempt)
+    attempt.done.add(step.key)
   }
 
   return attempt
@@ -5038,16 +5050,28 @@ function AddProductForm() {
         steps: [
           {
             key: 'image',
-            run: ({ productId }) =>
-              dispatch(uploadProductImage({ productId, imageFile, silent: true })).unwrap(),
+            run: ({ productId, clientRequestId }) =>
+              dispatch(
+                uploadProductImage({
+                  productId,
+                  imageFile,
+                  clientUploadId: `${clientRequestId}:image`,
+                  silent: true,
+                }),
+              ).unwrap(),
           },
+        ],
+        publish: published ? productService.publishDraftProduct : null,
+        // Después de publicar: cerrar el análisis antes lo deja aprobado, y
+        // si la publicación fallaba el ítem ya no se podía descartar (el
+        // backend rechaza descartar un análisis aprobado).
+        finalSteps: [
           {
             key: 'link-job',
             run: ({ productId }) =>
               api.post(`/product-analysis/${job._id}/complete-add-product`, { productId }),
           },
         ],
-        publish: published ? productService.publishDraftProduct : null,
       })
 
       attempts.delete(job._id)
@@ -5105,7 +5129,7 @@ function AddProductForm() {
         agentAttemptsRef.current.delete(item.job._id)
         message.info(
           halfDone
-            ? 'Producto descartado. El borrador que quedó de un intento anterior sigue en Productos: borralo desde ahí si no lo querés.'
+            ? 'Producto descartado. El producto que quedó de un intento anterior sigue en Productos: borralo desde ahí si no lo querés.'
             : 'Producto descartado, no se publicó',
         )
         removeReviewItem(item.id)
@@ -5546,11 +5570,13 @@ function AddProductForm() {
         .filter(file => file?.originFileObj)
         .map(file => ({
           key: `image:${file.uid}`,
-          run: async ({ productId, uploads }) => {
+          run: async ({ productId, uploads, clientRequestId }) => {
+            const clientUploadId = `${clientRequestId}:${file.uid}`
             const uploadResult = await dispatch(
               uploadProductImage({
                 productId,
                 imageFile: file.originFileObj,
+                clientUploadId,
                 silent: true,
               }),
             ).unwrap()
@@ -5561,7 +5587,11 @@ function AddProductForm() {
                 ? uploadResult
                 : []
 
-            const uploadedImage = imagesArray[imagesArray.length - 1]
+            // Si la subida ya estaba guardada, el backend devuelve todas las
+            // imágenes: esta no es necesariamente la última.
+            const uploadedImage =
+              imagesArray.find(image => image?.clientUploadId === clientUploadId) ||
+              imagesArray[imagesArray.length - 1]
 
             if (uploadedImage?.url) {
               uploads.set(file.uid, uploadedImage)
@@ -5651,8 +5681,9 @@ function AddProductForm() {
               clientRequestId,
             }),
           ).unwrap(),
-        steps: [...imageSteps, ...videoSteps, ...variantImageSteps, ...linkJobSteps],
+        steps: [...imageSteps, ...videoSteps, ...variantImageSteps],
         publish: publishProduct ? productService.publishDraftProduct : null,
+        finalSteps: linkJobSteps,
       })
 
       const outcome = publishProduct ? 'Producto publicado' : 'Producto guardado como borrador'

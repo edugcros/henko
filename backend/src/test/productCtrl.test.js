@@ -1010,6 +1010,51 @@ describe('alta recuperable · reintentar no duplica el producto', () => {
     expect(otra.body.data._id).not.toBe(primero.body.data._id)
   })
 
+  test('reintentar una subida de imagen que ya se guardó no la duplica', async () => {
+    const sharp = (await import('sharp')).default
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const png = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 0, b: 0 } },
+    })
+      .png()
+      .toBuffer()
+    const previousDriver = process.env.STORAGE_DRIVER
+    process.env.STORAGE_DRIVER = 'local'
+
+    const creado = await crear({ status: 'draft', visibility: 'hidden' })
+    const id = creado.body.data._id
+    const subir = clientUploadId =>
+      request(app)
+        .post(`/api/product/${id}/upload-image`)
+        .set(headers())
+        .field('clientUploadId', clientUploadId)
+        .attach('images', png, 'casco.png')
+
+    try {
+      const primera = await subir('alta-imagenes-0001:rc-upload-1')
+      const reintento = await subir('alta-imagenes-0001:rc-upload-1')
+      const otra = await subir('alta-imagenes-0001:rc-upload-2')
+
+      expect(primera.statusCode).toBe(201)
+      expect(reintento.statusCode).toBe(200)
+      expect(reintento.body.replayed).toBe(true)
+      expect(reintento.body.data).toHaveLength(1)
+      expect(otra.statusCode).toBe(201)
+      expect(otra.body.data.map(image => image.clientUploadId)).toEqual([
+        'alta-imagenes-0001:rc-upload-1',
+        'alta-imagenes-0001:rc-upload-2',
+      ])
+    } finally {
+      if (previousDriver === undefined) delete process.env.STORAGE_DRIVER
+      else process.env.STORAGE_DRIVER = previousDriver
+      await fs.rm(path.resolve('uploads', 'products', String(id)), {
+        recursive: true,
+        force: true,
+      })
+    }
+  })
+
   test('publicar el borrador lo deja visible, y un borrador borrado no se publica', async () => {
     const borrador = await crear({ status: 'draft', visibility: 'hidden' })
     const borrado = await crear({ status: 'draft', visibility: 'hidden' })

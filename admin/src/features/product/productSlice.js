@@ -157,9 +157,11 @@ export const updateAProduct = createAsyncThunk('product/update', async (payload,
 export const uploadProductImage = createAsyncThunk(
   'product/uploadImage',
   // `silent`: el alta de AddProduct sube varias imágenes y avisa una sola vez.
-  async ({ productId, imageFile, silent = false }, thunkAPI) => {
+  async ({ productId, imageFile, clientUploadId, silent = false }, thunkAPI) => {
     try {
-      const response = await productService.uploadProductImage(productId, imageFile)
+      const response = await productService.uploadProductImage(productId, imageFile, {
+        clientUploadId,
+      })
       if (!silent) toast.success('Imagen subida correctamente')
       return response
     } catch (error) {
