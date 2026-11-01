@@ -708,9 +708,8 @@ describe('historial de pagos · los cobros salen de /authorized_payments', () =>
     await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
 
     expect(res.statusCode).toBe(200)
-    expect(mockSearch).toHaveBeenCalledWith({
-      options: expect.objectContaining({ preapproval_id: 'preap-1' }),
-    })
+    // Exactamente esto: Mercado Pago rechaza `limit` con 400 en este endpoint.
+    expect(mockSearch).toHaveBeenCalledWith({ options: { preapproval_id: 'preap-1' } })
     expect(mockPreApprovalGet).not.toHaveBeenCalled()
     expect(res.body.data.invoices).toEqual([
       {
@@ -797,5 +796,56 @@ describe('historial de pagos · los cobros salen de /authorized_payments', () =>
 
     expect(res.statusCode).toBe(200)
     expect(res.body.data).toEqual({ plan: 'pro', status: 'past_due' })
+  })
+
+  test('muestra como mucho los últimos 24 cobros', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch.mockResolvedValue({
+      results: Array.from({ length: 30 }, (_, i) =>
+        cobro({ id: i, debit_date: new Date(Date.UTC(2024, i, 4)).toISOString() }),
+      ),
+    })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.body.data.invoices).toHaveLength(24)
+    expect(res.body.data.invoices[0].id).toBe('29')
+  })
+
+  test('con más de una página, lee las siguientes y se queda con los más recientes', async () => {
+    // Mercado Pago pagina de a 20: los más recientes pueden estar en la segunda.
+    const { getSubscriptionInvoices } = await preparar()
+    const fecha = i => new Date(Date.UTC(2024, i, 4)).toISOString()
+    mockSearch.mockImplementation(({ options }) => {
+      const desde = options.offset || 0
+      const results = Array.from({ length: Math.min(20, 30 - desde) }, (_, i) =>
+        cobro({ id: desde + i, debit_date: fecha(desde + i) }),
+      )
+      return Promise.resolve({ paging: { total: 30, limit: 20, offset: desde }, results })
+    })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(mockSearch).toHaveBeenCalledTimes(2)
+    expect(mockSearch).toHaveBeenLastCalledWith({
+      options: { preapproval_id: 'preap-1', offset: 20 },
+    })
+    expect(res.body.data.invoices).toHaveLength(24)
+    expect(res.body.data.invoices[0].id).toBe('29')
+  })
+
+  test('si una página siguiente falla, muestra la primera en vez de un error', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch
+      .mockResolvedValueOnce({ paging: { total: 30 }, results: [cobro({ id: 1 })] })
+      .mockRejectedValueOnce(Object.assign(new Error('Invalid value for offset'), { status: 400 }))
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data.invoices.map(invoice => invoice.id)).toEqual(['1'])
   })
 })

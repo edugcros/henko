@@ -732,8 +732,16 @@ export const cancelSubscription = async (req, res) => {
   }
 }
 
-// Un comercio cobra una vez por mes: 24 son dos años de historial.
+// Un comercio cobra una vez por mes: 24 son dos años de historial. Se recorta
+// acá y NO se manda como `limit`: /authorized_payments/search lo rechaza con
+// 400 "Invalid value for limit" (medido en producción el 01/11/2026), y el
+// historial entero salía como "Error obteniendo facturación".
 const INVOICE_HISTORY_LIMIT = 24
+
+// Sin `limit`, cada página trae 20 cobros (paging.limit en la referencia de
+// Mercado Pago) y no se sabe en qué orden vienen: para tener seguro los 24
+// más recientes hay que leer todas. Cinco páginas son 100 cobros, ocho años.
+const INVOICE_MAX_PAGES = 5
 
 /**
  * GET /api/subscriptions/invoices
@@ -766,11 +774,31 @@ export const getSubscriptionInvoices = async (req, res) => {
     // de GET /preapproval, que no existe, y el historial salía vacío para
     // todos. Viven en /authorized_payments/search (ver
     // createSubscriptionInvoiceClient).
-    let search
+    const results = []
     try {
-      search = await invoiceClient.search({
-        options: { preapproval_id: mpSubId, limit: INVOICE_HISTORY_LIMIT },
-      })
+      const first = await invoiceClient.search({ options: { preapproval_id: mpSubId } })
+      results.push(...(Array.isArray(first?.results) ? first.results : []))
+
+      const total = Number(first?.paging?.total) || 0
+      for (let page = 1; page < INVOICE_MAX_PAGES && results.length < total; page += 1) {
+        // Una página siguiente que falla no tira el historial: se muestra lo
+        // que ya llegó, que siempre incluye la primera.
+        try {
+          const next = await invoiceClient.search({
+            options: { preapproval_id: mpSubId, offset: results.length },
+          })
+          const rows = Array.isArray(next?.results) ? next.results : []
+          if (!rows.length) break
+          results.push(...rows)
+        } catch (pageError) {
+          logger.warn('No se pudo leer otra página de cobros de la suscripción', {
+            error: pageError?.message,
+            status: pageError?.status,
+            offset: results.length,
+          })
+          break
+        }
+      }
     } catch (mpError) {
       logger.error('Error obteniendo cobros de la suscripción en MP:', {
         error: mpError?.message,
@@ -779,12 +807,13 @@ export const getSubscriptionInvoices = async (req, res) => {
       return sendResponse(res, 503, false, 'Error obteniendo facturación')
     }
 
-    const invoices = (Array.isArray(search?.results) ? search.results : [])
+    const invoices = results
       // Si la búsqueda ignorara el filtro, la respuesta traería cobros de
       // otras suscripciones de la plataforma: los de otros comercios.
       .filter(invoice => String(invoice?.preapproval_id || '') === String(mpSubId))
       .map(mapSubscriptionInvoice)
       .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
+      .slice(0, INVOICE_HISTORY_LIMIT)
 
     return sendResponse(res, 200, true, 'Facturas obtenidas', {
       invoices,
