@@ -1,5 +1,4 @@
 // 📁 src/controllers/productAnalysisController.js
-import mongoose from 'mongoose'
 import asyncHandler from 'express-async-handler'
 import crypto from 'crypto'
 import fs from 'fs/promises'
@@ -25,12 +24,10 @@ import {
 } from '../utils/requestContext.js'
 import { escapeRegex } from '../utils/escapeRegex.js'
 import { buildProductSku } from '../utils/slugService.js'
+import { createProductRecord } from '../services/productCreationService.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
-import {
-  buildAutonomousProductPayload,
-  buildNormalizedDraftFromAnalysis,
-} from '../services/autonomousProductBuilder.js'
+import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
 
 // =====================================================
 // CONSTANTES
@@ -1104,7 +1101,7 @@ export const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
   }
 }
 
-const createProductFromAnalysisJob = async ({
+export const createProductFromAnalysisJob = async ({
   job,
   overrides = {},
   userId = null,
@@ -1124,7 +1121,15 @@ const createProductFromAnalysisJob = async ({
     productPayload.aiNeedsReview = false
   }
 
-  const product = await Product.create(productPayload)
+  // Por el mismo servicio que el alta del panel: slug único, aviso al catálogo
+  // del agente de IA, plantilla de la subcategoría, y si ese análisis ya tiene
+  // producto (aiAgentJobId), se usa ese en vez de crear otro. Antes era un
+  // Product.create pelado.
+  const { product } = await createProductRecord({
+    tenantId: job.tenantId,
+    userId,
+    data: productPayload,
+  })
 
   job.status = JOB_STATUS.APPROVED
   job.createdProductId = product._id

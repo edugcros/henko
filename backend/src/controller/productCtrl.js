@@ -15,7 +15,12 @@ import {
   normalizeCatalogKey,
   upsertSubcategoryVariantTemplate,
 } from '../services/catalogCategoryService.js'
-import { registerAiCatalogChangedEvent } from '../services/aiAgent/aiCatalogEventService.js'
+import {
+  CATALOG_CHANGE_TYPES,
+  createProductRecord,
+  registerProductCatalogChange,
+  syncProductCatalogTemplate,
+} from '../services/productCreationService.js'
 
 import expressAsyncHandler from 'express-async-handler'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
@@ -34,7 +39,7 @@ import {
 import { MAX_VIDEO_DURATION_SECONDS } from '../../config/videoUploadPolicy.js'
 import { getUserIdFromRequest, isValidObjectId } from '../utils/requestContext.js'
 import { validateMongoDbIdMiddleware } from '../utils/validation.js'
-import { buildProductSku, generateUniqueSlug } from '../utils/slugService.js'
+import { generateUniqueSlug } from '../utils/slugService.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 import logger from '../../config/logger.js'
@@ -1263,61 +1268,6 @@ const sendControllerError = (res, error, fallbackMessage) => {
   })
 }
 
-const syncProductCatalogTemplate = async ({ tenantId, product, userId }) => {
-  if (!product?.categoria || !product?.subcategoria) return null
-
-  return upsertSubcategoryVariantTemplate({
-    tenantId,
-    category: product.categoria,
-    subcategory: product.subcategoria,
-    variantAttributes: product.variantAttributes,
-    variants: product.variants,
-    productAttributes: product.productAttributes,
-    categoryAttributes: product.categoryAttributes,
-    specifications: product.specifications,
-    userId,
-  })
-}
-
-const CATALOG_CHANGE_TYPES = {
-  PRODUCT_CREATED: 'product_created',
-  PRODUCT_UPDATED: 'product_updated',
-  PRODUCT_DELETED: 'product_deleted',
-  PRICE_CHANGED: 'price_changed',
-  STOCK_CHANGED: 'stock_changed',
-  VARIANT_CHANGED: 'variant_changed',
-  CATEGORY_CHANGED: 'category_changed',
-}
-
-const registerProductCatalogChange = async ({
-  tenantId,
-  productId,
-  changeType = CATALOG_CHANGE_TYPES.PRODUCT_UPDATED,
-  source = 'product_controller',
-  actorId = '',
-  metadata = {},
-} = {}) => {
-  try {
-    return await registerAiCatalogChangedEvent({
-      tenantId,
-      productId,
-      changeType,
-      source,
-      actorId,
-      metadata,
-    })
-  } catch (error) {
-    logger.warn('[Product] No se pudo invalidar snapshot de catálogo IA', {
-      tenantId: tenantId ? String(tenantId) : null,
-      productId: productId ? String(productId) : null,
-      changeType,
-      error: error.message,
-    })
-
-    return null
-  }
-}
-
 const getCatalogChangeTypeForProductUpdate = changedFields => {
   const fields = new Set(changedFields || [])
 
@@ -1473,42 +1423,6 @@ const normalizeClientRequestId = value => {
   return CLIENT_REQUEST_ID_PATTERN.test(clean) ? clean : null
 }
 
-/**
- * El producto que ya dejó un intento anterior de esta misma alta, si existe.
- *
- * El panel crea el producto y después sube imágenes, video y la imagen de
- * cada variante en pedidos separados. Si falla uno de esos pasos y la persona
- * vuelve a guardar, crear otra vez dejaba un duplicado (otro slug, otro SKU).
- *
- * - `clientRequestId`: el panel lo genera una vez por alta y lo repite en
- *   cada reintento.
- * - `aiAgentJobId`: un análisis termina en un solo producto, venga del panel
- *   o del alta automática del servidor (que lo registra en el trabajo como
- *   createdProductId).
- */
-const findAlreadyCreatedProduct = async ({ tenantId, clientRequestId, aiAgentJobId }) => {
-  const alive = { tenantId, isDeleted: { $ne: true } }
-
-  if (clientRequestId) {
-    const byRequest = await Product.findOne({ ...alive, clientRequestId }).setOptions({ tenantId })
-    if (byRequest) return byRequest
-  }
-
-  if (!isValidObjectId(aiAgentJobId)) return null
-
-  const byJob = await Product.findOne({ ...alive, aiAgentJobId }).setOptions({ tenantId })
-  if (byJob) return byJob
-
-  const job = await ProductAnalysisJob.findOne({ _id: aiAgentJobId, tenantId })
-    .select('createdProductId')
-    .setOptions({ tenantId })
-    .lean()
-
-  if (!job?.createdProductId) return null
-
-  return Product.findOne({ ...alive, _id: job.createdProductId }).setOptions({ tenantId })
-}
-
 const sendAlreadyCreatedProduct = (res, product) =>
   res.status(200).json({
     success: true,
@@ -1528,23 +1442,13 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     const userId = getRequestUserId(req)
 
     const clientRequestId = normalizeClientRequestId(req.body.clientRequestId)
-    const alreadyCreated = await findAlreadyCreatedProduct({
-      tenantId,
-      clientRequestId,
-      aiAgentJobId: req.body.aiAgentJobId,
-    })
-
-    if (alreadyCreated) return sendAlreadyCreatedProduct(res, alreadyCreated)
-
     const finalTitle = normalizeText(req.body.title, DEFAULT_PRODUCT_TITLE)
 
     // El slug que cargó la persona manda; si no hay, sale del título. Antes
     // salía siempre del título y el «Slug URL» del formulario solo quedaba en
-    // seo.slug, distinto del que usa la tienda.
-    const slug = await generateUniqueSlug({
-      title: readRequestedSlug(req.body) || finalTitle,
-      tenantId,
-    })
+    // seo.slug, distinto del que usa la tienda. createProductRecord lo hace
+    // único; seo.slug lo copia el modelo.
+    const slugBase = readRequestedSlug(req.body) || finalTitle
 
     const rawVariants = safeJsonParse(req.body.variants, req.body.variants || [])
 
@@ -1587,7 +1491,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       body: req.body,
       title: finalTitle,
       description: req.body.description,
-      slug,
+      slug: slugBase,
     })
     const logistics = normalizeLogisticsPayload(req.body)
 
@@ -1626,123 +1530,70 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
       req.body.aiNeedsReview === 'true' ||
       false
 
-    const normalizedProductSku = normalizeSku(req.body.sku)
+    const { product, replayed } = await createProductRecord({
+      tenantId,
+      userId,
+      clientRequestId,
+      slugBase,
+      data: {
+        ...safeBody,
 
-    const productSku =
-      normalizedProductSku ||
-      buildProductSku({
         title: finalTitle,
-        tenantId,
-      })
 
-    const product = new Product({
-      ...safeBody,
+        variants,
+        variantAttributes,
+        hasVariants,
 
-      title: finalTitle,
-      slug,
-      tenantId,
+        // Sin SKU cargado, createProductRecord genera uno.
+        sku: normalizeSku(req.body.sku) || undefined,
 
-      variants,
-      variantAttributes,
-      hasVariants,
+        images: [],
 
-      sku: productSku,
-      ...(clientRequestId ? { clientRequestId } : {}),
+        seo,
+        logistics,
+        productAttributes,
+        categoryAttributes,
+        specifications,
+        filterAttributes,
 
-      images: [],
+        atributos,
+        tags,
 
-      seo,
-      logistics,
-      productAttributes,
-      categoryAttributes,
-      specifications,
-      filterAttributes,
+        price: toSafeNumber(req.body.price, 0),
+        stock: toSafeNumber(req.body.stock, 0),
 
-      atributos,
-      tags,
+        // =====================================================
+        // 🧠 AI METADATA
+        // =====================================================
+        iaGenerated,
+        aiOriginalOutput: aiOriginal,
+        aiConfidence,
+        aiSource,
+        aiImageHash,
+        aiNeedsReview,
+        aiAgentJobId: isValidObjectId(req.body.aiAgentJobId) ? req.body.aiAgentJobId : null,
+        aiAgentScheduledAt: req.body.aiAgentScheduledAt
+          ? new Date(req.body.aiAgentScheduledAt)
+          : null,
+        aiAutomationMode: ['manual', 'agent-assisted', 'agent-autosave'].includes(
+          req.body.aiAutomationMode,
+        )
+          ? req.body.aiAutomationMode
+          : 'manual',
 
-      price: toSafeNumber(req.body.price, 0),
-      stock: toSafeNumber(req.body.stock, 0),
+        audit: {
+          createdSource: req.body.aiAgentJobId ? 'agent' : iaGenerated ? 'ai' : 'manual',
+          lastSource: req.body.aiAutomationMode || req.body.aiSource || 'createProduct',
+        },
 
-      // =====================================================
-      // 🧠 AI METADATA
-      // =====================================================
-      iaGenerated,
-      aiOriginalOutput: aiOriginal,
-      aiConfidence,
-      aiSource,
-      aiImageHash,
-      aiNeedsReview,
-      aiAgentJobId: isValidObjectId(req.body.aiAgentJobId) ? req.body.aiAgentJobId : null,
-      aiAgentScheduledAt: req.body.aiAgentScheduledAt
-        ? new Date(req.body.aiAgentScheduledAt)
-        : null,
-      aiAutomationMode: ['manual', 'agent-assisted', 'agent-autosave'].includes(
-        req.body.aiAutomationMode,
-      )
-        ? req.body.aiAutomationMode
-        : 'manual',
-
-      audit: {
-        createdSource: req.body.aiAgentJobId ? 'agent' : iaGenerated ? 'ai' : 'manual',
-        lastSource: req.body.aiAutomationMode || req.body.aiSource || 'createProduct',
-      },
-
-      createdBy: userId,
-      updatedBy: userId,
-    })
-
-    try {
-      await product.save()
-    } catch (saveError) {
-      // Dos pedidos del mismo intento a la vez (doble clic): pasa uno y el
-      // otro devuelve el producto que creó el primero. El choque puede venir
-      // del índice de clientRequestId o antes del de slug, porque los dos
-      // pedidos calcularon el mismo slug libre.
-      if (saveError?.code === 11000 && clientRequestId) {
-        const winner = await findAlreadyCreatedProduct({ tenantId, clientRequestId })
-        if (winner) return sendAlreadyCreatedProduct(res, winner)
-      }
-
-      if (saveError?.code === 11000 && saveError.keyPattern?.clientRequestId) {
-        return res.status(409).json({
-          success: false,
-          message:
-            'Este intento de alta ya se usó. Recargá la página y volvé a cargar el producto.',
-        })
-      }
-
-      throw saveError
-    }
-
-    await registerProductCatalogChange({
-      tenantId,
-      productId: product._id,
-      changeType: CATALOG_CHANGE_TYPES.PRODUCT_CREATED,
-      actorId: userId,
-      metadata: {
-        title: product.title,
-        sku: product.sku,
-        iaGenerated: product.iaGenerated,
-        aiAgentJobId: product.aiAgentJobId ? String(product.aiAgentJobId) : '',
+        createdBy: userId,
+        updatedBy: userId,
       },
     })
 
-    try {
-      await syncProductCatalogTemplate({
-        tenantId,
-        product,
-        userId,
-      })
-    } catch (catalogError) {
-      logger.error('❌ No se pudo sincronizar la plantilla de subcategoría', {
-        category: product.categoria,
-        error: catalogError.message,
-        productId: String(product._id),
-        subcategory: product.subcategoria,
-        tenantId: String(tenantId),
-      })
-    }
+    // Un reintento del mismo alta: el producto ya existía y no se vuelve a
+    // aprender de él.
+    if (replayed) return sendAlreadyCreatedProduct(res, product)
 
     // =====================================================
     // 🧠 HUMAN FEEDBACK / AUTO LEARNING
