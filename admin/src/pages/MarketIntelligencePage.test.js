@@ -23,7 +23,14 @@ jest.unstable_mockModule('../features/product/productService', () => ({
   default: { getAdminProducts: mockGetProducts },
 }))
 
-const { default: MarketIntelligencePage } = await import('./MarketIntelligencePage.js')
+const {
+  default: MarketIntelligencePage,
+  buildAnalyzeRequest,
+  describeCostSource,
+  EMPTY_COSTS,
+  percent,
+  validateCosts,
+} = await import('./MarketIntelligencePage.js')
 
 // Un análisis real: el buscador de precios contestó, la búsqueda con IA no.
 const RESULTADO = {
@@ -234,12 +241,39 @@ describe('Análisis de mercado · lo que se manda', () => {
     })
   })
 
-  test('Enter con el desplegable cerrado analiza', async () => {
+  test('Enter con el desplegable cerrado analiza una sola vez', async () => {
     render(<MarketIntelligencePage />)
 
     await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba{Escape}{Enter}')
 
     await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
+    expect(mockAnalyze).toHaveBeenCalledTimes(1)
+    expect(mockAnalyze.mock.calls[0][0].product).toBe('Yerba')
+  })
+
+  // Antes Enter con el desplegable abierto solo lo cerraba y había que
+  // apretarlo otra vez. Pasa con sugerencias a la vista y también sin ellas:
+  // sin coincidencias en el catálogo el desplegable sigue "abierto" aunque no
+  // se dibuje nada, y era el caso más común al evaluar un producto nuevo.
+  test('Enter con sugerencias a la vista analiza el texto escrito', async () => {
+    mockGetProducts.mockResolvedValue({ data: [{ _id: 'p1', title: 'Yerba Mate Suave' }] })
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba')
+    await screen.findByRole('listbox')
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalledTimes(1))
+    expect(mockAnalyze.mock.calls[0][0].product).toBe('Yerba')
+    expect(mockAnalyze.mock.calls[0][0].productId).toBeUndefined()
+  })
+
+  test('Enter sin coincidencias en el catálogo analiza a la primera', async () => {
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba{Enter}')
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalledTimes(1))
     expect(mockAnalyze.mock.calls[0][0].product).toBe('Yerba')
   })
 
@@ -292,7 +326,9 @@ describe('Análisis de mercado · lo que se muestra', () => {
     expect(screen.getByText('ARS 6.100')).toBeDefined()
     expect(screen.getByText(/ARS 1\.900/)).toBeDefined()
     expect(screen.getByText(/ARS -1\.650/)).toBeDefined()
-    expect(screen.getByText(/23\.8% de margen/)).toBeDefined()
+    // Coma decimal: con punto, "23.8%" al lado de "ARS 1.900" se lee como
+    // veintitrés mil.
+    expect(screen.getByText(/23,8% de margen/)).toBeDefined()
   })
 
   test('una rentabilidad inviable muestra el motivo', async () => {
@@ -343,5 +379,160 @@ describe('Análisis de mercado · lo que se muestra', () => {
     const link = await screen.findByRole('link', { name: 'Queso Ricolact 1kg' })
     expect(link.getAttribute('href')).toBe('https://tienda.example/q')
     expect(link.getAttribute('rel')).toMatch(/noopener/)
+  })
+})
+
+// ─── Rediseño ────────────────────────────────────────────────────────────
+
+const QUESO = {
+  _id: '64b000000000000000000001',
+  title: 'Queso de Campo Ricolact',
+  costoUnitario: 5200,
+}
+
+describe('Análisis de mercado · producto del catálogo', () => {
+  test('elegido del desplegable, viaja el productId y la ficha pone el costo', async () => {
+    mockGetProducts.mockResolvedValue({ data: [QUESO] })
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Queso')
+    await userEvent.click(await screen.findByText('Queso de Campo Ricolact'))
+
+    expect(await screen.findByText(/Costo en la ficha: \$5\.200/)).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
+
+    expect(mockAnalyze.mock.calls[0][0]).toEqual({
+      product: 'Queso de Campo Ricolact',
+      country: 'AR',
+      forceRefresh: false,
+      productId: QUESO._id,
+      costs: {},
+    })
+  })
+
+  test('si el texto cambia, deja de ser ese producto y no manda su productId', async () => {
+    mockGetProducts.mockResolvedValue({ data: [QUESO] })
+    render(<MarketIntelligencePage />)
+
+    const campo = screen.getByLabelText(/producto o categoría/i)
+    await userEvent.type(campo, 'Queso')
+    await userEvent.click(await screen.findByText('Queso de Campo Ricolact'))
+    await userEvent.type(campo, ' rallado{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
+    expect(mockAnalyze.mock.calls[0][0].productId).toBeUndefined()
+    expect(screen.queryByText(/Costo en la ficha/)).toBeNull()
+  })
+
+  test('se muestra de dónde salió cada costo', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: { ...RESULTADO, profitability: RENTABILIDAD },
+      costSources: {
+        unitCost: 'stored',
+        paymentFeePercent: 'measured',
+        paymentFeeSampleSize: 40,
+        shippingCost: 'override',
+        platformFeePercent: 'missing',
+        taxPercent: 'missing',
+      },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText('De dónde salen tus costos')).toBeDefined()
+    expect(screen.getByText('De la ficha del producto')).toBeDefined()
+    expect(screen.getByText('Medida en tus últimas 40 ventas cobradas')).toBeDefined()
+    expect(screen.getByText('Lo cargaste vos')).toBeDefined()
+  })
+})
+
+describe('Análisis de mercado · costos', () => {
+  test('un costo inválido frena el análisis y dice por qué', async () => {
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba{Escape}')
+    await userEvent.click(screen.getByText('Calcular rentabilidad'))
+    await userEvent.type(screen.getByLabelText(/Impuestos/i), '150')
+
+    expect(screen.getByText('Entre 0 y 100')).toBeDefined()
+    expect(screen.getByRole('button', { name: /^Analizar$/i }).disabled).toBe(true)
+  })
+
+  test('sin catálogo, la comisión de cobro viaja aparte de la del marketplace', async () => {
+    render(<MarketIntelligencePage />)
+
+    await userEvent.type(screen.getByLabelText(/producto o categoría/i), 'Yerba{Escape}')
+    await userEvent.click(screen.getByText('Calcular rentabilidad'))
+    await userEvent.type(screen.getByLabelText(/Costo por unidad/i), '1000')
+    await userEvent.type(screen.getByLabelText(/Comisión del marketplace/i), '13')
+    await userEvent.type(screen.getByLabelText(/Comisión de cobro/i), '6')
+    await userEvent.click(screen.getByRole('button', { name: /^Analizar$/i }))
+
+    await waitFor(() => expect(mockAnalyze).toHaveBeenCalled())
+    expect(mockAnalyze.mock.calls[0][0].costs).toEqual({
+      unitCost: 1000,
+      shippingCost: 0,
+      platformFeePercent: 13,
+      paymentFeePercent: 6,
+      taxPercent: 0,
+    })
+  })
+
+  test('validateCosts: vacío vale, cero de costo no, porcentajes entre 0 y 100', () => {
+    expect(validateCosts(EMPTY_COSTS)).toEqual({})
+    expect(validateCosts({ ...EMPTY_COSTS, unitCost: '0' }).unitCost).toBeDefined()
+    expect(validateCosts({ ...EMPTY_COSTS, shippingCost: '-1' }).shippingCost).toBeDefined()
+    expect(validateCosts({ ...EMPTY_COSTS, taxPercent: '100' })).toEqual({})
+    expect(validateCosts({ ...EMPTY_COSTS, paymentFeePercent: '101' }).paymentFeePercent).toBe(
+      'Entre 0 y 100',
+    )
+  })
+
+  test('buildAnalyzeRequest: con catálogo solo viaja lo que se quiere sobrescribir', () => {
+    const pedido = buildAnalyzeRequest({
+      product: ' Queso ',
+      country: 'UY',
+      forceRefresh: true,
+      costs: { ...EMPTY_COSTS, taxPercent: '21' },
+      catalogProduct: QUESO,
+    })
+
+    expect(pedido).toEqual({
+      product: 'Queso',
+      country: 'UY',
+      forceRefresh: true,
+      productId: QUESO._id,
+      costs: { taxPercent: 21 },
+    })
+  })
+
+  test('describeCostSource y percent', () => {
+    expect(describeCostSource('paymentFeePercent', { paymentFeePercent: 'missing' })).toMatch(
+      /cuenta 0%/,
+    )
+    expect(describeCostSource('unitCost', {})).toBeNull()
+    expect(percent(undefined)).toBe('—')
+    expect(percent(-37.1)).toBe('-37,1%')
+  })
+
+  test('un escenario sin margen no rompe la pantalla', async () => {
+    mockAnalyze.mockResolvedValue({
+      success: true,
+      data: {
+        ...RESULTADO,
+        profitability: {
+          ...RENTABILIDAD,
+          scenarios: { atMedian: { price: 8000, profit: 1900, profitable: true } },
+        },
+      },
+    })
+
+    await analizar()
+
+    expect(await screen.findByText('— de margen')).toBeDefined()
   })
 })

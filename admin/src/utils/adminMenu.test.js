@@ -100,4 +100,12 @@ describe('cobertura de rutas', () => {
 
     expect(sueltas).toEqual([])
   })
+
+  test('el análisis de mercado está en Productos con su nombre, no suelto al final', () => {
+    const productos = adminMenuItems.find(item => item.key === 'productos')
+    const item = productos.children.find(child => child.key === 'market-intelligence')
+
+    expect(item?.label).toBe('Análisis de mercado')
+    expect(adminMenuItems.some(entry => entry.key === 'market-intelligence')).toBe(false)
+  })
 })
