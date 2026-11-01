@@ -1030,6 +1030,72 @@ const sanitizeCreateProductInput = body => ({
   iaSource: normalizeText(body.iaSource, 'manual'),
 })
 
+/**
+ * Stock con línea de base: lo que el formulario vio al abrirse.
+ *
+ * QUÉ PROBLEMA RESUELVE. El formulario de edición manda siempre el stock que
+ * mostraba al cargarse, y se asignaba tal cual. Si mientras estaba abierto se
+ * vendían unidades (las ventas descuentan con $inc), guardar cualquier cambio
+ * —un precio, una descripción— devolvía el stock al valor viejo: se vendía lo
+ * que ya no había.
+ *
+ * Con `stockBaseline` el cambio se aplica como DIFERENCIA sobre el valor
+ * actual de la base: actual + (nuevo − línea de base). Sin línea de base se
+ * comporta como siempre (reemplaza), para no romper a ningún llamador.
+ *
+ * Se calcula sobre el documento recién leído y devuelve un objeto NUEVO: si la
+ * transacción se reintenta, `updates` se reutiliza y mutarlo sumaría la
+ * diferencia dos veces.
+ */
+const readStockBaseline = value => {
+  if (value === undefined || value === null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : null
+}
+
+const applyDelta = (current, next, baseline) =>
+  Math.max(0, Math.round(Number(current || 0) + (Number(next || 0) - baseline)))
+
+export const applyStockBaselines = ({ product, updates, stockBaseline, variantBaselines }) => {
+  const result = { ...updates }
+
+  if (result.stock !== undefined && stockBaseline !== null) {
+    result.stock = applyDelta(product.stock, result.stock, stockBaseline)
+  }
+
+  if (Array.isArray(result.variants) && variantBaselines.size > 0) {
+    const currentById = new Map(
+      (product.variants || []).map(variant => [String(variant._id), variant]),
+    )
+
+    result.variants = result.variants.map(variant => {
+      const id = variant._id ? String(variant._id) : null
+      const baseline = id ? variantBaselines.get(id) : undefined
+      const current = id ? currentById.get(id) : undefined
+
+      // Variante nueva, o sin línea de base: el valor va tal cual.
+      if (baseline === undefined || !current) return variant
+
+      return { ...variant, stock: applyDelta(current.stock, variant.stock, baseline) }
+    })
+  }
+
+  return result
+}
+
+const readVariantBaselines = rawVariants => {
+  const baselines = new Map()
+  if (!Array.isArray(rawVariants)) return baselines
+
+  for (const variant of rawVariants) {
+    const id = variant?._id || variant?.id
+    const baseline = readStockBaseline(variant?.stockBaseline)
+    if (id && baseline !== null) baselines.set(String(id), baseline)
+  }
+
+  return baselines
+}
+
 const sanitizeUpdateProductInput = body => {
   const updates = {}
 
@@ -2181,6 +2247,10 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
     }
 
     const updates = sanitizeUpdateProductInput(req.body)
+    const stockBaseline = readStockBaseline(req.body.stockBaseline)
+    const variantBaselines = readVariantBaselines(
+      req.body.variants !== undefined ? safeJsonParse(req.body.variants, req.body.variants) : [],
+    )
 
     if (req.body.title !== undefined) {
       const nextTitle = normalizeText(req.body.title, product.title)
@@ -2368,7 +2438,11 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
         if (!product) throw new Error('El producto dejó de existir durante la edición')
       }
 
-      Object.assign(product, updates)
+      // Sobre el documento de ESTE intento: con transacción, el recién leído.
+      Object.assign(
+        product,
+        applyStockBaselines({ product, updates, stockBaseline, variantBaselines }),
+      )
       product.$locals.priceChange = contextoDePrecio
 
       await product.save(session ? { session } : {})

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -333,7 +333,7 @@ const resolveVariantImage = (variantImage, productImages = []) => {
   )
 }
 
-const mapServerVariantToEditor = (variant, index, productImages = []) => {
+export const mapServerVariantToEditor = (variant, index, productImages = []) => {
   const attributes = ensureVariantAttributes(variant)
 
   return {
@@ -345,6 +345,9 @@ const mapServerVariantToEditor = (variant, index, productImages = []) => {
     price: normalizeNumber(variant.price),
     costoUnitario: normalizeOptionalNumber(variant.costoUnitario),
     stock: normalizeNumber(variant.stock),
+    // El stock que se vio al cargar: el backend aplica la diferencia sobre el
+    // valor actual, así una venta ocurrida mientras se edita no se pisa.
+    stockBaseline: normalizeNumber(variant.stock),
     sku: variant.sku || '',
     isActive: variant.isActive !== false,
     assignedImage: resolveVariantImage(variant.image, productImages),
@@ -552,7 +555,7 @@ const validateVariantsBeforeSave = variants => {
   return null
 }
 
-const buildVariantPayload = (variant, index) => {
+export const buildVariantPayload = (variant, index) => {
   const attributes = ensureVariantAttributes(variant)
   const cleanSku = normalizeSkuForPayload(variant.sku)
   const variantKey =
@@ -580,6 +583,7 @@ const buildVariantPayload = (variant, index) => {
   if (variant.variantId) {
     payload._id = variant.variantId
     payload.id = variant.variantId
+    if (Number.isFinite(variant.stockBaseline)) payload.stockBaseline = variant.stockBaseline
   }
 
   if (cleanSku) {
@@ -999,6 +1003,9 @@ const EditProduct = () => {
   const [isInitializing, setIsInitializing] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [loadError, setLoadError] = useState(null)
+  // Stock del producto simple tal como se cargó en el formulario (ver
+  // stockBaseline en buildVariantPayload): la línea de base para la diferencia.
+  const stockBaselineRef = useRef(null)
   const [productImages, setProductImages] = useState([])
   const [variantTab, setVariantTab] = useState('generator')
   const [productVideo, setProductVideo] = useState(null)
@@ -1083,6 +1090,8 @@ const EditProduct = () => {
       )
       const seoValues = normalizeSeoFromProduct(normalizedProduct)
       const logisticsValues = normalizeLogisticsFromProduct(normalizedProduct)
+
+      stockBaselineRef.current = normalizeNumber(normalizedProduct.stock)
 
       form.setFieldsValue({
         title: normalizedProduct.title || '',
@@ -1482,6 +1491,10 @@ const EditProduct = () => {
         price: normalizeNumber(values.price),
         costoUnitario: normalizeOptionalNumber(values.costoUnitario),
         stock: hasVariants ? totalVariantStock : normalizeNumber(values.stock),
+        // Con variantes el stock del producto lo recalcula el backend.
+        ...(!hasVariants && Number.isFinite(stockBaselineRef.current)
+          ? { stockBaseline: stockBaselineRef.current }
+          : {}),
         hasVariants,
         visibility: normalizedProduct?.visibility || 'visible',
         status: normalizedProduct?.status || 'active',

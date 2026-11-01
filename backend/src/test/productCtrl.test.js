@@ -6,6 +6,8 @@ import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import { authHeaders, createTestTenant, createTestUser, getCSRFToken } from './testSetup.js'
+import { decrementLineStock } from '../services/orderInventoryService.js'
+import { applyStockBaselines } from '../controller/productCtrl.js'
 
 describe('product controller', () => {
   let tenantContext
@@ -392,5 +394,215 @@ describe('producto · ida y vuelta (alta → lectura → edición → lectura)',
 
     expect([403, 404]).toContain(res.statusCode)
     expect((await leer(id)).price).toBe(50000)
+  })
+})
+
+// ─── PR 1: una venta mientras se edita no se pisa ───────────────────────────
+//
+// El formulario de edición manda el stock que vio al abrirse. Si mientras
+// tanto se vendía, guardar cualquier cambio devolvía el stock al valor viejo
+// y se vendía lo que ya no había. Con `stockBaseline` el backend aplica la
+// diferencia sobre el valor actual. Las ventas se simulan con el mismo
+// decrementLineStock que usan los pedidos.
+
+describe('stock · una venta mientras se edita no se pisa', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+  const editar = (id, body) =>
+    request(app)
+      .put(`/api/product/${id}`)
+      .set(
+        authHeaders({
+          token: admin.token,
+          domain: ctx.adminDomain,
+          csrfToken: csrfAdmin.csrfToken,
+          csrfCookie: csrfAdmin.csrfCookie,
+        }),
+      )
+      .send(body)
+
+  const crear = async extra => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(
+        authHeaders({
+          token: admin.token,
+          domain: ctx.adminDomain,
+          csrfToken: csrfAdmin.csrfToken,
+          csrfCookie: csrfAdmin.csrfCookie,
+        }),
+      )
+      .send({
+        title: `Casco ${Math.random()}`,
+        description: 'Casco integral',
+        marca: 'Henko',
+        categoria: 'Accesorios',
+        subcategoria: 'Cascos',
+        price: 30000,
+        status: 'active',
+        visibility: 'visible',
+        ...extra,
+      })
+    expect(res.statusCode).toBe(201)
+    return res.body.data._id
+  }
+
+  const vender = (productId, count, variantId = null) =>
+    decrementLineStock({
+      tenantId: ctx.tenant._id,
+      line: { product: productId, count, variantId, titleSnapshot: 'Casco' },
+    })
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'stock-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('cambiar el precio con el formulario abierto no devuelve el stock vendido', async () => {
+    const id = await crear({ stock: 10 })
+    await vender(id, 2) // queda en 8 mientras el formulario muestra 10
+
+    const res = await editar(id, { price: 32000, stock: 10, stockBaseline: 10 })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).stock).toBe(8)
+    expect((await leer(id)).price).toBe(32000)
+  })
+
+  test('si el comercio suma unidades, se suman sobre lo que quedó', async () => {
+    const id = await crear({ stock: 10 })
+    await vender(id, 2) // 8
+
+    await editar(id, { stock: 15, stockBaseline: 10 }) // +5 cargadas
+
+    expect((await leer(id)).stock).toBe(13)
+  })
+
+  test('nunca queda negativo', async () => {
+    const id = await crear({ stock: 5 })
+    await vender(id, 3) // 2
+
+    await editar(id, { stock: 0, stockBaseline: 5 }) // el comercio lo pone en 0
+
+    expect((await leer(id)).stock).toBe(0)
+  })
+
+  test('con variantes: cada una conserva lo vendido y aplica su propio cambio', async () => {
+    const id = await crear({
+      hasVariants: true,
+      variantAttributes: [{ name: 'talle', label: 'Talle', type: 'select' }],
+      variants: [
+        { attributes: { talle: 'M' }, price: 30000, stock: 4, sku: 'CASCO-M' },
+        { attributes: { talle: 'L' }, price: 30000, stock: 6, sku: 'CASCO-L' },
+      ],
+    })
+    const creado = await leer(id)
+    const [m, l] = creado.variants
+    await vender(id, 1, m._id) // M queda en 3
+
+    const res = await editar(id, {
+      hasVariants: true,
+      variants: [
+        {
+          _id: m._id,
+          attributes: { talle: 'M' },
+          price: 30000,
+          stock: 4,
+          stockBaseline: 4,
+          sku: 'CASCO-M',
+        },
+        {
+          _id: l._id,
+          attributes: { talle: 'L' },
+          price: 30000,
+          stock: 9,
+          stockBaseline: 6,
+          sku: 'CASCO-L',
+        },
+      ],
+    })
+
+    expect(res.statusCode).toBe(200)
+    const despues = await leer(id)
+    const porSku = Object.fromEntries(despues.variants.map(v => [v.sku, v.stock]))
+    expect(porSku).toEqual({ 'CASCO-M': 3, 'CASCO-L': 9 })
+    expect(despues.stock).toBe(12)
+  })
+
+  test('una variante nueva usa su valor tal cual', async () => {
+    const id = await crear({
+      hasVariants: true,
+      variantAttributes: [{ name: 'talle', label: 'Talle', type: 'select' }],
+      variants: [{ attributes: { talle: 'M' }, price: 30000, stock: 4, sku: 'NUEVA-M' }],
+    })
+    const [m] = (await leer(id)).variants
+
+    await editar(id, {
+      hasVariants: true,
+      variants: [
+        {
+          _id: m._id,
+          attributes: { talle: 'M' },
+          price: 30000,
+          stock: 4,
+          stockBaseline: 4,
+          sku: 'NUEVA-M',
+        },
+        { attributes: { talle: 'XL' }, price: 30000, stock: 2, stockBaseline: 99, sku: 'NUEVA-XL' },
+      ],
+    })
+
+    const porSku = Object.fromEntries((await leer(id)).variants.map(v => [v.sku, v.stock]))
+    expect(porSku).toEqual({ 'NUEVA-M': 4, 'NUEVA-XL': 2 })
+  })
+
+  test('applyStockBaselines no devuelve stock negativo por su cuenta', () => {
+    // El modelo también lo corrige al guardar, pero la diferencia no puede
+    // depender de eso: el resultado tiene que ser válido antes de llegar ahí.
+    const resultado = applyStockBaselines({
+      product: { stock: 2, variants: [] },
+      updates: { stock: 0 },
+      stockBaseline: 5,
+      variantBaselines: new Map(),
+    })
+
+    expect(resultado.stock).toBe(0)
+  })
+
+  test('applyStockBaselines no acumula si la transacción se reintenta', () => {
+    const product = { stock: 8, variants: [] }
+    const updates = { stock: 10, price: 1 }
+
+    const primero = applyStockBaselines({
+      product,
+      updates,
+      stockBaseline: 10,
+      variantBaselines: new Map(),
+    })
+    const segundo = applyStockBaselines({
+      product,
+      updates,
+      stockBaseline: 10,
+      variantBaselines: new Map(),
+    })
+
+    expect(primero.stock).toBe(8)
+    expect(segundo.stock).toBe(8)
+    // `updates` no se toca: es lo que se reutiliza en el reintento.
+    expect(updates.stock).toBe(10)
   })
 })
