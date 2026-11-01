@@ -1,12 +1,19 @@
 // 📁 src/services/autonomousProductBuilder.js
 //
-// Convierte la salida completa (no recortada) de aiVisionService en un
-// documento de Product listo para Product.create(), sin intervención
-// humana. Es la contraparte de servidor de la lógica que hoy vive en
-// admin/src/pages/AddProduct.js (normalizeAiAnalysisForForm /
-// buildProductPayloadFromAnalysis), portada para que el agente pueda
-// producir el mismo resultado a las 4am sin que nadie tenga la pestaña
-// de AddProduct abierta.
+// El normalizador de la salida de la IA: convierte la salida completa (no
+// recortada) de aiVisionService en la estructura «lista para formulario» que
+// usa AddProduct (buildNormalizedDraftFromAnalysis).
+//
+// Es el único: lo devuelven /product/analyze-visual y el import de un análisis
+// ya hecho (withNormalizedDraft), y AddProduct lo usa tal cual. Antes solo lo
+// devolvía el import, así que una foto analizada en el momento llenaba el
+// formulario con la copia de esta lógica que tiene AddProduct, y la misma foto
+// importada de la cola, con esta.
+//
+// Acá también vivía buildAutonomousProductPayload, que armaba un Product
+// completo para un alta 100% automática. Ningún camino lo usaba: el alta
+// automática real arma sus datos con buildProductDraftFromJob y crea por
+// productCreationService. Se quitó.
 
 const normalizeString = value => String(value ?? '').trim()
 
@@ -43,38 +50,6 @@ const buildVariantName = (attributes = {}) =>
     .filter(([, value]) => normalizeString(value))
     .map(([key, value]) => `${key}: ${value}`)
     .join(' / ')
-
-const normalizeNumberValue = value => {
-  const parsed = Number(value ?? 0)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
-}
-
-const normalizeSku = value => {
-  const clean = normalizeString(value).toUpperCase()
-
-  if (!clean) return ''
-  if (/^\d+$/.test(clean)) return ''
-  if (/^SKU-?\d+$/i.test(clean)) return ''
-  if (/^VAR-?\d+$/i.test(clean)) return ''
-
-  return clean
-}
-
-const buildGeneratedVariantSku = (productTitle, attributes, index) => {
-  const titlePart = slugifyKeyPart(productTitle || 'producto')
-    .replace(/-/g, '')
-    .slice(0, 12)
-    .toUpperCase()
-  const attributePart = Object.values(attributes || {})
-    .map(value => slugifyKeyPart(value).replace(/-/g, '').slice(0, 8).toUpperCase())
-    .filter(Boolean)
-    .join('-')
-
-  return [titlePart || 'PRODUCTO', attributePart, String(index + 1).padStart(2, '0')]
-    .filter(Boolean)
-    .join('-')
-    .slice(0, 64)
-}
 
 const getFirstFilled = (...values) => {
   for (const value of values) {
@@ -233,67 +208,6 @@ const flattenAiAttributes = analysis => {
   }, {})
 }
 
-const buildSpecificationsFromAi = analysis => {
-  const specs = normalizeAiSpecificationRows(analysis)
-  const attributes = flattenAiAttributes(analysis)
-  const map = new Map()
-
-  specs.forEach(spec => {
-    if (!spec.key || AI_FIELD_BLOCKLIST.has(spec.key)) return
-
-    map.set(spec.key, {
-      key: spec.key,
-      label: spec.label,
-      value: spec.value,
-      unit: spec.unit,
-      type: spec.type,
-      group: spec.group,
-      visible: spec.visible,
-      filterable: spec.filterable,
-      searchable: spec.searchable,
-      sortOrder: spec.sortOrder,
-    })
-  })
-
-  Object.entries(attributes).forEach(([key, value], index) => {
-    if (map.has(key)) return
-
-    map.set(key, {
-      key,
-      label: normalizeAiFieldLabel(key),
-      value,
-      unit: '',
-      type: Array.isArray(value) ? 'multiselect' : typeof value === 'number' ? 'number' : 'text',
-      group: 'atributos detectados',
-      visible: true,
-      filterable: Array.isArray(value),
-      searchable: true,
-      sortOrder: specs.length + index,
-    })
-  })
-
-  return [...map.values()].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-}
-
-const buildAttributesMapFromAi = analysis => {
-  const specs = normalizeAiSpecificationRows(analysis)
-  const attributes = flattenAiAttributes(analysis)
-  const values = {}
-
-  specs.forEach(spec => {
-    if (!spec.key || AI_FIELD_BLOCKLIST.has(spec.key)) return
-    if (spec.value !== undefined && spec.value !== null && spec.value !== '') {
-      values[spec.key] = spec.value
-    }
-  })
-
-  Object.entries(attributes).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') values[key] = value
-  })
-
-  return values
-}
-
 const getAiVariantSuggestions = analysis => {
   return safeArray(
     analysis?.variantSuggestions ||
@@ -354,56 +268,6 @@ const buildVariantAttributesFromVariants = variants => {
     values,
     sortOrder: index,
   }))
-}
-
-const buildSeoFromAi = ({ analysis, title, description, slugFallback, tags = [] }) => {
-  const seo = analysis?.seo || {}
-  const sourceDescription = normalizeString(description)
-
-  const keywordCandidates = [
-    analysis?.marca || analysis?.brand,
-    analysis?.categoria || analysis?.category,
-    analysis?.subcategoria || analysis?.subcategory,
-    analysis?.material,
-    analysis?.color,
-    ...tags,
-  ]
-
-  const rawKeywords = Array.isArray(seo.keywords) ? seo.keywords : []
-
-  return {
-    slug: slugifyKeyPart(seo.slug || slugFallback || title).replace(/_/g, '-') || undefined,
-    shortDescription: normalizeString(seo.shortDescription) || sourceDescription.slice(0, 240),
-    metaTitle: normalizeString(seo.metaTitle) || normalizeString(title).slice(0, 70),
-    metaDescription: normalizeString(seo.metaDescription) || sourceDescription.slice(0, 160),
-    keywords: [
-      ...new Set(
-        [...rawKeywords, ...keywordCandidates]
-          .flatMap(item => (Array.isArray(item) ? item : String(item || '').split(/[,;|]/g)))
-          .map(item => normalizeString(item).toLowerCase())
-          .filter(Boolean),
-      ),
-    ].slice(0, 18),
-  }
-}
-
-const buildLogisticsFromAi = analysis => {
-  const logistics = analysis?.logistics || {}
-  const dimensions = logistics.dimensions || logistics.package || {}
-
-  return {
-    weightKg: normalizeNumberValue(logistics.weightKg),
-    dimensionsCm: {
-      length: normalizeNumberValue(dimensions.length),
-      width: normalizeNumberValue(dimensions.width),
-      height: normalizeNumberValue(dimensions.height),
-    },
-    shippingType: normalizeString(
-      logistics?.shipping?.type || logistics.shippingType || 'standard',
-    ),
-    warranty: normalizeString(logistics.warranty),
-    originCountry: normalizeString(logistics.countryOfOrigin || logistics.originCountry),
-  }
 }
 
 const buildDynamicFieldDefsFromAi = analysis => {
@@ -554,6 +418,8 @@ export const buildNormalizedDraftFromAnalysis = analysis => {
     nombre: variant.nombre,
     combinacion: variant.combinacion,
     price: variant.price,
+    // La IA nunca sugiere costo: arranca sin informar, como en AddProduct.
+    costoUnitario: null,
     stock: variant.stock,
     sku: variant.sku,
     isActive: variant.isActive,
@@ -591,131 +457,34 @@ export const buildNormalizedDraftFromAnalysis = analysis => {
 }
 
 /**
- * Construye un documento de Product completo (forma nativa del schema, no
- * la forma "payload de formulario" de AddProduct) a partir de la salida
- * CRUDA de aiVisionService — sin recortar por sanitizeAnalysis — para que
- * el agente autónomo pueda crear el producto sin ayuda humana.
+ * La salida de la IA con su borrador para el formulario en `normalized`.
+ *
+ * Si el normalizador falla, devuelve el análisis sin borrador en vez de hacer
+ * fallar la respuesta: el análisis ya se pagó, y AddProduct todavía sabe armar
+ * el formulario por su cuenta.
  */
-export const buildAutonomousProductPayload = ({ analysis, job, tenantId }) => {
-  const title =
-    toTitleCase(analysis?.titulo || analysis?.title) ||
-    normalizeString(job?.originalFilename).replace(/\.[^/.]+$/, '') ||
-    'Producto sin título'
+export const withNormalizedDraft = (analysis, { onError } = {}) => {
+  if (!analysis || typeof analysis !== 'object') return analysis
 
-  const description =
-    normalizeString(analysis?.descripcion || analysis?.description) ||
-    'Descripción generada automáticamente por el agente IA, pendiente de revisión.'
-
-  const price = Number(
-    analysis?.precio_sugerido ??
-      analysis?.suggestedPrice ??
-      analysis?.price ??
-      analysis?.suggestedPriceRange?.min ??
-      0,
-  )
-
-  const category = toTitleCase(analysis?.categoria || analysis?.category) || 'Sin Categoría'
-  const subcategory = toTitleCase(analysis?.subcategoria || analysis?.subcategory) || 'General'
-  const brand = normalizeString(analysis?.marca || analysis?.brand) || 'Sin marca'
-  const material = normalizeString(getFirstFilled(analysis?.material) || '')
-  const colorValue = getFirstFilled(analysis?.color, analysis?.mainColor)
-  const colorArray = Array.isArray(colorValue)
-    ? colorValue.map(c => normalizeString(c).toLowerCase()).filter(Boolean)
-    : normalizeString(colorValue)
-      ? [normalizeString(colorValue).toLowerCase()]
-      : []
-
-  const tags = [
-    ...new Set(
-      safeArray(analysis?.tags)
-        .map(tag => normalizeString(tag).toLowerCase())
-        .filter(Boolean),
-    ),
-  ]
-
-  const specifications = buildSpecificationsFromAi(analysis)
-  const dynamicValues = buildAttributesMapFromAi(analysis)
-
-  const aiVariants = buildVariantsFromAi(analysis, { fallbackPrice: price })
-  const hasVariants = aiVariants.length > 0
-  const variantAttributes = hasVariants ? buildVariantAttributesFromVariants(aiVariants) : []
-  const variants = aiVariants.map((variant, idx) => ({
-    key: variant.key,
-    attributes: variant.combinacion,
-    price: normalizeNumberValue(variant.price || price),
-    stock: normalizeNumberValue(variant.stock),
-    sku: normalizeSku(variant.sku) || buildGeneratedVariantSku(title, variant.combinacion, idx),
-    isActive: variant.isActive !== false,
-  }))
-
-  const safeJobSuffix = String(job?._id || Date.now()).slice(-8)
-  const slug = `${slugifyKeyPart(title) || 'producto'}-${safeJobSuffix}`
-
-  const seo = buildSeoFromAi({ analysis, title, description, slugFallback: slug, tags })
-  const logistics = buildLogisticsFromAi(analysis)
-
-  return {
-    tenantId,
-
-    title,
-    slug,
-    description,
-    technicalDescription: normalizeString(
-      analysis?.descripcion_tecnica ||
-        analysis?.technicalDescription ||
-        analysis?.technical_description,
-    ),
-
-    categoria: category,
-    subcategoria: subcategory,
-    marca: brand,
-
-    atributos: {
-      ...dynamicValues,
-      ...(colorArray.length ? { color: colorArray.length === 1 ? colorArray[0] : colorArray } : {}),
-      ...(material ? { material } : {}),
-    },
-    productAttributes: dynamicValues,
-    categoryAttributes: dynamicValues,
-    specifications,
-
-    hasVariants,
-    variantAttributes,
-    variants,
-
-    price,
-    // Sin stock confirmado por una persona, cero: no se vende lo que nadie contó.
-    stock: 0,
-    color: colorArray,
-    material,
-
-    tags,
-    seo,
-    logistics,
-
-    images: [
-      {
-        public_id:
-          job?.imagePublicId || `product-analysis/${tenantId}/${job?.imageHash || job?._id}`,
-        url: job?.imageUrl,
-        alt: title,
-        isMain: true,
-        order: 0,
-      },
-    ],
-
-    iaGenerated: true,
-    aiOriginalOutput: analysis,
-    aiConfidence: typeof analysis?.confidence === 'number' ? analysis.confidence : null,
-    aiSource: analysis?.source || analysis?.model || 'gemini',
-    aiImageHash: analysis?.hash || analysis?.imageHash || job?.imageHash || null,
-    aiNeedsReview: Boolean(analysis?.needsReview || analysis?.requiresHumanReview),
-    aiAgentJobId: job?._id || null,
-    aiAgentScheduledAt: job?.scheduledAt || job?.metadata?.AddProductAt || null,
-    aiAutomationMode: 'agent-autosave',
-
-    status: 'draft',
-    visibility: 'hidden',
-    createdBy: job?.createdBy || null,
+  try {
+    return { ...analysis, normalized: buildNormalizedDraftFromAnalysis(analysis) }
+  } catch (error) {
+    onError?.(error)
+    return analysis
   }
+}
+
+/**
+ * La salida de la IA sin el borrador que le agrega withNormalizedDraft.
+ *
+ * AddProduct devuelve la respuesta entera como aiOriginalOutput: sin esto, el
+ * producto guardaba el borrador del formulario duplicado adentro, y el
+ * aprendizaje comparaba contra él como si fuera algo que dijo la IA.
+ */
+export const stripNormalizedDraft = analysis => {
+  if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) return analysis
+
+  const original = { ...analysis }
+  delete original.normalized
+  return original
 }

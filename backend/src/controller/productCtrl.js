@@ -40,6 +40,7 @@ import { MAX_VIDEO_DURATION_SECONDS } from '../../config/videoUploadPolicy.js'
 import { getUserIdFromRequest, isValidObjectId } from '../utils/requestContext.js'
 import { validateMongoDbIdMiddleware } from '../utils/validation.js'
 import { generateUniqueSlug } from '../utils/slugService.js'
+import { stripNormalizedDraft } from '../services/autonomousProductBuilder.js'
 import { registerVisualFeedback } from '../services/aiLearningService.js'
 
 import logger from '../../config/logger.js'
@@ -1503,7 +1504,7 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
     }
     const tags = safeJsonParse(req.body.tags, [])
 
-    const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
+    const aiOriginal = stripNormalizedDraft(safeJsonParse(req.body.aiOriginalOutput, null))
 
     const iaGenerated =
       req.body.iaGenerated === true || req.body.iaGenerated === 'true' || Boolean(aiOriginal)
@@ -2655,7 +2656,7 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
       })
     }
 
-    const aiOriginal = safeJsonParse(req.body.aiOriginalOutput, null)
+    const aiOriginal = stripNormalizedDraft(safeJsonParse(req.body.aiOriginalOutput, null))
 
     if (product.iaGenerated && aiOriginal) {
       try {

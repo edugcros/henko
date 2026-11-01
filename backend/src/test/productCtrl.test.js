@@ -1562,6 +1562,21 @@ describe('procedencia · qué hizo la IA y qué una persona', () => {
     expect(producto.aiSource).toBe('gemini-3.1-flash-lite')
   })
 
+  test('el borrador del formulario no se guarda como si fuera salida de la IA', async () => {
+    const res = await crear({
+      aiOriginalOutput: JSON.stringify({
+        titulo: 'Casco',
+        confidence: 0.8,
+        normalized: { fields: { titulo: 'Casco' }, variants: [] },
+      }),
+    })
+
+    expect(res.statusCode).toBe(201)
+    const guardado = (await leer(res.body.data._id)).aiOriginalOutput
+    expect(guardado).toMatchObject({ titulo: 'Casco', confidence: 0.8 })
+    expect(guardado).not.toHaveProperty('normalized')
+  })
+
   test('una confianza en porcentaje ya no hace fallar el alta', async () => {
     const res = await crear({ iaGenerated: true, aiConfidence: 85, aiSource: 'gemini' })
 

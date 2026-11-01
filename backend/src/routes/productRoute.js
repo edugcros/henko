@@ -40,8 +40,7 @@ import { AI_METRICS } from '../services/ai/aiPlanPolicy.js'
 import { analyzeImage } from '../services/aiVisionService.js'
 import { recordManualAnalysisJob } from '../controller/productAnalysisController.js'
 import { generateProductSocialContent } from '../controller/socialPromotionCtrl.js'
-import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
-import { resolveAuthorizedTenantFromRequest } from '../utils/requestContext.js'
+import { withNormalizedDraft } from '../services/autonomousProductBuilder.js'
 import logger from '../../config/logger.js'
 
 const router = express.Router()
@@ -99,7 +98,14 @@ router.post(
 
       return res.json({
         success: true,
-        data: analysis,
+        // Con el borrador para el formulario: el mismo que recibe el import
+        // de un análisis de la cola (ver withNormalizedDraft).
+        data: withNormalizedDraft(analysis, {
+          onError: error =>
+            logger.warn('[ANALYZE VISUAL] No se pudo normalizar el análisis', {
+              error: error.message,
+            }),
+        }),
         jobId: job?._id || null,
       })
     } catch (error) {

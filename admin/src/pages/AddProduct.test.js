@@ -1477,3 +1477,27 @@ describe('Alta de producto · confianza de la IA en el panel', () => {
     expect(resolveAiConfidencePercent({ confianza: 0.5 })).toBe(50)
   })
 })
+
+describe('Alta de producto · el formulario usa el normalizador del backend', () => {
+  test('si la respuesta trae `normalized`, el formulario sale de ahí y no del cálculo local', () => {
+    const analysis = {
+      titulo: 'Título crudo',
+      normalized: {
+        fields: { titulo: 'Título normalizado por el backend', cantidad: null },
+        dynamicValues: {},
+        variants: [],
+        review: { confidence: 0.9 },
+      },
+    }
+
+    expect(normalizeAiAnalysisForForm(analysis).fields.titulo).toBe(
+      'Título normalizado por el backend',
+    )
+  })
+
+  test('sin `normalized` (respaldo) arma el formulario con el análisis crudo', () => {
+    expect(normalizeAiAnalysisForForm({ titulo: 'Título crudo' }).fields.titulo).toBe(
+      'Título crudo',
+    )
+  })
+})
