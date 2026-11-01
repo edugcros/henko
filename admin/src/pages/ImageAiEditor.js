@@ -9,8 +9,9 @@
 //     cuota; generar un fondo sí (imageEdits del plan). Se muestra cuánto
 //     queda antes de gastarlo, no después.
 //   - No perder un resultado. Cada fondo generado ya se cobró: cambiar de foto
-//     no borra los resultados, y salir de la página con imágenes sin guardar
-//     pide confirmación.
+//     no borra los resultados, irse a otra pantalla del panel y volver los
+//     conserva, y recargar o cerrar la pestaña con imágenes sin guardar pide
+//     confirmación.
 //   - Aceptar solo lo que el backend acepta (constants/imageUpload.js refleja
 //     backend/config/imageUploadPolicy.js), y decirlo antes de subir.
 
@@ -47,6 +48,8 @@ import {
   CheckCircle as CheckIcon,
 } from '@mui/icons-material'
 import { useSnackbar } from 'notistack'
+import { useSelector } from 'react-redux'
+import { buildSessionKey } from '../features/auth/authSlice'
 import { removeBackground, generateVariation } from '../services/imageAiService'
 import { getAiBudget } from '../services/aiBudgetService'
 import productService from '@features/product/productService'
@@ -284,8 +287,22 @@ const ModeOption = ({ selected, disabled, icon: Icon, title, desc, cost, onSelec
   </ButtonBase>
 )
 
+// Los resultados viven fuera del componente para sobrevivir a la navegación
+// interna: el panel usa BrowserRouter, que no permite bloquear un cambio de
+// ruta (useBlocker exige un data router), y beforeunload solo cubre recargar
+// o cerrar la pestaña. Irse por el menú desmontaba el editor y descartaba
+// imágenes ya cobradas sin preguntar.
+//
+// Van por `usuario:comercio`: cerrar sesión y entrar con otro comercio en la
+// misma pestaña no tiene que mostrar las imágenes del anterior.
+const resultsBySession = new Map()
+
+/** Solo para tests: el Map sobrevive entre tests del mismo archivo. */
+export const resetEditorResults = () => resultsBySession.clear()
+
 const ImageAiEditor = () => {
   const { enqueueSnackbar } = useSnackbar()
+  const sessionKey = useSelector(state => buildSessionKey(state.user?.user)) || 'sin-sesion'
   const fileInputRef = useRef(null)
   const previewUrlRef = useRef(null)
   const mountedRef = useRef(true)
@@ -300,7 +317,16 @@ const ImageAiEditor = () => {
   const [fileError, setFileError] = useState('')
   const [prompt, setPrompt] = useState('')
   const [processing, setProcessing] = useState(false)
-  const [results, setResults] = useState([])
+  const [results, setResults] = useState(() => resultsBySession.get(sessionKey) || [])
+  const [resultsSession, setResultsSession] = useState(sessionKey)
+
+  // Si la sesión cambia con el editor abierto, se muestran los de la nueva
+  // (ajuste durante el render, para que el efecto de abajo nunca guarde los
+  // resultados de una sesión bajo la clave de otra).
+  if (resultsSession !== sessionKey) {
+    setResultsSession(sessionKey)
+    setResults(resultsBySession.get(sessionKey) || [])
+  }
   const [dragActive, setDragActive] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [quota, setQuota] = useState(null)
@@ -337,8 +363,18 @@ const ImageAiEditor = () => {
     loadQuota()
   }, [loadQuota])
 
-  // Cada resultado sin descargar ni agregar a un producto se pierde al salir,
-  // y si fue un fondo generado, ya se cobró.
+  // Lo de otra sesión se suelta (son imágenes en base64, pesan) y lo de esta
+  // se guarda para cuando se vuelva a la pantalla.
+  useEffect(() => {
+    for (const key of resultsBySession.keys()) {
+      if (key !== sessionKey) resultsBySession.delete(key)
+    }
+    if (results.length) resultsBySession.set(sessionKey, results)
+    else resultsBySession.delete(sessionKey)
+  }, [sessionKey, results])
+
+  // Cada resultado sin descargar ni agregar a un producto se pierde al
+  // recargar o cerrar la pestaña, y si fue un fondo generado, ya se cobró.
   const unsavedCount = results.filter(r => !r.savedTo && !r.downloaded).length
 
   useEffect(() => {
@@ -939,8 +975,8 @@ const ImageAiEditor = () => {
                   variant="body2"
                   sx={{ color: BRAND.muted, maxWidth: 320, mx: 'auto', mt: 0.5 }}
                 >
-                  Subí una foto, elegí qué querés hacer y los resultados van a aparecer acá. Se
-                  pierden al salir: descargalos o sumalos a un producto.
+                  Subí una foto, elegí qué querés hacer y los resultados van a aparecer acá. Quedan
+                  mientras no recargues ni cierres la pestaña: descargalos o sumalos a un producto.
                 </Typography>
               </Box>
             ) : (

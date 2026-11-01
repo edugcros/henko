@@ -34,7 +34,23 @@ jest.unstable_mockModule('notistack', () => ({
   useSnackbar: () => ({ enqueueSnackbar: mockSnackbar }),
 }))
 
-const { default: ImageAiEditor, checkImageFile, describeQuota } = await import('./ImageAiEditor.js')
+// El usuario logueado, para la clave de sesión de los resultados.
+let mockUser = { _id: 'u1', tenantId: 't1' }
+
+jest.unstable_mockModule('react-redux', () => ({
+  useSelector: selector => selector({ user: { user: mockUser } }),
+}))
+
+jest.unstable_mockModule('../features/auth/authSlice', () => ({
+  buildSessionKey: user => (user ? `${user._id}:${user.tenantId}` : null),
+}))
+
+const {
+  default: ImageAiEditor,
+  checkImageFile,
+  describeQuota,
+  resetEditorResults,
+} = await import('./ImageAiEditor.js')
 
 const RESULT_IMAGE = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -54,6 +70,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  resetEditorResults()
+  mockUser = { _id: 'u1', tenantId: 't1' }
   mockRemoveBackground.mockResolvedValue({ image: RESULT_IMAGE, size: 1234 })
   mockGenerateVariation.mockResolvedValue({ image: RESULT_IMAGE, size: 4321 })
   mockGetAdminProducts.mockResolvedValue({ data: [{ _id: 'p1', title: 'Casco AGV K1' }] })
@@ -234,6 +252,34 @@ describe('Editor de imágenes · no se pierden resultados', () => {
 
     expect(screen.getByRole('button', { name: /^Cambiar$/i }).disabled).toBe(true)
     expect(screen.getByRole('button', { name: /^Quitar$/i }).disabled).toBe(true)
+  })
+
+  // El panel usa BrowserRouter: irse por el menú desmonta el editor sin pasar
+  // por beforeunload. Antes eso descartaba los resultados sin preguntar.
+  test('irse a otra pantalla del panel y volver conserva los resultados', async () => {
+    const { unmount } = render(<ImageAiEditor />)
+    await subir(foto())
+    await userEvent.click(screen.getByRole('button', { name: /^Quitar fondo$/i }))
+    await screen.findByAltText(/Resultado/i)
+
+    unmount()
+    render(<ImageAiEditor />)
+
+    expect(screen.getByAltText(/Resultado/i)).toBeDefined()
+    expect(screen.getByText('1 sin guardar')).toBeDefined()
+  })
+
+  test('otro usuario o comercio en la misma pestaña no ve esos resultados', async () => {
+    const { unmount } = render(<ImageAiEditor />)
+    await subir(foto())
+    await userEvent.click(screen.getByRole('button', { name: /^Quitar fondo$/i }))
+    await screen.findByAltText(/Resultado/i)
+    unmount()
+
+    mockUser = { _id: 'u2', tenantId: 't2' }
+    render(<ImageAiEditor />)
+
+    expect(screen.queryByAltText(/Resultado/i)).toBeNull()
   })
 
   test('salir con resultados sin guardar pide confirmación', async () => {
