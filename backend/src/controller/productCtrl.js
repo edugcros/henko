@@ -476,6 +476,10 @@ const readShippingType = value => {
 
 const firstPresent = (...values) => values.find(v => v !== undefined && v !== null && v !== '')
 
+// Para los textos: un '' que VINO es "borrar" (el comercio vació la garantía),
+// no "no lo mandó". Solo se saltea lo ausente.
+const firstDefined = (...values) => values.find(v => v !== undefined && v !== null)
+
 /**
  * `previous` es la logística guardada: en una edición, lo que no viene se
  * conserva. Antes se rearmaba todo el bloque y bastaba mandar solo la garantía
@@ -493,7 +497,6 @@ const normalizeLogisticsPayload = (body, previous = {}) => {
       body?.logisticsDimensions,
   )
   const previousDimensions = normalizePlainObject(before.dimensionsCm)
-  const hasDimensions = Object.keys(rawDimensions).length > 0
 
   const shippingType = normalizeText(
     firstPresent(
@@ -517,27 +520,31 @@ const normalizeLogisticsPayload = (body, previous = {}) => {
       ),
       0,
     ),
-    dimensionsCm: hasDimensions
-      ? {
-          length: toSafeNumber(firstPresent(rawDimensions.length, rawDimensions.largo), 0),
-          width: toSafeNumber(firstPresent(rawDimensions.width, rawDimensions.ancho), 0),
-          height: toSafeNumber(firstPresent(rawDimensions.height, rawDimensions.alto), 0),
-        }
-      : {
-          length: toSafeNumber(previousDimensions.length, 0),
-          width: toSafeNumber(previousDimensions.width, 0),
-          height: toSafeNumber(previousDimensions.height, 0),
-        },
+    // Cada medida por separado: mandar solo el largo no borra el ancho ni el alto.
+    dimensionsCm: {
+      length: toSafeNumber(
+        firstPresent(rawDimensions.length, rawDimensions.largo, previousDimensions.length),
+        0,
+      ),
+      width: toSafeNumber(
+        firstPresent(rawDimensions.width, rawDimensions.ancho, previousDimensions.width),
+        0,
+      ),
+      height: toSafeNumber(
+        firstPresent(rawDimensions.height, rawDimensions.alto, previousDimensions.height),
+        0,
+      ),
+    },
     shippingType: ALLOWED_LOGISTICS_SHIPPING_TYPES.includes(shippingType)
       ? shippingType
       : 'standard',
     warranty: truncateText(
-      firstPresent(rawLogistics.warranty, body?.warranty, body?.garantia, before.warranty),
+      firstDefined(rawLogistics.warranty, body?.warranty, body?.garantia, before.warranty),
       300,
       '',
     ),
     originCountry: truncateText(
-      firstPresent(
+      firstDefined(
         rawLogistics.originCountry,
         rawLogistics.countryOfOrigin,
         body?.originCountry,

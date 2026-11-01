@@ -841,6 +841,23 @@ describe('logística · el tipo de envío y los datos guardados se conservan', (
     expect((await leer(id)).logistics.shippingType).toBe('digital')
   })
 
+  test('vaciar la garantía o el país de origen los borra de verdad', async () => {
+    const id = await crear({ logistics: { warranty: '12 meses', originCountry: 'Argentina' } })
+
+    const res = await editar(id, { logistics: { warranty: '', originCountry: '' } })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).logistics).toMatchObject({ warranty: '', originCountry: '' })
+  })
+
+  test('mandar una sola medida conserva las otras', async () => {
+    const id = await crear({ logistics: { dimensionsCm: { length: 40, width: 30, height: 20 } } })
+
+    await editar(id, { logistics: { dimensionsCm: { length: 50 } } })
+
+    expect((await leer(id)).logistics.dimensionsCm).toEqual({ length: 50, width: 30, height: 20 })
+  })
+
   test('un cero explícito se respeta y no vuelve al valor guardado', async () => {
     const id = await crear({ logistics: { weightKg: 4 } })
 
