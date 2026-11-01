@@ -7,6 +7,8 @@
 // proveedor externo; acá se prueban con sharp de verdad, no con mocks.
 
 import { jest } from '@jest/globals'
+import fs from 'node:fs'
+import path from 'node:path'
 import sharp from 'sharp'
 
 const mockRemoveLocal = jest.fn()
@@ -20,6 +22,8 @@ const {
   createStudioImage,
   generateVariation,
   isCloudflareDailyLimit,
+  isCloudflareGlobalApiKey,
+  CLOUDFLARE_GLOBAL_API_KEY,
   getGenerativeBackgroundStatus,
   markGenerativeBackgroundUnavailable,
   resetGenerativeBackgroundStatus,
@@ -474,6 +478,75 @@ describe('IA generativa · revisión de la cadena', () => {
         expect(error.message).toMatch(/No se descontó de tu cupo/)
         expect(error.message).not.toMatch(/timeout|aborted/i)
       },
+    )
+  })
+})
+
+describe('Cloudflare · credencial y modelo', () => {
+  test('la Global API Key (cfk_) no cuenta como configurada y nunca se envía', async () => {
+    // cfk_ es la Global API Key: acceso a toda la cuenta y no autentica como
+    // Bearer. Cloudflare respondería 401 y el proveedor quedaría en pausa.
+    const llamadas = []
+    const original = process.env.CLOUDFLARE_AI_API_TOKEN
+    try {
+      await conCloudflare(
+        async url => {
+          llamadas.push(String(url))
+          return { ok: false, status: 401, text: async () => '' }
+        },
+        async () => {
+          process.env.CLOUDFLARE_AI_API_TOKEN = 'cfk_' + 'x'.repeat(48)
+
+          expect(getGenerativeBackgroundStatus().provider).not.toBe('cloudflare')
+          await generateVariation(await recorte(), 'fondo', 'image/png').catch(() => null)
+          expect(llamadas.some(url => new URL(url).hostname === 'api.cloudflare.com')).toBe(false)
+        },
+      )
+    } finally {
+      process.env.CLOUDFLARE_AI_API_TOKEN = original
+    }
+  })
+
+  test('isCloudflareGlobalApiKey: la Global API Key en los dos formatos; los tokens no', () => {
+    expect(isCloudflareGlobalApiKey('cfk_abc')).toBe(true)
+    expect(isCloudflareGlobalApiKey('  cfk_abc ')).toBe(true)
+    // Formato anterior a 2026: 37 a 45 hexadecimales en minúscula, sin prefijo.
+    expect(isCloudflareGlobalApiKey('a'.repeat(37))).toBe(true)
+    expect(isCloudflareGlobalApiKey('0123456789abcdef'.repeat(3).slice(0, 45))).toBe(true)
+    expect(isCloudflareGlobalApiKey('a'.repeat(36))).toBe(false)
+    expect(isCloudflareGlobalApiKey('a'.repeat(46))).toBe(false)
+    // Un token viejo: 40 alfanuméricos con mayúsculas.
+    expect(isCloudflareGlobalApiKey('Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0h')).toBe(false)
+    expect(isCloudflareGlobalApiKey('cfut_abc')).toBe(false)
+    expect(isCloudflareGlobalApiKey('cfat_abc')).toBe(false)
+    expect(isCloudflareGlobalApiKey('')).toBe(false)
+  })
+
+  test('checkEnv aplica la misma regla que el servicio', () => {
+    // checkEnv no puede importar imageAiService (cargaría config/env.js antes
+    // de terminar el informe); las dos reglas tienen que coincidir.
+    const fuente = fs.readFileSync(path.resolve('src/scripts/checkEnv.js'), 'utf8')
+    expect(fuente).toContain(`const CLOUDFLARE_GLOBAL_API_KEY = ${CLOUDFLARE_GLOBAL_API_KEY}`)
+    expect(fuente).toContain('valido: valor => !CLOUDFLARE_GLOBAL_API_KEY.test(')
+  })
+
+  test('el modelo de Cloudflare es fijo: una variable ya no lo cambia', async () => {
+    const imagen = await jpegBase64()
+    const urls = []
+    process.env.CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-2-dev'
+    try {
+      await conCloudflare(
+        async url => {
+          urls.push(String(url))
+          return { ok: true, status: 200, json: async () => ({ result: { image: imagen } }) }
+        },
+        async () => generateVariation(await recorte(), 'fondo', 'image/png').catch(() => null),
+      )
+    } finally {
+      delete process.env.CLOUDFLARE_IMAGE_MODEL
+    }
+    expect(urls.find(url => new URL(url).hostname === 'api.cloudflare.com')).toContain(
+      '/ai/run/@cf/black-forest-labs/flux-1-schnell',
     )
   })
 })

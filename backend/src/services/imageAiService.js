@@ -476,19 +476,55 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1', timeoutMs = 90000) 
 // permiso Workers AI). Sin las dos, el proveedor se saltea.
 
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
-const CLOUDFLARE_IMAGE_MODEL_DEFAULT = '@cf/black-forest-labs/flux-1-schnell'
+
+// FIJO, NO CONFIGURABLE. Había una variable (CLOUDFLARE_IMAGE_MODEL) que
+// aceptaba cualquier modelo @cf/…, pero este código solo habla el contrato de
+// FLUX.1 schnell —{ prompt, steps } y la imagen en base64— y el precio de
+// IMAGE_CATALOG (58 neuronas por imagen) también es el suyo. Los FLUX.2 piden
+// multipart y cuestan otra cosa: cambiar el modelo rompía la generación y el
+// costo a la vez.
+const CLOUDFLARE_IMAGE_MODEL = '@cf/black-forest-labs/flux-1-schnell'
+
+/**
+ * Forma de la Global API Key de Cloudflare, en sus dos formatos
+ * (developers.cloudflare.com/fundamentals/api/get-started/token-formats/):
+ *
+ *   desde 2026   cfk_ + 40 caracteres + checksum (los tokens son cfut_ y cfat_)
+ *   antes        37 a 45 caracteres hexadecimales en minúscula, sin prefijo
+ *                (los tokens viejos son 40 alfanuméricos con mayúsculas)
+ *
+ * La Global API Key tiene acceso a TODA la cuenta —DNS, dominios,
+ * facturación— y además no autentica como Bearer, así que con ella Workers AI
+ * responde 401. Se rechaza antes de mandarla a ningún lado.
+ *
+ * checkEnv.js repite esta expresión (no puede importar este módulo); un test
+ * exige que sean iguales.
+ */
+export const CLOUDFLARE_GLOBAL_API_KEY = /^(?:cfk_.+|[0-9a-f]{37,45})$/
+
+export const isCloudflareGlobalApiKey = value =>
+  CLOUDFLARE_GLOBAL_API_KEY.test(String(value || '').trim())
+
+let warnedGlobalApiKey = false
 
 const cloudflareConfig = () => {
   const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
   const apiToken = String(process.env.CLOUDFLARE_AI_API_TOKEN || '').trim()
-  const model = String(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_IMAGE_MODEL_DEFAULT).trim()
+  const globalKey = isCloudflareGlobalApiKey(apiToken)
+
+  if (globalKey && !warnedGlobalApiKey) {
+    warnedGlobalApiKey = true
+    logger.error('[IMAGE AI] CLOUDFLARE_AI_API_TOKEN tiene la Global API Key, no un token', {
+      action:
+        'Revocarla y crear un token con "Create a Workers AI API Token" (empieza con cfut_ o cfat_).',
+    })
+  }
 
   return {
     accountId,
     apiToken,
-    model,
-    configured:
-      /^[a-f0-9]{32}$/i.test(accountId) && Boolean(apiToken) && /^@cf\/[a-z0-9._/-]+$/i.test(model),
+    model: CLOUDFLARE_IMAGE_MODEL,
+    configured: /^[a-f0-9]{32}$/i.test(accountId) && Boolean(apiToken) && !globalKey,
   }
 }
 
