@@ -352,18 +352,11 @@ export const env = {
     provider: process.env.LLM_PROVIDER || 'google',
     geminiApiKey: process.env.GEMINI_API_KEY,
 
-    // Si el modelo configurado fue retirado o quedó sin cuota, los servicios
-    // caen a la cadena de respaldos de src/services/ai/geminiModels.js.
-    geminiModel: getFirstValue(
-      process.env.GEMINI_MODEL,
-      process.env.GOOGLE_MODEL,
-      'gemini-3.8-flash',
-    ),
-
-    geminiImageModel: process.env.GEMINI_IMAGE_MODEL || '',
-
-    googleTextModel: process.env.GOOGLE_TEXT_MODEL || 'gemini-3.8-flash',
-    googleImageModel: process.env.GOOGLE_IMAGE_MODEL || '',
+    // Los modelos NO están acá: GEMINI_MODEL, AI_VISION_MODEL y
+    // GEMINI_IMAGE_MODEL (y sus nombres viejos GOOGLE_*) se resuelven en un solo
+    // lugar, src/services/ai/geminiModels.js (resolveTextModel,
+    // resolveVisionModel, resolveImageModel). Había cuatro campos más con
+    // defaults propios, y cada servicio armaba su cadena en otro orden.
     minConfidence: Number(process.env.AI_MIN_CONFIDENCE || 0.65),
   },
 

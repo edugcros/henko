@@ -66,7 +66,7 @@ import { getPlatformAiOverride, getTenantAiPolicy } from './platformAiSettingSer
 // dirección de la dependencia es esta y no la inversa: geminiModels lo usan la
 // visión, el agente y las imágenes, y hacerlo depender del medidor cerraría un
 // ciclo.
-import { setEconomyMode, getEconomyMode } from './geminiModels.js'
+import { setEconomyMode, getEconomyMode, resolveTextModel } from './geminiModels.js'
 import { PLATFORM_AI_SETTINGS } from '../../models/platformAiSettingModel.js'
 import AiOperation, {
   AI_FEATURES,
@@ -135,13 +135,9 @@ const TOKEN_METRICS = new Set([AI_METRICS.AGENT_TOKENS, AI_METRICS.MARKET_TOKENS
  * olvidara del modelo pagaba 3x por un error de precedencia, no por una
  * decisión.
  */
-const getDefaultPricingModel = () =>
-  normalizeModelName(
-    process.env.GEMINI_MODEL ||
-      process.env.GOOGLE_TEXT_MODEL ||
-      process.env.GOOGLE_MODEL ||
-      'gemini-3.8-flash',
-  )
+// El mismo modelo de texto que usan los servicios (resolveTextModel): costear
+// con uno y llamar con otro es exactamente el error que esto vino a evitar.
+const getDefaultPricingModel = () => normalizeModelName(resolveTextModel())
 
 /**
  * Resuelve con qué modelo costear, y si hubo que adivinarlo.

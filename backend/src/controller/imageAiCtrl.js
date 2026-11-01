@@ -8,6 +8,7 @@ import {
   STUDIO_STYLES,
 } from '../services/imageAiService.js'
 import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
+import { resolveImageModel } from '../services/ai/geminiModels.js'
 import {
   AI_FEATURES,
   AI_METRICS,
@@ -32,10 +33,7 @@ export const handleImageAiStatus = expressAsyncHandler(async (req, res) => {
     success: true,
     data: {
       geminiImageConfigured: Boolean(process.env.GEMINI_API_KEY),
-      geminiImageModel:
-        process.env.GEMINI_IMAGE_MODEL ||
-        process.env.GOOGLE_IMAGE_MODEL ||
-        'gemini-3.1-flash-lite-image',
+      geminiImageModel: resolveImageModel(),
       localBackgroundRemoval: local,
       // El panel lo usa para desactivar "Fondo con IA" con una explicación,
       // en vez de dejar que el comercio suba una foto y espere para fallar.

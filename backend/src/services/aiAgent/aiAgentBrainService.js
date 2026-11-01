@@ -17,6 +17,7 @@ import {
 import { getMaxInboundMessageChars } from '../ai/aiPlanPolicy.js'
 import { loadTenantAiProfile } from '../ai/aiCredentialsService.js'
 import { readUsage } from '../ai/aiUsageMetadata.js'
+import { resolveTextModel } from '../ai/geminiModels.js'
 import { searchRelevantKnowledgeForAgent } from './aiAgentToolService.js'
 import { runAgentCommerceTools } from './aiAgentCommerceToolsService.js'
 import { registerConversationLearningSignal } from './aiAgentLearningService.js'
@@ -1147,7 +1148,7 @@ export const processAgentMessage = async ({
       fallback: true,
       error: error?.message || 'Error desconocido',
       provider: 'gemini',
-      model: process.env.GEMINI_MODEL || null,
+      model: resolveTextModel(),
     }
   }
 
@@ -1277,7 +1278,7 @@ export const processAgentMessage = async ({
     metadata: {
       replyToExternalMessageId: cleanExternalMessageId,
       provider: aiResult.provider || 'gemini',
-      model: aiResult.model || process.env.GEMINI_MODEL || null,
+      model: aiResult.model || resolveTextModel(),
       finishReason: aiResult.finishReason || '',
       truncated: Boolean(aiResult.truncated),
       intent,
@@ -1402,7 +1403,7 @@ export const processAgentMessage = async ({
     leadScore,
     handoffRequired: shouldHandoff,
     provider: aiResult.provider || 'gemini',
-    model: aiResult.model || process.env.GEMINI_MODEL || null,
+    model: aiResult.model || resolveTextModel(),
     products: products.slice(0, 3),
     recommendations: commerceContext.recommendations || [],
     actions,

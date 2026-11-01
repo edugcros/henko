@@ -83,7 +83,11 @@ export const verifyMercadoPagoWebhookSignature = (
   req,
   { tenantSecret = null, quiet = false } = {},
 ) => {
-  const secrets = [sanitizeString(tenantSecret), sanitizeString(process.env.MP_WEBHOOK_SECRET)]
+  // MERCADOPAGO_WEBHOOK_SECRET es el alias que config/env.js acepta para el
+  // mismo dato. Leer solo MP_WEBHOOK_SECRET descartaba como falsas todas las
+  // notificaciones de un entorno configurado con el otro nombre.
+  const platformSecret = process.env.MP_WEBHOOK_SECRET || process.env.MERCADOPAGO_WEBHOOK_SECRET
+  const secrets = [sanitizeString(tenantSecret), sanitizeString(platformSecret)]
     .filter(Boolean)
     .filter((value, index, all) => all.indexOf(value) === index)
 
