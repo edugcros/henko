@@ -120,6 +120,19 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       metric: AI_METRICS.IMAGE_EDITS,
       operationId: reservation.operationId,
     })
+
+    // Un mensaje escrito para el comercio (imageAiService lo marca con
+    // `expose`) se responde acá: errorHandler tapa cualquier 5xx en producción
+    // y el comercio no se enteraría de que no se le cobró. El resto sigue al
+    // handler global, que oculta lo que nadie redactó para el cliente.
+    if (error?.expose) {
+      return res.status(error.statusCode || 503).json({
+        success: false,
+        code: error.code || 'IMAGE_GENERATION_UNAVAILABLE',
+        message: error.message,
+      })
+    }
+
     throw error
   }
 

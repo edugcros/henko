@@ -12,7 +12,8 @@ jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
   isLocalBackgroundRemovalEnabled: () => false,
 }))
 
-const { describeGeminiImageFailure } = await import('../services/imageAiService.js')
+const { buildGeminiImageError, describeGeminiImageFailure } =
+  await import('../services/imageAiService.js')
 
 describe('imageAiService · fallas de la key de plataforma', () => {
   test.each([429, 401, 403])('un %i no le pide al comercio que revise la facturación', status => {
@@ -35,5 +36,17 @@ describe('imageAiService · fallas de la key de plataforma', () => {
     expect(failure.statusCode).toBe(502)
     expect(failure.message).toMatch(/No se descontó de tu cupo/)
     expect(failure.platformAction).toBeNull()
+  })
+})
+
+describe('imageAiService · el mensaje viaja marcado para el comercio', () => {
+  test('el error sale con expose y el status de la falla, para que el controller lo responda', () => {
+    const error = buildGeminiImageError(429)
+
+    expect(error).toBeInstanceOf(Error)
+    expect(error.expose).toBe(true)
+    expect(error.statusCode).toBe(503)
+    expect(error.code).toBe('IMAGE_GENERATION_UNAVAILABLE')
+    expect(error.message).toBe(describeGeminiImageFailure(429).message)
   })
 })

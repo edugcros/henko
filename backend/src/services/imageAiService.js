@@ -362,6 +362,21 @@ export const describeGeminiImageFailure = status => {
   }
 }
 
+/**
+ * El error que sale cuando Gemini no genera el fondo, marcado con `expose`:
+ * el mensaje se redactó PARA el comercio. errorHandler tapa todo 5xx en
+ * producción con "Ocurrió un error interno", así que sin esta marca el
+ * comercio nunca leería que no se le cobró ni la alternativa. El controller
+ * (handleGenerateVariation) la usa para responder él mismo.
+ */
+export const buildGeminiImageError = status => {
+  const failure = describeGeminiImageFailure(status)
+  const error = fail(failure.message, failure.statusCode)
+  error.expose = true
+  error.code = 'IMAGE_GENERATION_UNAVAILABLE'
+  return error
+}
+
 const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
   const apiKey = String(env.ai?.geminiApiKey || '').trim()
   if (!apiKey) {
@@ -411,7 +426,7 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1') => {
         action: failure.platformAction,
       })
     }
-    throw fail(failure.message, failure.statusCode)
+    throw buildGeminiImageError(res.status)
   }
 
   const json = await res.json()
