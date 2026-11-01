@@ -14,7 +14,9 @@ import {
   mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
   createSubscriptionClient,
+  createSubscriptionInvoiceClient,
   createAuthorizableSubscription,
+  mapSubscriptionInvoice,
 } from '../services/subscriptionPaymentService.js'
 import { getTenantMercadoPagoContext } from '../services/paymentTenantConfigService.js'
 import {
@@ -625,7 +627,9 @@ export const changeSubscriptionPlan = async (req, res) => {
 
     return sendResponse(res, 200, true, 'Plan actualizado exitosamente', {
       plan: normalizedNewPlan,
-      status: 'active',
+      // El estado no cambia con el plan. Respondía 'active' fijo, y un comercio
+      // con el pago pendiente que cambiaba de plan pasaba a verse al día.
+      status: tenant.subscriptionStatus,
     })
   } catch (error) {
     logger.error('Error cambiando plan:', error)
@@ -728,6 +732,9 @@ export const cancelSubscription = async (req, res) => {
   }
 }
 
+// Un comercio cobra una vez por mes: 24 son dos años de historial.
+const INVOICE_HISTORY_LIMIT = 24
+
 /**
  * GET /api/subscriptions/invoices
  * Obtener historial de pagos/facturas
@@ -747,38 +754,40 @@ export const getSubscriptionInvoices = async (req, res) => {
       })
     }
 
-    // Obtener cliente de MP
-    let mpClient
+    let invoiceClient
     try {
-      mpClient = createSubscriptionClient()
+      invoiceClient = createSubscriptionInvoiceClient()
     } catch (mpError) {
       logger.error('Error obteniendo cliente MP:', mpError)
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
     }
 
-    // Obtener detalles de suscripción (incluye pagos)
-    let mpSubscription
+    // Los cobros NO vienen adentro de la suscripción: se leía `invoice_list`
+    // de GET /preapproval, que no existe, y el historial salía vacío para
+    // todos. Viven en /authorized_payments/search (ver
+    // createSubscriptionInvoiceClient).
+    let search
     try {
-      mpSubscription = await mpClient.get({
-        id: mpSubId,
+      search = await invoiceClient.search({
+        options: { preapproval_id: mpSubId, limit: INVOICE_HISTORY_LIMIT },
       })
     } catch (mpError) {
-      logger.error('Error obteniendo suscripción de MP:', mpError)
+      logger.error('Error obteniendo cobros de la suscripción en MP:', {
+        error: mpError?.message,
+        status: mpError?.status,
+      })
       return sendResponse(res, 503, false, 'Error obteniendo facturación')
     }
 
-    const invoices = (mpSubscription.invoice_list || []).map(invoice => ({
-      id: invoice.id,
-      status: invoice.status,
-      amount: invoice.amount,
-      currency: invoice.currency_id,
-      date: invoice.date_created,
-      paidDate: invoice.date_approved,
-      reason: invoice.reason,
-    }))
+    const invoices = (Array.isArray(search?.results) ? search.results : [])
+      // Si la búsqueda ignorara el filtro, la respuesta traería cobros de
+      // otras suscripciones de la plataforma: los de otros comercios.
+      .filter(invoice => String(invoice?.preapproval_id || '') === String(mpSubId))
+      .map(mapSubscriptionInvoice)
+      .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
 
     return sendResponse(res, 200, true, 'Facturas obtenidas', {
-      invoices: invoices.sort((a, b) => new Date(b.date) - new Date(a.date)),
+      invoices,
       subscriptionId: mpSubId,
     })
   } catch (error) {

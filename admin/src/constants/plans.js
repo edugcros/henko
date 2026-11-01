@@ -109,3 +109,16 @@ export const getPlanQuotaLines = limits =>
     label,
     amount: Number(limits[key]),
   }))
+
+/**
+ * Días que le quedan a la prueba gratis, o null si no está en prueba o ya venció.
+ *
+ * Lo usan el checkout y Mi suscripción. Mi suscripción tenía su propia cuenta,
+ * sin el corte en cero: con la prueba vencida decía «termina en -3 días».
+ */
+export const trialDaysLeft = (subscriptionStatus, trialEndsAt, now = Date.now()) => {
+  if (subscriptionStatus !== 'trialing' || !trialEndsAt) return null
+  const ms = new Date(trialEndsAt).getTime() - now
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.ceil(ms / (24 * 60 * 60 * 1000))
+}
