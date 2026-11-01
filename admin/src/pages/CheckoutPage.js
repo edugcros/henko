@@ -1,45 +1,47 @@
 // 📁 src/pages/CheckoutPage.js
-// Página de checkout para suscripción a plan
+//
+// Checkout de la suscripción del comercio a un plan de HENKO.
+//
+// Lo que esta pantalla cuida, porque es donde el comercio pone la tarjeta:
+//
+//   - Decir exactamente cuándo se cobra. El backend crea la suscripción en
+//     'authorized' y sin start_date (subscriptionPaymentService): se cobra en
+//     el acto y se renueva cada mes. Acá decía "los primeros 14 días son
+//     gratis, después se cobrará", que era falso: esos 14 días son la prueba
+//     de la cuenta, antes de suscribirse.
+//   - No dar por pagado lo que no se pagó. Un 202 con status 'pending' no es
+//     un cobro aprobado.
+//   - No cobrar dos veces. Si el comercio ya tiene la suscripción activa, el
+//     cambio de plan es en Mi suscripción: un segundo alta acá crearía una
+//     segunda suscripción recurrente en Mercado Pago.
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import {
-  Container,
-  Box,
-  Paper,
-  Stack,
-  Typography,
-  TextField,
-  Button,
-  CircularProgress,
-  Alert,
-  AlertTitle,
-  Card,
-  CardContent,
-  Grid,
-  Divider,
-  InputAdornment,
-  Fade,
-} from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material'
 // CheckCircle es un ícono: venía importado desde '@mui/material', que no lo
 // exporta, así que llegaba undefined y React rompía al renderizar el resumen
-// del plan. CheckCircleOutline directamente no está en el barrel de íconos
-// del proyecto (ver el warning del build), por eso la pantalla de éxito usa
-// el mismo CheckCircle.
-import {
-  Payment,
-  CreditCard,
-  Person,
-  Email,
-  Phone,
-  ArrowBack,
-  CheckCircle,
-} from '@mui/icons-material'
+// del plan.
+import { ArrowBack, CheckCircle, HourglassTop, Lock } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
-import { PLAN_PRESENTATION, formatArs } from '../constants/plans.js'
+import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
 import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
+
+const BRAND = {
+  ink: '#050b1f',
+  blue: '#0b6bff',
+  paper: '#f4f7ff',
+  line: '#dfe6fb',
+  muted: '#55618a',
+  green: '#047857',
+  amber: '#b45309',
+  red: '#b42318',
+}
+
+const DISPLAY_FONT = 'Montserrat, Roboto, ui-sans-serif, system-ui, sans-serif'
+
+const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', bgcolor: '#fff' }
 
 // El precio NO está acá. Lo trae /subscriptions/plans, que es de donde sale el
 // cobro. Esta pantalla tenía su propia tabla con `priceUsd: 26.14` y el botón
@@ -47,10 +49,7 @@ import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 // el número y la moneda del botón estaban los dos mal.
 //
 // Las cuotas tampoco están acá: vienen con el catálogo, derivadas de los mismos
-// topes que el medidor aplica. Estaban escritas a mano —"300 análisis de
-// imágenes/mes" y compañía—, una segunda copia de DEFAULT_PLAN_LIMITS. Hoy
-// coincidían; el día que alguien mueva un tope por variable de entorno, esta
-// pantalla seguiría prometiendo lo viejo.
+// topes que el medidor aplica.
 const ETIQUETA_CUOTA = {
   vision: 'análisis de imágenes',
   agentMessages: 'mensajes del asistente',
@@ -70,52 +69,93 @@ const describirCuotas = limits => {
   )
 }
 
+/**
+ * La misma fecha del mes que viene, sin pasarse de mes: del 31/01 al 28/02 y
+ * no al 03/03. Es una estimación del próximo cobro —la fecha real la fija
+ * Mercado Pago— y se presenta como tal.
+ */
+export const addOneMonth = date => {
+  const next = new Date(date)
+  const day = next.getDate()
+  next.setDate(1)
+  next.setMonth(next.getMonth() + 1)
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()
+  next.setDate(Math.min(day, lastDay))
+  return next
+}
+
+const formatDate = date =>
+  date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
+
+/** Días que le quedan a la prueba gratis, o null si no está en prueba. */
+export const trialDaysLeft = (subscriptionStatus, trialEndsAt, now = Date.now()) => {
+  if (subscriptionStatus !== 'trialing' || !trialEndsAt) return null
+  const ms = new Date(trialEndsAt).getTime() - now
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.ceil(ms / (24 * 60 * 60 * 1000))
+}
+
+const REDIRECT_MS = 3000
+
 const CheckoutPage = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useSelector(state => state.user || {})
 
   const selectedPlan = searchParams.get('plan') || 'starter'
+  const planIsSellable = SELLABLE_PLANS.includes(selectedPlan)
+  const planName = PLAN_PRESENTATION[selectedPlan]?.name || selectedPlan
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [mpReady, setMpReady] = useState(false)
+  const [mpError, setMpError] = useState(null)
+  const [account, setAccount] = useState(null)
+  // 'loading' | 'ok' | 'error'. Antes un catálogo que no cargaba se mostraba
+  // igual que un plan sin precio: "todavía no tiene precio configurado".
+  const [catalogState, setCatalogState] = useState('loading')
+  const [catalogAttempt, setCatalogAttempt] = useState(0)
   const [precioArs, setPrecioArs] = useState(null)
   const [cuotas, setCuotas] = useState([])
 
-  // Al sacar el formulario propio me llevé también estas declaraciones, que no
-  // eran suyas: el JSX de abajo las sigue usando. El build compiló igual
-  // —webpack no verifica variables no declaradas— y el smoke test de pantallas
-  // solo importa el módulo, así que la página explotaba recién al renderizar,
-  // con el ErrorBoundary tapando el motivo. De ahí sale el test de esta pantalla.
-  const [isLoading, setIsLoading] = useState(true)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [mpReady, setMpReady] = useState(false)
-  const [mpError, setMpError] = useState(null)
   const [error, setError] = useState(null)
   // A dónde mandar al comercio cuando su tarjeta no pasa. Lo devuelve el
   // backend en data.initPoint junto con el error del cobro.
   const [initPoint, setInitPoint] = useState(null)
-  const [success, setSuccess] = useState(false)
+  // null | 'active' | 'pending'
+  const [outcome, setOutcome] = useState(null)
   const [subscriptionId, setSubscriptionId] = useState(null)
+  const redirectRef = useRef(null)
 
-  // Trae la clave pública e inicializa el SDK. Este efecto también se perdió en
-  // el borrado, así que initMercadoPago no corría y el Brick nunca aparecía.
+  useEffect(() => () => clearTimeout(redirectRef.current), [])
+
+  // Trae la clave pública e inicializa el SDK, y con eso el estado de la
+  // cuenta: si ya paga, si está en prueba y hasta cuándo.
   useEffect(() => {
     let vigente = true
 
     const cargarConfig = async () => {
       try {
         const response = await api.get('/subscriptions/config')
-        const publicKey = response.data?.data?.mpPublicKey
+        const data = response.data?.data || {}
+        const publicKey = data.mpPublicKey
 
         if (!vigente) return
+
+        setAccount({
+          currentPlan: data.currentPlan || null,
+          subscriptionStatus: data.subscriptionStatus || null,
+          trialEndsAt: data.trialEndsAt || null,
+        })
 
         // Es la clave de HENKO, no la del comercio: el token lo consume la
         // cuenta que cobra, y esta suscripción la cobra la plataforma.
         if (!publicKey) {
-          setMpError('Falta configurar la clave pública de Mercado Pago.')
+          setMpError('El pago con tarjeta no está disponible en este momento.')
           return
         }
 
         if (!publicKey.startsWith('TEST-') && !publicKey.startsWith('APP_USR-')) {
-          setMpError('La clave pública de Mercado Pago tiene formato inválido.')
+          setMpError('El pago con tarjeta no está disponible en este momento.')
           return
         }
 
@@ -123,7 +163,7 @@ const CheckoutPage = () => {
         setMpReady(true)
       } catch (err) {
         console.error('Error cargando config MP:', err)
-        if (vigente) setMpError('No se pudo cargar la configuración de pago.')
+        if (vigente) setMpError('No se pudo preparar el pago. Recargá la página para reintentar.')
       } finally {
         if (vigente) setIsLoading(false)
       }
@@ -136,13 +176,9 @@ const CheckoutPage = () => {
     }
   }, [])
 
-  const planDetails = {
-    name: PLAN_PRESENTATION[selectedPlan]?.name || PLAN_PRESENTATION.starter.name,
-    features: cuotas,
-  }
-
   useEffect(() => {
     let vigente = true
+    setCatalogState('loading')
 
     getPlanCatalog()
       .then(catalogo => {
@@ -152,6 +188,7 @@ const CheckoutPage = () => {
 
         setPrecioArs(fila ? fila.monthlyPriceArs : null)
         setCuotas(describirCuotas(fila?.limits))
+        setCatalogState('ok')
       })
       .catch(() => {
         // Sin catálogo no se muestra precio ni cuotas. Un respaldo escrito acá
@@ -159,40 +196,33 @@ const CheckoutPage = () => {
         if (!vigente) return
         setPrecioArs(null)
         setCuotas([])
+        setCatalogState('error')
       })
 
     return () => {
       vigente = false
     }
-  }, [selectedPlan])
+  }, [selectedPlan, catalogAttempt])
 
-  // Estados del formulario
-  // El formulario propio —datos del titular, tarjeta y su validación— lo
-  // reemplaza el Brick de Mercado Pago. Mantener esos campos acá significaba
-  // mantener también sus reglas: el largo de la tarjeta, los tipos de documento
-  // válidos por país, el formato del vencimiento. Cada una de esas reglas ya
-  // había fallado al menos una vez.
+  const retryCatalog = useCallback(() => setCatalogAttempt(n => n + 1), [])
+
+  const goBack = () => {
+    // Abierto desde un enlace directo no hay a dónde volver dentro del panel.
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/subscripcion')
+  }
 
   /**
    * Lo dispara el Brick de Mercado Pago con la tarjeta YA tokenizada.
    *
-   * Antes acá había un formulario propio: se pedían los datos de la tarjeta en
-   * campos nuestros, se validaban a mano y se tokenizaban aparte. Eso trajo
-   * exactamente los problemas que trae hacerlo a mano — largo de tarjeta fijado
-   * en 16 (una Amex tiene 15), una lista de tipos de documento con dos valores
-   * que Mercado Pago no acepta, y antes de eso un token inventado.
-   *
-   * El Brick es el mismo componente que ya usa el checkout de la tienda, que
-   * funciona en producción. Dibuja los campos de tarjeta en un iframe propio de
-   * Mercado Pago: el número no pasa nunca por nuestro DOM, ni por nuestro
-   * estado, ni por nuestros logs. Y trae la detección de medio de pago, las
-   * cuotas, el emisor y los tipos de documento correctos sin que haya que
-   * mantener nada de eso.
+   * El Brick dibuja los campos de tarjeta en un iframe propio de Mercado Pago:
+   * el número no pasa nunca por nuestro DOM, ni por nuestro estado, ni por
+   * nuestros logs. Y trae la detección de medio de pago, las cuotas, el emisor
+   * y los tipos de documento correctos sin que haya que mantener nada de eso.
    */
   const onPaymentSubmit = async formData => {
     setError(null)
     setInitPoint(null)
-    setIsProcessing(true)
 
     try {
       const response = await api.post('/subscriptions/process-payment', {
@@ -208,16 +238,25 @@ const CheckoutPage = () => {
       })
 
       if (response.data?.success) {
-        setSuccess(true)
         setSubscriptionId(response.data?.data?.subscriptionId)
 
-        setTimeout(() => {
+        // El backend responde 202 con success: true y status 'pending' cuando
+        // Mercado Pago todavía no aprobó. Antes eso mostraba "¡Pago Exitoso!
+        // Tu suscripción ha sido activada" y mandaba al panel: un cobro que no
+        // ocurrió, presentado como hecho.
+        if (response.data?.data?.status === 'pending') {
+          setOutcome('pending')
+          return
+        }
+
+        setOutcome('active')
+        redirectRef.current = setTimeout(() => {
           // El panel cuelga de /admin (ver routesConfig.js); '/dashboard' no
           // es una ruta del router y caía en el fallback 404.
           navigate('/admin')
-        }, 3000)
+        }, REDIRECT_MS)
       } else {
-        setError(response.data?.message || 'Error procesando pago')
+        setError(response.data?.message || 'No se pudo procesar el pago.')
         setInitPoint(response.data?.data?.initPoint || null)
       }
     } catch (err) {
@@ -225,7 +264,7 @@ const CheckoutPage = () => {
       setError(
         err.response?.data?.message ||
           err.response?.data?.data?.details ||
-          'Error procesando pago. Intenta nuevamente.',
+          'No se pudo procesar el pago. Intentá nuevamente.',
       )
       // EL RECHAZO DEJA DE SER UN CALLEJÓN
       //
@@ -235,234 +274,373 @@ const CheckoutPage = () => {
       // medio de pago". Sin este enlace el comercio ve el error y no tiene
       // ninguna salida desde acá.
       setInitPoint(err.response?.data?.data?.initPoint || null)
-    } finally {
-      setIsProcessing(false)
     }
   }
 
   if (isLoading) {
     return (
       <Box
-        sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: BRAND.paper,
+        }}
       >
-        <CircularProgress />
+        <CircularProgress aria-label="Preparando el pago" />
       </Box>
     )
   }
 
-  return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        bgcolor: '#f5f5f5',
-        py: 4,
-      }}
-    >
-      <Container maxWidth="lg">
-        <Button
-          startIcon={<ArrowBack />}
-          onClick={() => navigate(-1)}
-          sx={{ mb: 3 }}
-          variant="text"
-        >
-          Volver
-        </Button>
+  const alreadyActive = account?.subscriptionStatus === 'active'
+  const daysLeft = trialDaysLeft(account?.subscriptionStatus, account?.trialEndsAt)
+  const nextCharge = formatDate(addOneMonth(new Date()))
 
-        {success ? (
-          <Fade in={success}>
+  let blocker = null
+  if (!planIsSellable) {
+    blocker = {
+      title: 'Ese plan no existe',
+      body: 'El enlace que abriste no corresponde a ningún plan que se pueda contratar.',
+      action: { label: 'Ver los planes', to: '/subscripcion' },
+    }
+  } else if (alreadyActive) {
+    blocker = {
+      title: 'Ya tenés una suscripción activa',
+      body: `Estás en el plan ${PLAN_PRESENTATION[account.currentPlan]?.name || account.currentPlan || 'actual'}. Para cambiar de plan andá a Mi suscripción: contratar otra vez acá crearía un segundo cobro mensual.`,
+      action: { label: 'Ir a Mi suscripción', to: '/admin/mi-suscripcion' },
+    }
+  }
+
+  const header = (
+    <Box component="header" sx={{ mb: 3 }}>
+      <Button
+        startIcon={<ArrowBack />}
+        onClick={goBack}
+        sx={{ textTransform: 'none', fontWeight: 700, color: BRAND.muted, ml: -1, mb: 1 }}
+      >
+        Volver
+      </Button>
+      <Typography
+        variant="overline"
+        sx={{ display: 'block', color: BRAND.blue, fontWeight: 700, letterSpacing: '0.16em' }}
+      >
+        TU SUSCRIPCIÓN A HENKO
+      </Typography>
+      <Typography
+        component="h1"
+        sx={{
+          fontFamily: DISPLAY_FONT,
+          fontWeight: 800,
+          fontSize: { xs: 26, md: 34 },
+          letterSpacing: '-0.02em',
+          lineHeight: 1.15,
+        }}
+      >
+        {planIsSellable ? `Contratar el plan ${planName}` : 'Contratar un plan'}
+      </Typography>
+    </Box>
+  )
+
+  return (
+    <Box sx={{ minHeight: '100vh', bgcolor: BRAND.paper, color: BRAND.ink }}>
+      <Box sx={{ maxWidth: 1080, mx: 'auto', px: { xs: 2, md: 3 }, py: { xs: 3, md: 5 } }}>
+        {header}
+
+        {outcome ? (
+          <Paper
+            variant="outlined"
+            role="status"
+            sx={{
+              ...PANEL_SX,
+              p: { xs: 3, md: 5 },
+              textAlign: 'center',
+              maxWidth: 620,
+              mx: 'auto',
+            }}
+          >
+            {outcome === 'active' ? (
+              <>
+                <CheckCircle sx={{ fontSize: 56, color: BRAND.green }} />
+                <Typography
+                  component="h2"
+                  sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 26, mt: 1 }}
+                >
+                  ¡Listo! Ya estás en el plan {planName}
+                </Typography>
+                <Typography sx={{ color: BRAND.muted, mt: 1 }}>
+                  El pago se aprobó y la suscripción quedó activa. Te mandamos la confirmación por
+                  email. Te llevamos al panel en unos segundos.
+                </Typography>
+              </>
+            ) : (
+              <>
+                <HourglassTop sx={{ fontSize: 56, color: BRAND.amber }} />
+                <Typography
+                  component="h2"
+                  sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 26, mt: 1 }}
+                >
+                  Tu pago está en revisión
+                </Typography>
+                <Typography sx={{ color: BRAND.muted, mt: 1 }}>
+                  Mercado Pago todavía no lo aprobó. Cuando lo haga, la suscripción se activa sola y
+                  te avisamos por email. No hace falta volver a pagar.
+                </Typography>
+                <Button
+                  variant="contained"
+                  disableElevation
+                  onClick={() => navigate('/admin')}
+                  sx={{ mt: 3, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+                >
+                  Ir al panel
+                </Button>
+              </>
+            )}
+            {subscriptionId && (
+              <Typography variant="body2" sx={{ color: BRAND.muted, mt: 2 }}>
+                Número de suscripción: {subscriptionId}
+              </Typography>
+            )}
+          </Paper>
+        ) : blocker ? (
+          <Paper variant="outlined" sx={{ ...PANEL_SX, p: { xs: 3, md: 4 }, maxWidth: 620 }}>
+            <Typography
+              component="h2"
+              sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22 }}
+            >
+              {blocker.title}
+            </Typography>
+            <Typography sx={{ color: BRAND.muted, mt: 1 }}>{blocker.body}</Typography>
+            <Button
+              variant="contained"
+              disableElevation
+              onClick={() => navigate(blocker.action.to)}
+              sx={{ mt: 2.5, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            >
+              {blocker.action.label}
+            </Button>
+          </Paper>
+        ) : (
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 3,
+              gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 7fr)' },
+              alignItems: 'start',
+            }}
+          >
             <Paper
-              elevation={0}
+              variant="outlined"
+              component="section"
+              aria-label="Resumen"
               sx={{
-                p: 6,
-                textAlign: 'center',
-                borderRadius: 4,
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
+                ...PANEL_SX,
+                p: { xs: 2.5, md: 3 },
+                position: { md: 'sticky' },
+                top: { md: 24 },
               }}
             >
-              <CheckCircle sx={{ fontSize: 80, mb: 2 }} />
-              <Typography variant="h4" sx={{ fontWeight: 800, mb: 2 }}>
-                ¡Pago Exitoso!
+              <Typography sx={{ fontSize: 13, fontWeight: 800, color: BRAND.muted }}>
+                Plan {planName}
               </Typography>
-              <Typography variant="body1" sx={{ mb: 2, opacity: 0.95 }}>
-                Tu suscripción al {planDetails.name} ha sido activada correctamente.
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                ID de suscripción: {subscriptionId}
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 2, opacity: 0.85 }}>
-                Serás redirigido al panel en unos segundos...
-              </Typography>
-            </Paper>
-          </Fade>
-        ) : (
-          <Grid container spacing={4}>
-            {/* Resumen del Plan */}
-            <Grid item xs={12} md={4}>
-              <Fade in>
-                <Card
+              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'baseline', mt: 0.5 }}>
+                <Typography
                   sx={{
-                    borderRadius: 3,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                    position: 'sticky',
-                    top: 20,
+                    fontFamily: DISPLAY_FONT,
+                    fontWeight: 800,
+                    fontSize: 34,
+                    fontVariantNumeric: 'tabular-nums',
                   }}
                 >
-                  <CardContent sx={{ p: 4 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-                      Resumen
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 900, color: 'primary.main', mb: 3 }}>
-                      {planDetails.name}
-                    </Typography>
+                  {catalogState === 'loading' ? '…' : formatArs(precioArs)}
+                </Typography>
+                {precioArs !== null && (
+                  <Typography sx={{ fontWeight: 700, color: BRAND.muted }}>/ mes</Typography>
+                )}
+              </Stack>
 
-                    <Stack spacing={2} sx={{ mb: 3 }}>
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Precio mensual
-                        </Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                          {formatArs(precioArs)}
-                        </Typography>
-                      </Box>
+              <Box
+                component="dl"
+                sx={{
+                  m: 0,
+                  mt: 2,
+                  display: 'grid',
+                  gridTemplateColumns: 'max-content 1fr',
+                  columnGap: 2,
+                  rowGap: 0.75,
+                  fontSize: 14,
+                }}
+              >
+                <Typography component="dt" variant="body2" sx={{ color: BRAND.muted }}>
+                  Hoy se cobra
+                </Typography>
+                <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 800 }}>
+                  {formatArs(precioArs)}
+                </Typography>
+                <Typography component="dt" variant="body2" sx={{ color: BRAND.muted }}>
+                  Próximo cobro
+                </Typography>
+                <Typography component="dd" variant="body2" sx={{ m: 0, fontWeight: 700 }}>
+                  cerca del {nextCharge}
+                </Typography>
+              </Box>
+              <Typography variant="body2" sx={{ color: BRAND.muted, mt: 1 }}>
+                Se renueva solo cada mes. Podés cancelarlo cuando quieras desde Mi suscripción.
+              </Typography>
 
-                      <Divider />
+              {daysLeft !== null && (
+                <Alert severity="info" sx={{ mt: 2, borderRadius: 3 }}>
+                  Te {daysLeft === 1 ? 'queda 1 día' : `quedan ${daysLeft} días`} de prueba gratis.
+                  Si contratás ahora, se cobra hoy y la prueba termina.
+                </Alert>
+              )}
 
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          sx={{ color: 'text.secondary', fontWeight: 700 }}
-                        >
-                          INCLUYE
-                        </Typography>
-                        <Stack spacing={1} sx={{ mt: 1 }}>
-                          {planDetails.features.map((feature, idx) => (
-                            <Typography
-                              key={idx}
-                              variant="body2"
-                              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-                            >
-                              <CheckCircle sx={{ fontSize: 18, color: 'success.main' }} />
-                              {feature}
-                            </Typography>
-                          ))}
-                        </Stack>
-                      </Box>
-
-                      <Divider />
-
-                      <Box>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Próximo pago
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(
-                            'es-AR',
-                          )}
-                        </Typography>
-                      </Box>
-
-                      <Alert severity="info" sx={{ borderRadius: 2 }}>
-                        <Typography variant="caption">
-                          Los primeros <strong>14 días son gratis</strong>. Después se cobrará el
-                          monto mensual.
-                        </Typography>
-                      </Alert>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Fade>
-            </Grid>
-
-            {/* Formulario de Pago */}
-            <Grid item xs={12} md={8}>
-              <Fade in>
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: 4,
-                    borderRadius: 3,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-                  }}
-                >
-                  {error && (
-                    <Alert severity="error" sx={{ mb: initPoint ? 2 : 3, borderRadius: 2 }}>
-                      <AlertTitle>Error</AlertTitle>
-                      {error}
-                    </Alert>
-                  )}
-
-                  {initPoint && (
-                    <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-                      <AlertTitle>Probá con otro medio de pago</AlertTitle>
-                      Casi siempre el rechazo viene del banco que emitió la tarjeta, no de nosotros.
-                      Podés autorizar la suscripción desde tu cuenta de Mercado Pago y elegir ahí
-                      cómo pagarla —otra tarjeta, dinero en cuenta, lo que tengas—.
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        href={initPoint}
-                        // Se abre aparte para no perder esta pantalla: si el
-                        // comercio vuelve atrás, encuentra el checkout donde lo
-                        // dejó en vez de una página en blanco.
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        sx={{ mt: 2, display: 'block', width: 'fit-content' }}
-                      >
-                        Autorizar en Mercado Pago
-                      </Button>
-                    </Alert>
-                  )}
-
-                  {!mpReady ? (
-                    <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                      {mpError || 'Preparando el formulario de pago...'}
-                    </Alert>
-                  ) : precioArs === null ? (
-                    <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                      Este plan todavía no tiene precio configurado, así que no se puede contratar.
-                    </Alert>
-                  ) : (
-                    <CardPayment
-                      initialization={{ amount: Number(precioArs) }}
-                      onSubmit={onPaymentSubmit}
-                      onError={brickError => {
-                        // El Brick también dispara onError para eventos no
-                        // críticos —por ejemplo, que todavía no pueda calcular
-                        // las cuotas mientras se tipea el número—, que son parte
-                        // normal de completar el formulario. Mostrar todos
-                        // llenaría la pantalla de errores que no lo son.
-                        if (brickError?.type === 'critical') {
-                          setError(brickError?.message || 'Error en el formulario de pago')
-                        }
-                      }}
-                      customization={{
-                        visual: {
-                          style: { theme: 'flat' },
-                          texts: {
-                            formTitle: 'Datos de tu tarjeta',
-                            formSubmit: `Pagar ${formatArs(precioArs)}`,
-                          },
-                        },
-                      }}
-                    />
-                  )}
-
-                  <Typography
-                    variant="caption"
-                    sx={{ display: 'block', textAlign: 'center', color: 'text.secondary', mt: 2 }}
-                  >
-                    Los datos de tu tarjeta los procesa Mercado Pago directamente. HENKO no los
-                    recibe ni los guarda.
+              {cuotas.length > 0 && (
+                <Box sx={{ mt: 2.5, pt: 2, borderTop: `1px solid ${BRAND.line}` }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800, color: BRAND.muted, mb: 1 }}>
+                    Incluye por mes
                   </Typography>
-                </Paper>
-              </Fade>
-            </Grid>
-          </Grid>
+                  <Stack component="ul" spacing={0.75} sx={{ m: 0, p: 0, listStyle: 'none' }}>
+                    {cuotas.map(cuota => (
+                      <Stack
+                        component="li"
+                        key={cuota}
+                        direction="row"
+                        spacing={1}
+                        sx={{ alignItems: 'flex-start' }}
+                      >
+                        <CheckCircle sx={{ fontSize: 18, color: BRAND.green, mt: '2px' }} />
+                        <Typography variant="body2">{cuota}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Paper>
+
+            <Paper
+              variant="outlined"
+              component="section"
+              aria-label="Pago"
+              sx={{ ...PANEL_SX, p: { xs: 2.5, md: 3 } }}
+            >
+              <Typography
+                component="h2"
+                sx={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 18, mb: 2 }}
+              >
+                Pagá con tarjeta
+              </Typography>
+
+              {error && (
+                <Alert severity="error" sx={{ mb: initPoint ? 1.5 : 2, borderRadius: 3 }}>
+                  {error}
+                </Alert>
+              )}
+
+              {initPoint && (
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 3 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                    Probá con otro medio de pago
+                  </Typography>
+                  Casi siempre el rechazo viene del banco que emitió la tarjeta, no de nosotros.
+                  Podés autorizar la suscripción desde tu cuenta de Mercado Pago y elegir ahí cómo
+                  pagarla —otra tarjeta, dinero en cuenta, lo que tengas—.
+                  <Button
+                    variant="contained"
+                    disableElevation
+                    href={initPoint}
+                    // Se abre aparte para no perder esta pantalla: si el
+                    // comercio vuelve atrás, encuentra el checkout donde lo
+                    // dejó en vez de una página en blanco.
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{
+                      mt: 1.5,
+                      display: 'block',
+                      width: 'fit-content',
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Autorizar en Mercado Pago
+                  </Button>
+                </Alert>
+              )}
+
+              {!mpReady ? (
+                <Alert severity="warning" sx={{ borderRadius: 3 }}>
+                  {mpError || 'Preparando el formulario de pago…'}
+                </Alert>
+              ) : catalogState === 'loading' ? (
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', py: 2 }}>
+                  <CircularProgress size={20} />
+                  <Typography variant="body2" sx={{ color: BRAND.muted }}>
+                    Cargando el precio del plan…
+                  </Typography>
+                </Stack>
+              ) : catalogState === 'error' ? (
+                <Alert
+                  severity="warning"
+                  sx={{ borderRadius: 3 }}
+                  action={
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={retryCatalog}
+                      sx={{ textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Reintentar
+                    </Button>
+                  }
+                >
+                  No se pudo cargar el precio del plan, así que todavía no se puede pagar.
+                </Alert>
+              ) : precioArs === null ? (
+                <Alert severity="warning" sx={{ borderRadius: 3 }}>
+                  Este plan todavía no tiene precio configurado, así que no se puede contratar.
+                </Alert>
+              ) : (
+                <CardPayment
+                  initialization={{ amount: Number(precioArs) }}
+                  onSubmit={onPaymentSubmit}
+                  onError={brickError => {
+                    // El Brick también dispara onError para eventos no
+                    // críticos —por ejemplo, que todavía no pueda calcular
+                    // las cuotas mientras se tipea el número—, que son parte
+                    // normal de completar el formulario. Mostrar todos
+                    // llenaría la pantalla de errores que no lo son.
+                    if (brickError?.type === 'critical') {
+                      setError(brickError?.message || 'Error en el formulario de pago')
+                    }
+                  }}
+                  customization={{
+                    visual: {
+                      style: { theme: 'flat' },
+                      texts: {
+                        formTitle: 'Datos de tu tarjeta',
+                        formSubmit: `Pagar ${formatArs(precioArs)}`,
+                      },
+                    },
+                  }}
+                />
+              )}
+
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ alignItems: 'center', justifyContent: 'center', mt: 2, color: BRAND.muted }}
+              >
+                <Lock sx={{ fontSize: 16 }} />
+                <Typography variant="caption">
+                  Los datos de tu tarjeta los procesa Mercado Pago directamente. HENKO no los recibe
+                  ni los guarda.
+                </Typography>
+              </Stack>
+            </Paper>
+          </Box>
         )}
-      </Container>
+      </Box>
     </Box>
   )
 }
