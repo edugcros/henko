@@ -27,7 +27,7 @@ import { buildProductSku } from '../utils/slugService.js'
 import { createProductRecord } from '../services/productCreationService.js'
 import logger from '../../config/logger.js'
 import * as aiVisionService from '../services/aiVisionService.js'
-import { buildNormalizedDraftFromAnalysis } from '../services/autonomousProductBuilder.js'
+import { withNormalizedDraft } from '../services/autonomousProductBuilder.js'
 
 // =====================================================
 // CONSTANTES
@@ -2089,13 +2089,11 @@ export const markAnalysisJobImportedToAddProduct = asyncHandler(async (req, res)
   // el análisis ya calculado para que el formulario se autocomplete sin
   // gastar una llamada más a la IA.
   if (job.status === JOB_STATUS.COMPLETED) {
-    const normalized = job.analysisRaw ? buildNormalizedDraftFromAnalysis(job.analysisRaw) : null
-
     return res.status(200).json({
       success: true,
       message: 'La imagen ya fue analizada automáticamente. Cargando en AddProduct.',
       job,
-      analysis: job.analysisRaw ? { ...job.analysisRaw, normalized } : null,
+      analysis: job.analysisRaw ? withNormalizedDraft(job.analysisRaw) : null,
     })
   }
 

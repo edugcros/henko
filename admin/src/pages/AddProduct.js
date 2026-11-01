@@ -1622,13 +1622,15 @@ const sanitizeDynamicValuesMap = values => {
 }
 
 export const normalizeAiAnalysisForForm = analysis => {
-  // El backend (autonomousProductBuilder.js) ya calcula este mismo
-  // resultado con un único motor, compartido con el pipeline 100%
-  // autónomo del agente. Si vino en la respuesta, lo usamos tal cual en
-  // vez de recalcularlo acá — así no hay dos implementaciones de la
-  // misma lógica que se puedan desincronizar. El cálculo local de abajo
-  // queda solo como respaldo por si analiza algo que no pasó por ese
-  // endpoint (compatibilidad hacia atrás).
+  // El normalizador es el del backend (buildNormalizedDraftFromAnalysis en
+  // autonomousProductBuilder.js): /product/analyze-visual y el import de un
+  // análisis de la cola lo mandan en `normalized`, y se usa tal cual. Hasta el
+  // PR 11 solo lo mandaba el import, así que una foto analizada en el momento
+  // se normalizaba con el cálculo de abajo, una copia que podía divergir.
+  //
+  // Ese cálculo queda solo de respaldo: una respuesta sin `normalized` (un
+  // backend todavía sin desplegar, o un normalizador que falló y devolvió el
+  // análisis igual). Se puede quitar cuando ya no haga falta.
   if (
     analysis?.normalized &&
     typeof analysis.normalized === 'object' &&

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals'
 // Del análisis de IA al borrador del producto.
 //
 // La IA no conoce el inventario: una foto no dice cuántas unidades hay en el
@@ -20,8 +21,9 @@ import CatalogCategory from '../models/catalogCategoryModel.js'
 import { normalizeCatalogKey } from '../services/catalogCategoryService.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import {
-  buildAutonomousProductPayload,
   buildNormalizedDraftFromAnalysis,
+  stripNormalizedDraft,
+  withNormalizedDraft,
 } from '../services/autonomousProductBuilder.js'
 
 const analisis = (extra = {}) => ({
@@ -54,15 +56,62 @@ describe('IA · no inventa stock', () => {
     expect(variante.attributes).toEqual(expect.objectContaining({ talle: 'M' }))
     expect(variante.stock).toBeNull()
   })
+})
 
-  test('el producto autónomo sale con stock 0, no con una unidad inventada', () => {
-    const payload = buildAutonomousProductPayload({
-      analysis: analisis({ cantidad: 9 }),
-      tenantId: '64b7f0000000000000000001',
-      job: { _id: '64b7f00000000000000000aa', imageUrl: 'https://x/y.jpg' },
+// ─── PR 11: un solo normalizador ────────────────────────────────────────────
+//
+// /analyze-visual devolvía el análisis crudo y AddProduct lo normalizaba con su
+// propia copia de esta lógica; el import de un análisis de la cola, en cambio,
+// mandaba `normalized`. La misma foto llenaba el formulario distinto según por
+// dónde llegara. Ahora los dos caminos devuelven withNormalizedDraft.
+describe('IA · un solo normalizador para el formulario', () => {
+  test('agrega el borrador del formulario sin tocar el análisis', () => {
+    const crudo = analisis({
+      variantSuggestions: [{ talle: 'M', color: 'Negro', price: 1000 }],
     })
 
-    expect(payload.stock).toBe(0)
+    const respuesta = withNormalizedDraft(crudo)
+
+    expect(respuesta.titulo).toBe('Casco integral AGV K1')
+    expect(respuesta.normalized).toEqual(buildNormalizedDraftFromAnalysis(crudo))
+    expect(respuesta.normalized.fields.titulo).toBe('Casco integral AGV K1')
+  })
+
+  test('las variantes arrancan sin costo, como en AddProduct', () => {
+    const { normalized } = withNormalizedDraft(
+      analisis({ variantSuggestions: [{ talle: 'M', price: 1000 }] }),
+    )
+
+    expect(normalized.variants[0]).toMatchObject({ costoUnitario: null, uiStatus: 'ai' })
+  })
+
+  test('si el normalizador falla, devuelve el análisis igual y avisa', () => {
+    const roto = analisis()
+    Object.defineProperty(roto, 'tags', {
+      enumerable: true,
+      get: () => {
+        throw new Error('análisis malformado')
+      },
+    })
+    const onError = jest.fn()
+
+    const respuesta = withNormalizedDraft(roto, { onError })
+
+    expect(respuesta).toBe(roto)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'análisis malformado' }),
+    )
+  })
+
+  test('sin análisis no inventa nada', () => {
+    expect(withNormalizedDraft(null)).toBeNull()
+  })
+
+  test('al guardar, se saca el borrador y queda solo lo que dijo la IA', () => {
+    const crudo = analisis()
+
+    expect(stripNormalizedDraft(withNormalizedDraft(crudo))).toEqual(crudo)
+    expect(stripNormalizedDraft(null)).toBeNull()
   })
 })
 
