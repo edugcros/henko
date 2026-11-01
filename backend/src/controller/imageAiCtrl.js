@@ -9,6 +9,7 @@ import {
 } from '../services/imageAiService.js'
 import { getBackgroundRemovalStatus } from '../services/ai/backgroundRemoval.js'
 import { resolveImageModel } from '../services/ai/geminiModels.js'
+import logger from '../../config/logger.js'
 import {
   AI_FEATURES,
   AI_METRICS,
@@ -96,22 +97,25 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     })
   }
 
-  // La generación del fondo usa Gemini con la clave de plataforma. La clave
-  // propia del tenant, si existe, solo se usa para optimizar el prompt. La
-  // reserva debe reflejar el proveedor que realmente factura la generación.
+  // La generación del fondo usa la clave de PLATAFORMA del proveedor. La clave
+  // propia del tenant, si existe, solo se usa para optimizar el prompt.
+  //
+  // Se reserva al precio del proveedor que se va a intentar primero
+  // (getGenerativeBackgroundStatus), porque cada uno tiene su tarifa: ver
+  // IMAGE_CATALOG en aiModelPricing.js. Si al final responde otro, se corrige
+  // más abajo.
   //
   // La reserva cobra la cuota Y el costo en el mismo movimiento: el precio por
   // imagen es una tarifa plana, o sea que ya se conoce acá. Antes el costo se
   // registraba después, en una segunda llamada, y si esa llamada no llegaba a
   // ejecutarse el cupo quedaba consumido sin su plata. El refund de más abajo
   // devuelve las dos cosas juntas.
-  const reservation = await reserveAiBudget({
+  const reservedProvider = generative.provider || AI_PROVIDERS.GEMINI
+  let reservation = await reserveAiBudget({
     tenantId,
     metric: AI_METRICS.IMAGE_EDITS,
     feature: AI_FEATURES.IMAGE_AI,
-    // Gemini es el proveedor de generación de fondo y la llamada usa la key
-    // de plataforma; no hay fallback automático a otros proveedores pagos.
-    provider: AI_PROVIDERS.GEMINI,
+    provider: reservedProvider,
     // La key propia, si existe, solo optimiza el prompt. La generación de la
     // imagen se factura a la plataforma, por lo que se fuerza ese presupuesto.
     forcePlatformBilling: true,
@@ -141,6 +145,7 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       tenantId,
       metric: AI_METRICS.IMAGE_EDITS,
       operationId: reservation.operationId,
+      provider: reservedProvider,
     })
 
     // Un mensaje escrito para el comercio (imageAiService lo marca con
@@ -156,6 +161,37 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     }
 
     throw error
+  }
+
+  // Respondió otro proveedor que el reservado (por ejemplo, Cloudflare sin
+  // capacidad y generó Gemini): se devuelve la reserva y se cobra de nuevo al
+  // precio del que generó, cuota y costo juntos como siempre. Quedarse con la
+  // primera anotaría una imagen de Gemini a precio de Cloudflare.
+  if (result.provider && result.provider !== reservedProvider) {
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.IMAGE_EDITS,
+      operationId: reservation.operationId,
+      provider: reservedProvider,
+    })
+    reservation = await reserveAiBudget({
+      tenantId,
+      metric: AI_METRICS.IMAGE_EDITS,
+      feature: AI_FEATURES.IMAGE_AI,
+      provider: result.provider,
+      operationId: `${reservation.operationId}:${result.provider}`,
+      forcePlatformBilling: true,
+    })
+    // La imagen ya está hecha: se entrega igual. Pasa solo si justo en el
+    // medio se llenó el cupo, y queda a la vista para revisarlo.
+    if (!reservation.allowed) {
+      logger.warn('[IMAGE AI] No se pudo recobrar al proveedor que generó', {
+        tenantId,
+        reservedProvider,
+        provider: result.provider,
+        reason: reservation.reason,
+      })
+    }
   }
 
   const base64 = result.buffer.toString('base64')

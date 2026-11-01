@@ -270,29 +270,53 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
  * seguir costando lo que costaron. Sin fechas, corregir el número hacia
  * adelante reescribe la historia hacia atrás.
  *
- * El valor predeterminado de USD 0,0336 es una estimación de generación a 1K
- * con Gemini 3.1 Flash Lite Image, no una factura. Configurar
- * AI_COST_USD_PER_IMAGE_EDIT en Render con el costo efectivo esperado y revisar
- * el valor cuando Google cambie sus tarifas.
+ * EL PRECIO DEPENDE DE QUIÉN GENERA (imageAiService prueba Cloudflare y
+ * después Gemini). Con una sola tarifa, cada fondo de Cloudflare se anotaba a
+ * USD 0,0336: con el techo de plataforma en USD 50, unas 1.490 imágenes que no
+ * costaron nada disparaban el disyuntor de IA de todos los comercios.
+ *
+ *   gemini      USD 0,0336  estimación de 1K con Gemini 3.1 Flash Lite Image,
+ *                           no una factura; AI_COST_USD_PER_IMAGE_EDIT la ajusta
+ *   cloudflare  USD 0,00064 FLUX.1 schnell: ~58 neuronas por imagen de 1024×1024
+ *                           y 4 pasos, a USD 0,011 cada 1.000 neuronas (Workers
+ *                           AI, verificado el 01/11/2026). Dentro de las 10.000
+ *                           neuronas gratis por día no se factura, pero se costea
+ *                           a la tarifa paga: es el techo, el mismo criterio que
+ *                           Tavily, y un disyuntor no puede subestimar.
  */
-const IMAGE_CATALOG = [{ from: null, until: null, perImage: 0.0336 }]
+const IMAGE_CATALOG = [
+  { provider: 'gemini', from: null, until: null, perImage: 0.0336 },
+  { provider: 'cloudflare', from: null, until: null, perImage: 0.00064 },
+]
+
+/** Proveedor contra el que se costea una imagen cuando nadie lo dice. */
+export const DEFAULT_IMAGE_PROVIDER = 'gemini'
 
 /**
  * Precio de UNA generación de imagen, a la fecha del consumo.
  *
  * @param {Date} [at=new Date()] - fecha del consumo, no del cálculo
+ * @param {string} [provider='gemini'] - quién genera la imagen
  * @returns {{perImage:number, source:'env'|'catalog'}}
  */
-export const getImagePrice = (at = new Date()) => {
-  // El override de entorno gana, y se informa como tal: un número que no salió
-  // del catálogo tiene que poder distinguirse cuando alguien audite el gasto.
+export const getImagePrice = (at = new Date(), provider = DEFAULT_IMAGE_PROVIDER) => {
+  const name = String(provider || DEFAULT_IMAGE_PROVIDER).toLowerCase()
+
+  // El override de entorno es la estimación de GEMINI y gana solo para Gemini,
+  // informado como tal: un número que no salió del catálogo tiene que poder
+  // distinguirse cuando alguien audite el gasto.
   const override = Number(process.env.AI_COST_USD_PER_IMAGE_EDIT)
-  if (Number.isFinite(override) && override >= 0) {
+  if (name === DEFAULT_IMAGE_PROVIDER && Number.isFinite(override) && override >= 0) {
     return { perImage: override, source: 'env' }
   }
 
   const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
-  const entry = IMAGE_CATALOG.find(e => inWindow(e, when))
+  const enVigencia = IMAGE_CATALOG.filter(e => inWindow(e, when))
+  // Un proveedor sin tarifa se costea como Gemini, el más caro: subestimar es
+  // el error que un disyuntor no se puede permitir.
+  const entry =
+    enVigencia.find(e => e.provider === name) ||
+    enVigencia.find(e => e.provider === DEFAULT_IMAGE_PROVIDER)
 
   return { perImage: entry ? entry.perImage : 0, source: 'catalog' }
 }
@@ -304,11 +328,11 @@ export const getImagePrice = (at = new Date()) => {
  * el número: dos archivos que saben precios es exactamente la forma en que
  * vuelve el problema que el catálogo vino a resolver.
  */
-export const computeImageCostUsd = (count, at = new Date()) => {
+export const computeImageCostUsd = (count, at = new Date(), provider = DEFAULT_IMAGE_PROVIDER) => {
   const amount = Number(count)
   if (!Number.isFinite(amount) || amount <= 0) return 0
 
-  return amount * getImagePrice(at).perImage
+  return amount * getImagePrice(at, provider).perImage
 }
 
 /**

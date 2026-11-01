@@ -128,6 +128,8 @@ export const AI_FEATURES = Object.freeze({
  */
 export const AI_PROVIDERS = Object.freeze({
   GEMINI: 'gemini',
+  // Fondos generados con Workers AI (imageAiService).
+  CLOUDFLARE: 'cloudflare',
   REPLICATE: 'replicate',
   HUGGINGFACE: 'huggingface',
   TAVILY: 'tavily',

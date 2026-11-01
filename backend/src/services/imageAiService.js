@@ -704,7 +704,8 @@ const generateBg = async (
         Math.min(provider.timeoutMs, remaining),
       )
       if (unavailableMarkedAt[name] <= startedAt) unavailableUntil[name] = 0
-      return buffer
+      // Quién generó importa para cobrar: cada proveedor tiene su tarifa.
+      return { buffer, provider: name }
     } catch (error) {
       lastError = error
       logger.warn('[IMAGE AI] El proveedor no generó el fondo, se prueba el siguiente', {
@@ -875,7 +876,11 @@ export const generateVariation = async (
 
   // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
   const cutout = await cutoutOf(normalized)
-  const background = await generateBg(optimizedPrompt, canvas.replicateRatio, deadline)
+  const { buffer: background, provider } = await generateBg(
+    optimizedPrompt,
+    canvas.replicateRatio,
+    deadline,
+  )
 
   // El producto se ajusta con "contain" (no deformarlo) dentro del canvas de
   // destino antes de componerlo — importante cuando el canvas cambia de
@@ -895,9 +900,9 @@ export const generateVariation = async (
     .png()
     .toBuffer()
 
-  logger.info('generateVariation OK', { outputBytes: buffer.length })
+  logger.info('generateVariation OK', { outputBytes: buffer.length, provider })
 
-  return { buffer, contentType: 'image/png' }
+  return { buffer, contentType: 'image/png', provider }
 }
 
 /**

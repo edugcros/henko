@@ -1426,8 +1426,10 @@ const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) 
  * Todo lo que devuelve algo mayor a cero acá queda contabilizado de forma
  * atómica con su cuota, y se revierte igual de atómicamente en el refund.
  */
-const getUpfrontCostUsd = (metric, amount) =>
-  metric === AI_METRICS.IMAGE_EDITS ? computeImageCostUsd(amount) : 0
+const getUpfrontCostUsd = (metric, amount, provider = null) =>
+  metric === AI_METRICS.IMAGE_EDITS
+    ? computeImageCostUsd(amount, new Date(), provider || undefined)
+    : 0
 
 /**
  * Lo que REALMENTE se cobró por esta operación, leído del libro.
@@ -1454,8 +1456,15 @@ const getUpfrontCostUsd = (metric, amount) =>
  * antes que la fila. Sin el respaldo, ese caso devolvería cero y el comercio
  * se quedaría con el cobro.
  */
-const resolveUpfrontCostUsd = async ({ tenantId, period, operationId, metric, amount }) => {
-  const recalculado = getUpfrontCostUsd(metric, amount)
+const resolveUpfrontCostUsd = async ({
+  tenantId,
+  period,
+  operationId,
+  metric,
+  amount,
+  provider = null,
+}) => {
+  const recalculado = getUpfrontCostUsd(metric, amount, provider)
 
   // Solo imageEdits cobra por adelantado. Para el resto no hay nada que leer.
   if (!(recalculado > 0) || !operationId) return recalculado
@@ -1923,7 +1932,8 @@ export const reserveAiBudget = async ({
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 
-  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount)
+  // El precio por imagen depende de quién la genera: ver IMAGE_CATALOG.
+  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount, provider)
 
   // LA RESERVA FINANCIERA, antes que nada.
   //
@@ -2200,6 +2210,10 @@ export const refundAiBudget = async ({
   // sin relación con lo que devuelve, y un reintento del refund descuenta dos
   // veces.
   operationId = null,
+  // El mismo proveedor de la reserva. Solo se usa si la fila del libro todavía
+  // no llegó y hay que recalcular: sin él, una imagen de Cloudflare se
+  // devolvería a precio de Gemini.
+  provider = null,
 }) => {
   const normalizedMetric = normalizeMetric(metric)
   const id = clean(tenantId)
@@ -2286,6 +2300,7 @@ export const refundAiBudget = async ({
     operationId,
     metric: normalizedMetric,
     amount: refundAmount,
+    provider,
   })
 
   try {
