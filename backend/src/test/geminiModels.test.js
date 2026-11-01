@@ -337,3 +337,162 @@ describe('geminiModels · qué modelo está configurado (un solo lugar)', () => 
     expect(DEFAULT_TEXT_MODEL).not.toMatch(/image/)
   })
 })
+
+// ─── Reintentos, respaldo y presupuesto del agente ──────────────────────────
+//
+// El incidente: un timeout agotaba tres intentos sobre el mismo modelo y la
+// llamada se rendía sin probar el respaldo, un 503 se insistía tres veces, un
+// 429 sin la palabra "quota" no pasaba nunca al siguiente, y no había límite
+// de tiempo para la llamada entera. Nada de eso tenía test.
+
+describe('agente · reintentos, respaldo y presupuesto total', () => {
+  let callAgentLLM
+  let fetchOriginal
+  let llamadas
+  const ENV = [
+    'AI_AGENT_LLM_TIMEOUT_MS',
+    'AI_AGENT_LLM_TOTAL_BUDGET_MS',
+    'AI_AGENT_LLM_MAX_ATTEMPTS',
+  ]
+  const guardado = {}
+
+  const ok = texto => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ candidates: [{ content: { parts: [{ text: texto }] } }] }),
+  })
+  const http = (status, message) => ({
+    ok: false,
+    status,
+    json: async () => ({ error: { code: status, message } }),
+  })
+  // Un pedido que no contesta nunca: solo termina cuando lo aborta el timeout.
+  const colgado = (_url, options) =>
+    new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () =>
+        reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+      )
+    })
+
+  // La misma cadena que arma callGemini: el configurado primero.
+  const cadena = () => getModelChain(resolveTextModel())
+  const modeloDe = url => String(url).match(/models\/([^:]+):/)[1]
+  const llamar = () =>
+    callAgentLLM({
+      systemPrompt: 'x',
+      messages: [{ role: 'user', content: 'hola' }],
+      apiKey: 'test-key',
+    })
+
+  beforeAll(async () => {
+    ;({ callAgentLLM } = await import('../services/aiAgent/aiAgentLLMService.js'))
+  })
+
+  beforeEach(() => {
+    resetDeadModels()
+    llamadas = []
+    fetchOriginal = global.fetch
+    for (const nombre of ENV) guardado[nombre] = process.env[nombre]
+    process.env.AI_AGENT_LLM_TIMEOUT_MS = '1000'
+    process.env.AI_AGENT_LLM_TOTAL_BUDGET_MS = '10000'
+    process.env.AI_AGENT_LLM_MAX_ATTEMPTS = '3'
+  })
+
+  afterEach(() => {
+    global.fetch = fetchOriginal
+    for (const nombre of ENV) {
+      if (guardado[nombre] === undefined) delete process.env[nombre]
+      else process.env[nombre] = guardado[nombre]
+    }
+  })
+
+  test('un timeout pasa al siguiente modelo sin reintentar, y no lo pausa', async () => {
+    const [primero, segundo] = cadena()
+    global.fetch = async (url, options) => {
+      llamadas.push(modeloDe(url))
+      return modeloDe(url) === primero ? colgado(url, options) : ok('respondió el respaldo')
+    }
+
+    const resultado = await llamar()
+
+    expect(resultado.content).toBe('respondió el respaldo')
+    expect(resultado.model).toBe(segundo)
+    // Una sola vez al lento: repetirlo duplicaba costo y espera.
+    expect(llamadas.filter(m => m === primero)).toHaveLength(1)
+    // Un timeout no prueba que el modelo esté mal.
+    expect(isModelDead(primero)).toBe(false)
+  }, 15000)
+
+  test('un 503 de saturación pausa el modelo y pasa al siguiente sin insistir', async () => {
+    const [primero] = cadena()
+    global.fetch = async url => {
+      llamadas.push(modeloDe(url))
+      return modeloDe(url) === primero
+        ? http(503, 'This model is currently experiencing high demand.')
+        : ok('ok')
+    }
+
+    await llamar()
+
+    expect(llamadas.filter(m => m === primero)).toHaveLength(1)
+    expect(getModelHealth().coolingDown.map(c => c.model ?? c)).toContain(primero)
+  })
+
+  test('un 429 sin la palabra "quota" también pasa al respaldo', async () => {
+    const [primero, segundo] = cadena()
+    global.fetch = async url => {
+      llamadas.push(modeloDe(url))
+      return modeloDe(url) === primero ? http(429, 'Resource has been exhausted.') : ok('ok')
+    }
+
+    const resultado = await llamar()
+
+    expect(resultado.model).toBe(segundo)
+    expect(llamadas.filter(m => m === primero)).toHaveLength(1)
+  })
+
+  test('un 500 se reintenta en el mismo modelo, limitado, y después pasa al siguiente', async () => {
+    process.env.AI_AGENT_LLM_MAX_ATTEMPTS = '2'
+    const [primero, segundo] = cadena()
+    global.fetch = async url => {
+      llamadas.push(modeloDe(url))
+      return modeloDe(url) === primero ? http(500, 'Internal error') : ok('ok')
+    }
+
+    const resultado = await llamar()
+
+    expect(llamadas.filter(m => m === primero)).toHaveLength(2)
+    expect(resultado.model).toBe(segundo)
+    // Un 500 tampoco pausa el modelo para el resto del proceso.
+    expect(isModelDead(primero)).toBe(false)
+  })
+
+  test('un 401 corta: cambiar de modelo no arregla una credencial', async () => {
+    global.fetch = async url => {
+      llamadas.push(modeloDe(url))
+      return http(401, 'API key not valid.')
+    }
+
+    await expect(llamar()).rejects.toMatchObject({ statusCode: 401 })
+    expect(llamadas).toHaveLength(1)
+  })
+
+  test('la llamada entera respeta el presupuesto total', async () => {
+    process.env.AI_AGENT_LLM_TOTAL_BUDGET_MS = '3500'
+    global.fetch = async (url, options) => {
+      llamadas.push(modeloDe(url))
+      return colgado(url, options)
+    }
+
+    const inicio = Date.now()
+    // Sale con la causa REAL (el timeout del último modelo), no con un
+    // genérico "se agotó el tiempo" que esconde qué pasó.
+    await expect(llamar()).rejects.toMatchObject({ code: 'AI_LLM_TIMEOUT' })
+    const duracion = Date.now() - inicio
+
+    // 3,5 s de presupuesto con intentos de 1 s: no se empieza un intento con
+    // menos de 2 s, así que entran dos modelos y la llamada termina a tiempo.
+    expect(duracion).toBeLessThan(4500)
+    expect(llamadas.length).toBeLessThanOrEqual(2)
+  }, 15000)
+})

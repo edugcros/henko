@@ -281,12 +281,20 @@ export const isQuotaError = (status, body = '') =>
  */
 export const isOverloadError = status => Number(status) === 503
 
-/** ¿El fallo indica que conviene pasar al siguiente modelo de la cadena? */
+/**
+ * ¿El fallo indica que conviene pasar al siguiente modelo de la cadena?
+ *
+ * Cualquier 429, diga lo que diga el texto. Antes se exigía "quota", "billing"
+ * o "plan" en el mensaje, mientras markModelDead trataba todo 429 como
+ * temporal: un 429 de límite por minuto, sin esas palabras, no pasaba nunca al
+ * respaldo y la llamada fallaba teniendo modelos disponibles.
+ */
 export const isModelUnavailable = (status, body = '') => {
-  if (status === 404) return true
-  if (status === 400 && /not found|not supported/i.test(body)) return true
-  if (isQuotaError(status, body)) return true
-  if (isOverloadError(status)) return true
+  const code = Number(status)
+  if (code === 404) return true
+  if (code === 400 && /not found|not supported/i.test(body)) return true
+  if (code === 429) return true
+  if (isOverloadError(code)) return true
   return false
 }
 

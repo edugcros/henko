@@ -381,8 +381,9 @@ export const env = {
     maxSystemPromptChars: Number(process.env.AI_AGENT_MAX_SYSTEM_PROMPT_CHARS || 50000),
     topP: Number(process.env.AI_AGENT_TOP_P || 0.9),
     topK: Number(process.env.AI_AGENT_TOP_K || 40),
-    llmTimeoutMs: Number(process.env.AI_AGENT_LLM_TIMEOUT_MS || 15000),
-    llmMaxAttempts: Number(process.env.AI_AGENT_LLM_MAX_ATTEMPTS || 3),
+    // AI_AGENT_LLM_TIMEOUT_MS, AI_AGENT_LLM_MAX_ATTEMPTS y
+    // AI_AGENT_LLM_TOTAL_BUDGET_MS los lee aiAgentLLMService en cada llamada.
+    // Estaban duplicados acá y nadie los usaba.
     catalogSnapshotTtlMs: Number(process.env.AI_CATALOG_SNAPSHOT_TTL_MS || 60000),
     cartRecoveryLeaseMs: Number(process.env.AI_CART_RECOVERY_LEASE_MS || 120000),
     allowGlobalStorefrontUrl: parseBoolean(process.env.AI_ALLOW_GLOBAL_STOREFRONT_URL, false),
