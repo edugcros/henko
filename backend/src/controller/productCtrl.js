@@ -377,7 +377,29 @@ const normalizePhraseList = (value, max = 20) => {
   ]
 }
 
-const ALLOWED_SEO_SEARCH_INTENTS = ['informational', 'commercial', 'transactional', 'navigational']
+// Las del panel (comercial, informativa, comparativa, local, marca) más las dos
+// clásicas que pueden traer productos viejos. Antes faltaban comparativa,
+// local y marca: el formulario las ofrecía y al guardar se perdían en silencio.
+// Misma lista que el enum de seo.searchIntent en productModel.
+const ALLOWED_SEO_SEARCH_INTENTS = [
+  'commercial',
+  'informational',
+  'comparative',
+  'local',
+  'brand',
+  'transactional',
+  'navigational',
+]
+
+/**
+ * El slug que pidió la persona (campo «Slug URL» del alta, «Slug SEO» de la
+ * edición), si mandó uno. Llega plano o dentro de `seo`, que en multipart viene
+ * como texto JSON.
+ */
+const readRequestedSlug = body => {
+  const seo = normalizePlainObject(safeJsonParse(body?.seo, body?.seo))
+  return normalizePublicSlug(body?.slug || seo.slug)
+}
 
 /**
  * @param {object} current - El SEO que el producto ya tiene. Se usa como piso:
@@ -1503,8 +1525,11 @@ export const createProduct = expressAsyncHandler(async (req, res) => {
 
     const finalTitle = normalizeText(req.body.title, DEFAULT_PRODUCT_TITLE)
 
+    // El slug que cargó la persona manda; si no hay, sale del título. Antes
+    // salía siempre del título y el «Slug URL» del formulario solo quedaba en
+    // seo.slug, distinto del que usa la tienda.
     const slug = await generateUniqueSlug({
-      title: finalTitle,
+      title: readRequestedSlug(req.body) || finalTitle,
       tenantId,
     })
 
@@ -2518,16 +2543,25 @@ export const updateProduct = expressAsyncHandler(async (req, res) => {
       req.body.variants !== undefined ? safeJsonParse(req.body.variants, req.body.variants) : [],
     )
 
-    if (req.body.title !== undefined) {
-      const nextTitle = normalizeText(req.body.title, product.title)
+    // Un solo slug: product.slug (único por tienda). seo.slug lo copia el
+    // modelo. Si la persona cambió el slug, se usa ese (hecho único); si no y
+    // cambió el título, se regenera desde el título, como siempre.
+    const requestedSlug = readRequestedSlug(req.body)
+    const nextTitle =
+      req.body.title !== undefined ? normalizeText(req.body.title, product.title) : product.title
 
-      if (nextTitle && nextTitle !== product.title) {
-        updates.slug = await generateUniqueSlug({
-          title: nextTitle,
-          tenantId,
-          excludeId: product._id,
-        })
-      }
+    if (requestedSlug && requestedSlug !== product.slug) {
+      updates.slug = await generateUniqueSlug({
+        title: requestedSlug,
+        tenantId,
+        excludeId: product._id,
+      })
+    } else if (nextTitle && nextTitle !== product.title) {
+      updates.slug = await generateUniqueSlug({
+        title: nextTitle,
+        tenantId,
+        excludeId: product._id,
+      })
     }
 
     if (req.body.variants !== undefined) {

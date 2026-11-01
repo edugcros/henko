@@ -1364,3 +1364,120 @@ describe('publicación · una sola regla para publicar, y los borradores se guar
     expect((await leer(id)).description).toBe('Casco con visor y pinlock')
   })
 })
+
+describe('SEO · un solo slug y las intenciones del formulario se guardan', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const base = () => ({
+    title: 'Casco integral AGV K1',
+    description: 'Casco con visor',
+    marca: 'AGV',
+    categoria: 'Cascos',
+    subcategoria: 'Integrales',
+    price: 150000,
+    stock: 3,
+  })
+  const crear = async extra => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...base(), ...extra })
+    expect(res.statusCode).toBe(201)
+    return res.body.data._id
+  }
+  const editar = (id, body) => request(app).put(`/api/product/${id}`).set(headers()).send(body)
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'seo-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('el «Slug URL» del alta es el slug del producto, no solo el del SEO', async () => {
+    const id = await crear({ slug: 'casco-agv-k1-pista', seo: { slug: 'casco-agv-k1-pista' } })
+
+    const producto = await leer(id)
+    expect(producto.slug).toBe('casco-agv-k1-pista')
+    expect(producto.seo.slug).toBe('casco-agv-k1-pista')
+  })
+
+  test('si el slug está ocupado se hace único, y el del SEO es el mismo', async () => {
+    const id = await crear({ slug: 'casco-agv-k1-pista' })
+
+    const producto = await leer(id)
+    expect(producto.slug).not.toBe('casco-agv-k1-pista')
+    expect(producto.slug).toMatch(/^casco-agv-k1-pista-\d+$/)
+    expect(producto.seo.slug).toBe(producto.slug)
+  })
+
+  test('sin slug cargado sale del título', async () => {
+    const id = await crear({ title: 'Guantes Alpinestars SP-8' })
+
+    const producto = await leer(id)
+    expect(producto.slug).toBe('guantes-alpinestars-sp-8')
+    expect(producto.seo.slug).toBe(producto.slug)
+  })
+
+  test('cambiar el slug en la edición cambia el del producto', async () => {
+    const id = await crear({ title: 'Campera Dainese Racing' })
+
+    const res = await editar(id, { slug: 'campera-dainese-racing-4' })
+
+    expect(res.statusCode).toBe(200)
+    const producto = await leer(id)
+    expect(producto.slug).toBe('campera-dainese-racing-4')
+    expect(producto.seo.slug).toBe('campera-dainese-racing-4')
+  })
+
+  test('cambiar el título con el slug de siempre lo regenera, y el del SEO lo sigue', async () => {
+    const id = await crear({ title: 'Botas TCX Clima' })
+    const antes = await leer(id)
+
+    // Lo que manda EditProduct: el título nuevo y el slug que mostraba.
+    const res = await editar(id, {
+      title: 'Botas TCX Clima 2 Gore-Tex',
+      slug: antes.slug,
+      seo: { slug: antes.seo.slug, metaTitle: 'Botas TCX' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const producto = await leer(id)
+    expect(producto.slug).toBe('botas-tcx-clima-2-gore-tex')
+    expect(producto.seo.slug).toBe('botas-tcx-clima-2-gore-tex')
+  })
+
+  test.each(['comparative', 'local', 'brand', 'commercial', 'informational'])(
+    'la intención «%s» que ofrece el formulario se guarda',
+    async intent => {
+      const id = await crear({ title: `Casco ${intent}`, seoSearchIntent: intent })
+
+      expect((await leer(id)).seo.searchIntent).toBe(intent)
+    },
+  )
+
+  test('una intención desconocida se descarta, no rompe el alta', async () => {
+    const id = await crear({ title: 'Casco intención rara', seoSearchIntent: 'viral' })
+
+    expect((await leer(id)).seo.searchIntent).toBe('')
+  })
+})
