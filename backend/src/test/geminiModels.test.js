@@ -477,6 +477,21 @@ describe('agente · reintentos, respaldo y presupuesto total', () => {
     expect(llamadas).toHaveLength(1)
   })
 
+  test('con un timeout corto y el presupuesto por defecto, el respaldo igual arranca', async () => {
+    // Intentos de 1 s y presupuesto por defecto (el doble, 2 s): con el mínimo
+    // fijo en 2 s, el siguiente modelo nunca arrancaba.
+    delete process.env.AI_AGENT_LLM_TOTAL_BUDGET_MS
+    const [primero, segundo] = cadena()
+    global.fetch = async (url, options) => {
+      llamadas.push(modeloDe(url))
+      return modeloDe(url) === primero ? colgado(url, options) : ok('respondió el respaldo')
+    }
+
+    const resultado = await llamar()
+
+    expect(resultado.model).toBe(segundo)
+  }, 15000)
+
   test('la llamada entera respeta el presupuesto total', async () => {
     process.env.AI_AGENT_LLM_TOTAL_BUDGET_MS = '3500'
     global.fetch = async (url, options) => {
@@ -491,8 +506,9 @@ describe('agente · reintentos, respaldo y presupuesto total', () => {
     const duracion = Date.now() - inicio
 
     // 3,5 s de presupuesto con intentos de 1 s: no se empieza un intento con
-    // menos de 2 s, así que entran dos modelos y la llamada termina a tiempo.
+    // menos de medio segundo, así que entran como mucho tres modelos y la
+    // llamada termina a tiempo.
     expect(duracion).toBeLessThan(4500)
-    expect(llamadas.length).toBeLessThanOrEqual(2)
+    expect(llamadas.length).toBeLessThanOrEqual(3)
   }, 15000)
 })

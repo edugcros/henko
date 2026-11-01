@@ -304,8 +304,15 @@ const buildGeminiError = ({ response, data }) => {
 // La configuración se lee acá, en cada llamada. config/env.js tenía
 // llmTimeoutMs y llmMaxAttempts que nadie leía: dos versiones del mismo dato.
 
-/** Menos que esto no alcanza para que un modelo conteste: no se empieza. */
-const MIN_ATTEMPT_MS = 2000
+/**
+ * Menos tiempo que esto no alcanza para que un modelo conteste: no se empieza.
+ *
+ * Proporcional al timeout de un intento, con 2 s de tope. Fijo en 2 s, un
+ * timeout configurado por debajo de eso dejaba la cadena sin respaldo: con
+ * intentos de 1 s y el presupuesto por defecto (2 s), cuando el primer modelo
+ * agotaba su tiempo quedaba menos de 2 s y el siguiente nunca arrancaba.
+ */
+const minAttemptMs = attemptTimeoutMs => Math.min(2000, attemptTimeoutMs / 2)
 
 const resolveAttemptTimeoutMs = timeoutOverrideMs =>
   // El default está pensado para el agente de ventas: un mensaje corto que
@@ -363,7 +370,7 @@ const fetchGemini = async ({ url, apiKey, payload, attemptTimeoutMs, deadline })
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const remaining = deadline - Date.now()
-    if (remaining < MIN_ATTEMPT_MS) throw lastError || budgetExceededError()
+    if (remaining < minAttemptMs(attemptTimeoutMs)) throw lastError || budgetExceededError()
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), Math.min(attemptTimeoutMs, remaining))
@@ -407,7 +414,7 @@ const fetchGemini = async ({ url, apiKey, payload, attemptTimeoutMs, deadline })
 
     const delay = getRetryDelayMs({ attempt })
     // Esperar para reintentar no puede comerse el tiempo del respaldo.
-    if (deadline - Date.now() - delay < MIN_ATTEMPT_MS) throw lastError
+    if (deadline - Date.now() - delay < minAttemptMs(attemptTimeoutMs)) throw lastError
     await sleep(delay)
   }
 
@@ -641,7 +648,7 @@ export const callGemini = async ({
   let lastError
 
   for (const candidate of candidates) {
-    if (deadline - Date.now() < MIN_ATTEMPT_MS) {
+    if (deadline - Date.now() < minAttemptMs(attemptTimeoutMs)) {
       lastError = lastError || budgetExceededError()
       break
     }
