@@ -55,7 +55,8 @@ jest.unstable_mockModule('@mercadopago/sdk-react', () => ({
   ),
 }))
 
-const { default: CheckoutPage, addOneMonth, trialDaysLeft } = await import('./CheckoutPage.js')
+const { default: CheckoutPage, addOneMonth } = await import('./CheckoutPage.js')
+const { trialDaysLeft } = await import('../constants/plans.js')
 
 beforeEach(() => {
   jest.clearAllMocks()

@@ -24,7 +24,7 @@ import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '
 // del plan.
 import { ArrowBack, CheckCircle, HourglassTop, Lock } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
-import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs } from '../constants/plans.js'
+import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs, trialDaysLeft } from '../constants/plans.js'
 import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 
@@ -86,14 +86,6 @@ export const addOneMonth = date => {
 
 const formatDate = date =>
   date.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
-
-/** Días que le quedan a la prueba gratis, o null si no está en prueba. */
-export const trialDaysLeft = (subscriptionStatus, trialEndsAt, now = Date.now()) => {
-  if (subscriptionStatus !== 'trialing' || !trialEndsAt) return null
-  const ms = new Date(trialEndsAt).getTime() - now
-  if (!Number.isFinite(ms) || ms <= 0) return null
-  return Math.ceil(ms / (24 * 60 * 60 * 1000))
-}
 
 const REDIRECT_MS = 3000
 

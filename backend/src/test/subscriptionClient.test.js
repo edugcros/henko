@@ -162,6 +162,8 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      createSubscriptionInvoiceClient: jest.fn(),
+      mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -211,6 +213,8 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      createSubscriptionInvoiceClient: jest.fn(),
+      mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -269,6 +273,8 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      createSubscriptionInvoiceClient: jest.fn(),
+      mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -313,6 +319,8 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       mapMercadoPagoSubscriptionError: () => ({ status: 400, message: 'x' }),
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
+      createSubscriptionInvoiceClient: jest.fn(),
+      mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
         currentPeriodEnd: null,
@@ -511,6 +519,8 @@ describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
         currentPeriodStart: null,
       }),
       createAuthorizableSubscription: mockCrearAutorizable,
+      createSubscriptionInvoiceClient: jest.fn(),
+      mapSubscriptionInvoice: jest.fn(),
     }))
 
     mockResolveTenant.mockResolvedValue({
@@ -600,5 +610,192 @@ describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
     expect(res.statusCode).toBe(400)
     expect(res.body?.data?.code).toBe('SUBSCRIPTION_PAYMENT_ERROR')
     expect(res.body?.data?.initPoint).toBeNull()
+  })
+})
+
+describe('historial de pagos · los cobros salen de /authorized_payments', () => {
+  // El historial leía `invoice_list` de GET /preapproval, un campo que esa API
+  // no devuelve. Salía vacío para todos los comercios, también para los que
+  // pagan hace meses. Estos tests simulan el SDK de Mercado Pago y no el
+  // servicio, para que el contrato que se fija sea el del proveedor.
+  const respuesta = () => ({
+    statusCode: 0,
+    body: null,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  })
+
+  const mockSearch = jest.fn()
+  const mockPreApprovalGet = jest.fn()
+
+  const preparar = async ({
+    subscriptionId = 'preap-1',
+    estado = 'active',
+    plan = 'starter',
+  } = {}) => {
+    jest.resetModules()
+    // Los tests de arriba simulan el servicio entero; acá tiene que ser el real.
+    jest.unstable_unmockModule('../services/subscriptionPaymentService.js')
+
+    jest.unstable_mockModule('mercadopago', () => ({
+      MercadoPagoConfig: class {
+        constructor(options) {
+          this.options = options
+        }
+      },
+      PreApproval: class {
+        get(...args) {
+          return mockPreApprovalGet(...args)
+        }
+        update() {
+          return Promise.resolve({})
+        }
+      },
+      Invoice: class {
+        search(...args) {
+          return mockSearch(...args)
+        }
+      },
+    }))
+
+    mockResolveTenant.mockResolvedValue({
+      tenantId: TENANT._id,
+      tenantObjectId: TENANT._id,
+      source: 'user',
+    })
+    mockTenantFindById.mockResolvedValue({
+      ...TENANT,
+      plan,
+      subscriptionStatus: estado,
+      integrations: { subscriptionMercadoPago: { subscriptionId } },
+    })
+
+    const ctrl = await import('../controller/subscriptionCtrl.js')
+    const service = await import('../services/subscriptionPaymentService.js')
+    return { ...ctrl, ...service }
+  }
+
+  const cobro = (overrides = {}) => ({
+    id: 7001,
+    preapproval_id: 'preap-1',
+    status: 'processed',
+    transaction_amount: 40000,
+    currency_id: 'ARS',
+    debit_date: '2026-10-04T10:00:00.000-03:00',
+    date_created: '2026-10-01T10:00:00.000-03:00',
+    reason: 'HENKO Plan Emprendedor',
+    retry_attempt: 0,
+    payment: { id: 1, status: 'approved', status_detail: 'accredited' },
+    ...overrides,
+  })
+
+  afterEach(() => {
+    mockSearch.mockReset()
+    mockPreApprovalGet.mockReset()
+  })
+
+  test('busca los cobros de ESA suscripción y no lee la suscripción', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch.mockResolvedValue({ results: [cobro()] })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(mockSearch).toHaveBeenCalledWith({
+      options: expect.objectContaining({ preapproval_id: 'preap-1' }),
+    })
+    expect(mockPreApprovalGet).not.toHaveBeenCalled()
+    expect(res.body.data.invoices).toEqual([
+      {
+        id: '7001',
+        status: 'paid',
+        amount: 40000,
+        currency: 'ARS',
+        date: new Date('2026-10-04T13:00:00.000Z'),
+        reason: 'HENKO Plan Emprendedor',
+        retryAttempt: 0,
+      },
+    ])
+  })
+
+  test('el más reciente primero, y nunca un cobro de otra suscripción', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch.mockResolvedValue({
+      results: [
+        cobro({ id: 1, debit_date: '2026-08-04T10:00:00Z' }),
+        cobro({ id: 2, debit_date: '2026-10-04T10:00:00Z' }),
+        cobro({ id: 3, preapproval_id: 'preap-de-otro-comercio' }),
+        cobro({ id: 4, debit_date: '2026-09-04T10:00:00Z' }),
+      ],
+    })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.body.data.invoices.map(invoice => invoice.id)).toEqual(['2', '4', '1'])
+  })
+
+  test('si Mercado Pago falla, 503 con un mensaje, no un historial vacío', async () => {
+    const { getSubscriptionInvoices } = await preparar()
+    mockSearch.mockRejectedValue(Object.assign(new Error('timeout'), { status: 504 }))
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.statusCode).toBe(503)
+    expect(res.body.success).toBe(false)
+  })
+
+  test('sin suscripción en Mercado Pago no se consulta nada', async () => {
+    const { getSubscriptionInvoices } = await preparar({ subscriptionId: null })
+
+    const res = respuesta()
+    await getSubscriptionInvoices({ user: { _id: USER_ID } }, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data.invoices).toEqual([])
+    expect(mockSearch).not.toHaveBeenCalled()
+  })
+
+  test('mapSubscriptionInvoice: un rechazo no es «pendiente»', async () => {
+    const { mapSubscriptionInvoice } = await preparar()
+    const estado = (status, paymentStatus) =>
+      mapSubscriptionInvoice(
+        cobro({ status, payment: paymentStatus ? { status: paymentStatus } : undefined }),
+      ).status
+
+    expect(estado('processed', 'approved')).toBe('paid')
+    expect(estado('processed', 'rejected')).toBe('failed')
+    expect(estado('recycling', 'rejected')).toBe('retrying')
+    expect(estado('scheduled')).toBe('scheduled')
+    expect(estado('cancelled')).toBe('cancelled')
+    expect(estado('processed', 'refunded')).toBe('refunded')
+    expect(estado('processed', 'in_process')).toBe('pending')
+  })
+
+  test('mapSubscriptionInvoice: un monto que no vino es null, no NaN', async () => {
+    const { mapSubscriptionInvoice } = await preparar()
+
+    expect(mapSubscriptionInvoice(cobro({ transaction_amount: undefined })).amount).toBeNull()
+    expect(mapSubscriptionInvoice({}).date).toBeNull()
+  })
+
+  test('cambiar de plan con el pago pendiente no lo da por pagado', async () => {
+    // Respondía status 'active' fijo; el panel lo tomaba y el comercio en mora
+    // pasaba a verse al día.
+    const { changeSubscriptionPlan } = await preparar({ estado: 'past_due' })
+
+    const res = respuesta()
+    await changeSubscriptionPlan({ user: { _id: USER_ID }, body: { newPlan: 'pro' } }, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data).toEqual({ plan: 'pro', status: 'past_due' })
   })
 })

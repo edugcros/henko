@@ -3,7 +3,7 @@
 // Valida plan, crea PaymentIntent y maneja confirmación
 
 import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
-import { MercadoPagoConfig, PreApproval } from 'mercadopago'
+import { Invoice, MercadoPagoConfig, PreApproval } from 'mercadopago'
 
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
@@ -36,7 +36,7 @@ import logger from '../../config/logger.js'
  * sería el comercio cobrándose a sí mismo, y además el token de un comercio no
  * puede crear una suscripción a favor de otro.
  */
-export const createSubscriptionClient = () => {
+const platformMercadoPagoConfig = () => {
   const accessToken = String(env.mercadoPago?.accessToken || '').trim()
 
   // Mismo criterio que paymentTenantConfigService: si no tiene forma de
@@ -48,7 +48,59 @@ export const createSubscriptionClient = () => {
     throw error
   }
 
-  return new PreApproval(new MercadoPagoConfig({ accessToken, options: { timeout: 15000 } }))
+  return new MercadoPagoConfig({ accessToken, options: { timeout: 15000 } })
+}
+
+export const createSubscriptionClient = () => new PreApproval(platformMercadoPagoConfig())
+
+/**
+ * Cliente de los COBROS de una suscripción (authorized payments).
+ *
+ * El historial de pagos del panel leía `invoice_list` de la suscripción, un
+ * campo que la API de preapproval no devuelve: ni está en la respuesta ni en
+ * los tipos del SDK. El historial salía vacío para todos los comercios, también
+ * para los que pagan hace meses. Los cobros viven en otro recurso,
+ * `GET /authorized_payments/search?preapproval_id=…`, que es lo que consulta
+ * este cliente. Mismas credenciales: las de la plataforma, que creó la
+ * suscripción.
+ */
+export const createSubscriptionInvoiceClient = () => new Invoice(platformMercadoPagoConfig())
+
+/**
+ * Un cobro de Mercado Pago, en los términos que le sirven al comercio.
+ *
+ * Mercado Pago informa dos estados: el del cobro (`scheduled`, `processed`,
+ * `recycling`, `cancelled`) y el del pago que generó (`approved`, `rejected`,
+ * …). Ninguno de los dos solo alcanza: un cobro `processed` puede tener el pago
+ * aprobado o rechazado, y uno `recycling` es un rechazo que se va a reintentar.
+ * Antes el panel mostraba «Pendiente» para todo lo que no fuera `approved`,
+ * incluido un rechazo.
+ */
+export const mapSubscriptionInvoice = (invoice = {}) => {
+  const invoiceStatus = sanitizeString(invoice?.status).toLowerCase()
+  const paymentStatus = sanitizeString(invoice?.payment?.status).toLowerCase()
+
+  let status = 'pending'
+  if (paymentStatus === 'approved') status = 'paid'
+  else if (paymentStatus === 'refunded' || paymentStatus === 'charged_back') status = 'refunded'
+  else if (invoiceStatus === 'cancelled') status = 'cancelled'
+  else if (invoiceStatus === 'recycling') status = 'retrying'
+  else if (paymentStatus === 'rejected') status = 'failed'
+  else if (invoiceStatus === 'scheduled') status = 'scheduled'
+
+  const amount = Number(invoice?.transaction_amount)
+
+  return {
+    id: invoice?.id ? String(invoice.id) : null,
+    status,
+    amount: Number.isFinite(amount) ? amount : null,
+    currency: sanitizeString(invoice?.currency_id, 'ARS'),
+    // Para un cobro, la fecha que importa es la del débito; la de creación es
+    // el respaldo.
+    date: providerDate(invoice?.debit_date) || providerDate(invoice?.date_created),
+    reason: sanitizeString(invoice?.reason),
+    retryAttempt: Number(invoice?.retry_attempt) || 0,
+  }
 }
 
 const sanitizeString = (value, fallback = '') => {

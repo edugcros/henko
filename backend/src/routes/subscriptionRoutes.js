@@ -172,12 +172,12 @@ router.post('/cancel', resolveTenantByDomain, requireTenant, authMiddleware, can
  *     invoices: [
  *       {
  *         id: '12345',
- *         status: 'approved',
- *         amount: 99.00,
- *         currency: 'USD',
+ *         status: 'paid' | 'failed' | 'retrying' | 'scheduled' | 'pending' | 'cancelled' | 'refunded',
+ *         amount: 40000,
+ *         currency: 'ARS',
  *         date: '2026-09-04T00:00:00Z',
- *         paidDate: '2026-09-04T12:30:00Z',
- *         reason: 'Suscripción Henko Plan pro'
+ *         reason: 'Suscripción Henko Plan pro',
+ *         retryAttempt: 0
  *       }
  *     ],
  *     subscriptionId: '<mp_subscription_id>'
