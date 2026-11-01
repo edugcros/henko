@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
 import request from 'supertest'
 
@@ -9,7 +10,11 @@ import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import { authHeaders, createTestTenant, createTestUser, getCSRFToken } from './testSetup.js'
 import { decrementLineStock } from '../services/orderInventoryService.js'
-import { applyStockBaselines, getPublishBlockers } from '../controller/productCtrl.js'
+import {
+  applyStockBaselines,
+  getPublishBlockers,
+  PUBLISHABLE_PRODUCT_QUERY,
+} from '../controller/productCtrl.js'
 
 describe('product controller', () => {
   let tenantContext
@@ -1230,6 +1235,90 @@ describe('publicación · una sola regla para publicar, y los borradores se guar
     expect((await leer(listo)).status).toBe('active')
     expect((await leer(sinStock)).status).toBe('draft')
     expect((await leer(sinFoto)).status).toBe('draft')
+  })
+
+  test('el filtro de la escritura y la regla dicen lo mismo sobre los mismos productos', async () => {
+    const variante = extra => ({ key: `k${Math.random()}`, price: 1000, stock: 0, ...extra })
+    const casos = {
+      completo: completo(),
+      sinFoto: completo({ images: [] }),
+      sinStock: completo({ stock: 0 }),
+      precioCero: completo({ price: 0 }),
+      marcaEnBlanco: completo({ marca: '   ' }),
+      tituloPorDefecto: completo({ title: 'Producto sin título' }),
+      variantesOk: completo({
+        hasVariants: true,
+        stock: 0,
+        variants: [variante({ stock: 2 }), variante()],
+      }),
+      variantesSinStock: completo({ hasVariants: true, stock: 0, variants: [variante()] }),
+      variantePrecioCero: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 2 }), variante({ price: 0 })],
+      }),
+      soloInactivaConStock: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 5, isActive: false })],
+      }),
+      inactivaSinPrecio: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 2 }), variante({ price: 0, isActive: false })],
+      }),
+    }
+    const tag = `paridad-${Date.now()}`
+    const ids = {}
+    for (const [nombre, datos] of Object.entries(casos)) {
+      const { insertedId } = await Product.collection.insertOne({
+        ...datos,
+        images: datos.images.map(image => ({ ...image, tenantId: ctx.tenant._id })),
+        tenantId: ctx.tenant._id,
+        slug: `${tag}-${nombre}`,
+        tags: [tag],
+        status: 'draft',
+      })
+      ids[nombre] = String(insertedId)
+    }
+
+    const porFiltro = new Set(
+      (
+        await Product.find({ tags: tag, ...PUBLISHABLE_PRODUCT_QUERY })
+          .setOptions({ tenantId: ctx.tenant._id })
+          .lean()
+      ).map(product => String(product._id)),
+    )
+    const porRegla = new Set(
+      Object.entries(casos)
+        .filter(([, datos]) => getPublishBlockers(datos).length === 0)
+        .map(([nombre]) => ids[nombre]),
+    )
+
+    expect([...porFiltro].sort()).toEqual([...porRegla].sort())
+    expect(porRegla).toEqual(new Set([ids.completo, ids.variantesOk, ids.inactivaSinPrecio]))
+  })
+
+  test('un borrador que quedó incompleto entre la lectura y la escritura no se publica', async () => {
+    const id = await crearBorrador({ stock: 0 })
+    await ponerFoto(id)
+    // La lectura ve una versión vieja y completa; en la base ya tiene stock 0.
+    const vieja = { ...completo(), _id: new mongoose.Types.ObjectId(id), hasVariants: false }
+    const find = jest.spyOn(Product, 'find').mockImplementationOnce(() => ({
+      select: () => ({ setOptions: () => ({ lean: async () => [vieja] }) }),
+    }))
+
+    try {
+      const res = await publicar([id])
+
+      expect(res.body.published).toBe(0)
+      expect(res.body.skipped).toEqual([
+        expect.objectContaining({
+          productId: id,
+          blockers: ['La cantidad en stock debe ser mayor a 0.'],
+        }),
+      ])
+      expect((await leer(id)).status).toBe('draft')
+    } finally {
+      find.mockRestore()
+    }
   })
 
   test('pasar un borrador incompleto a activo desde la edición se rechaza y no cambia nada', async () => {

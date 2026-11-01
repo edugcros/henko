@@ -1392,6 +1392,39 @@ export const getPublishBlockers = product => {
   return blockers
 }
 
+// La misma regla que getPublishBlockers, como filtro de Mongo. La usa la
+// publicación en bloque en la propia escritura: si otra persona deja
+// incompleto un borrador entre la lectura y el updateMany, no se publica.
+// Un test compara las dos contra los mismos productos.
+const NON_BLANK_STRING = { $type: 'string', $regex: /\S/ }
+
+export const PUBLISHABLE_PRODUCT_QUERY = {
+  title: { ...NON_BLANK_STRING, $ne: DEFAULT_PRODUCT_TITLE },
+  description: NON_BLANK_STRING,
+  categoria: NON_BLANK_STRING,
+  subcategoria: NON_BLANK_STRING,
+  marca: NON_BLANK_STRING,
+  'images.0': { $exists: true },
+  price: { $gt: 0 },
+  $or: [
+    { hasVariants: { $ne: true }, stock: { $gt: 0 } },
+    {
+      hasVariants: true,
+      $and: [
+        { variants: { $elemMatch: { isActive: { $ne: false }, stock: { $gt: 0 } } } },
+        {
+          variants: {
+            $not: { $elemMatch: { isActive: { $ne: false }, price: { $not: { $gt: 0 } } } },
+          },
+        },
+      ],
+    },
+  ],
+}
+
+const PUBLISH_RULE_FIELDS =
+  'title description categoria subcategoria marca images price stock hasVariants variants'
+
 const publishBlockedError = blockers => {
   const error = new Error(`No se puede publicar todavía: ${blockers.join(' · ')}`)
   error.statusCode = 400
@@ -1875,9 +1908,7 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
   // borrador y vuelve en `skipped` con lo que le falta. Antes se publicaba
   // cualquier borrador: sin fotos, sin precio o sin stock.
   const drafts = await Product.find({ ...draftFilter, _id: { $in: objectIds } })
-    .select(
-      'title description categoria subcategoria marca images price stock hasVariants variants',
-    )
+    .select(PUBLISH_RULE_FIELDS)
     .setOptions({ tenantId })
     .lean()
 
@@ -1895,7 +1926,7 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
   }
 
   const result = await Product.updateMany(
-    { ...draftFilter, _id: { $in: readyIds } },
+    { ...draftFilter, _id: { $in: readyIds }, ...PUBLISHABLE_PRODUCT_QUERY },
     {
       $set: {
         status: 'active',
@@ -1906,6 +1937,26 @@ export const bulkPublishDrafts = expressAsyncHandler(async (req, res) => {
       },
     },
   ).setOptions({ tenantId })
+
+  // Los que cambiaron entre la lectura y la escritura siguen como borrador:
+  // se informan con lo que les falta ahora.
+  if (result.modifiedCount < readyIds.length) {
+    const changedMeanwhile = await Product.find({ ...draftFilter, _id: { $in: readyIds } })
+      .select(PUBLISH_RULE_FIELDS)
+      .setOptions({ tenantId })
+      .lean()
+
+    for (const draft of changedMeanwhile) {
+      const blockers = getPublishBlockers(draft)
+      skipped.push({
+        productId: String(draft._id),
+        title: draft.title,
+        blockers: blockers.length
+          ? blockers
+          : ['Cambió mientras se publicaba. Volvé a intentarlo.'],
+      })
+    }
+  }
 
   // updateMany no pasa por los hooks del modelo: sin esto, el agente de IA
   // seguía respondiendo con el catálogo de antes de publicar.
