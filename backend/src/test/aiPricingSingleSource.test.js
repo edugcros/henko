@@ -189,6 +189,22 @@ describe('costeo · con el modelo que respondió', () => {
     expect(bloque).not.toContain('GEMINI_IMAGE_MODEL')
   })
 
+  test('el análisis de fotos no usa el modelo que GENERA imágenes', () => {
+    // GEMINI_IMAGE_MODEL es el generador de fondos (imageAiService). Medido el
+    // 01/11/2026 con gemini-3-pro-image: cada análisis de producto lo probaba
+    // primero, fallaba y caía al respaldo, y además lo descartaba en la lista
+    // de modelos que comparte con la generación de fondos.
+    const fuente = fs.readFileSync(path.join(SRC, 'services/aiVisionService.js'), 'utf8')
+    const bloque = fuente.slice(
+      fuente.indexOf('const MODEL_NAME = '),
+      fuente.indexOf('const MIN_CONFIDENCE'),
+    )
+
+    expect(bloque).toContain('process.env.GEMINI_MODEL')
+    expect(bloque).not.toContain('process.env.GEMINI_IMAGE_MODEL')
+    expect(bloque).not.toContain('process.env.GOOGLE_IMAGE_MODEL')
+  })
+
   test('adivinar el modelo deja marca y no pasa desapercibido', () => {
     // Un costo supuesto que se ve igual que uno medido es peor que no tenerlo.
     const fuente = fs.readFileSync(path.join(SRC, 'services/ai/aiBudgetService.js'), 'utf8')

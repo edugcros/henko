@@ -280,7 +280,14 @@ export const markModelDead = (model, reason, status = null) => {
   // Cuota agotada (429) y saturación del proveedor (503) son las dos causas
   // transitorias: el modelo existe y va a volver. Marcarlas como muerte
   // permanente sacaría de la cadena a un modelo sano por el resto del proceso.
-  if (isQuotaError(status, reason) || isOverloadError(status)) {
+  //
+  // Cualquier 429 es temporal, diga lo que diga el texto. Antes se exigía
+  // "quota" en `reason`, y los llamadores lo recortan (aiVisionService a 100
+  // caracteres): el mensaje del SDK empieza con la URL de Google y la palabra
+  // queda afuera. Medido en producción el 01/11/2026: un 429 de cuota de
+  // gemini-3-pro-image se logueó como "Modelo retirado por el proveedor" y
+  // quedó descartado hasta reiniciar.
+  if (Number(status) === 429 || isQuotaError(status, reason) || isOverloadError(status)) {
     if (cooldownModels.has(name)) return
 
     const until = Date.now() + QUOTA_COOLDOWN_MS

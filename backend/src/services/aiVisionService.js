@@ -77,10 +77,17 @@ const normalizeGeminiModelName = value => {
   return model.replace(/^models\//, '')
 }
 
+// El análisis de fotos LEE una imagen y devuelve JSON: necesita un modelo de
+// texto con visión. GEMINI_IMAGE_MODEL / GOOGLE_IMAGE_MODEL son del modelo que
+// GENERA imágenes (imageAiService, fondos), y antes iban primero acá. Medido en
+// producción el 01/11/2026: con GEMINI_IMAGE_MODEL=gemini-3-pro-image cada
+// análisis de producto probaba primero el generador, fallaba, y recién después
+// caía al respaldo — una llamada perdida por análisis, y el fallo además
+// descartaba ese modelo en la lista compartida con la generación de fondos.
 const MODEL_NAME = normalizeGeminiModelName(
-  process.env.GEMINI_IMAGE_MODEL ||
-    process.env.GOOGLE_IMAGE_MODEL ||
+  process.env.AI_VISION_MODEL ||
     process.env.GEMINI_MODEL ||
+    process.env.GOOGLE_MODEL ||
     DEFAULT_MODEL,
 )
 
@@ -2133,7 +2140,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
         // El status decide pausa temporal vs descarte permanente. Sin pasarlo,
         // un 429 (cuota) o un 503 (saturación) sacaban de la cadena a un
         // modelo sano por lo que quedara de vida del proceso.
-        markModelDead(candidate, error?.message?.slice(0, 100), extractErrorStatus(error))
+        markModelDead(candidate, error?.message?.slice(0, 300), extractErrorStatus(error))
         modelError = error
       }
     }

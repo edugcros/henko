@@ -1,4 +1,3 @@
-
 import { jest } from '@jest/globals'
 
 const OPERATION_ID = 'op-de-la-reserva-123'
@@ -95,6 +94,27 @@ describe('imageAiCtrl · cobro de la edición', () => {
         operationId: OPERATION_ID,
       }),
     )
+  })
+
+  test('un mensaje escrito para el comercio se responde acá, con el cupo devuelto', async () => {
+    // errorHandler tapa todo 5xx en producción con "Ocurrió un error
+    // interno". Si este error siguiera viaje, el comercio no leería que no se
+    // le cobró ni la alternativa.
+    const sinCuota = new Error('La generación de fondos no está disponible en este momento.')
+    sinCuota.statusCode = 503
+    sinCuota.expose = true
+    sinCuota.code = 'IMAGE_GENERATION_UNAVAILABLE'
+    mockGenerate.mockRejectedValue(sinCuota)
+
+    const res = await correr()
+
+    expect(res.statusCode).toBe(503)
+    expect(res.body).toEqual({
+      success: false,
+      code: 'IMAGE_GENERATION_UNAVAILABLE',
+      message: 'La generación de fondos no está disponible en este momento.',
+    })
+    expect(mockRefund).toHaveBeenCalledWith(expect.objectContaining({ operationId: OPERATION_ID }))
   })
 
   test('el controlador usa la clave que devuelve la reserva', async () => {

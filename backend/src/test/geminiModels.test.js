@@ -100,6 +100,19 @@ describe('geminiModels · permanente vs temporal', () => {
     expect(getModelHealth().coolingDown.map(c => c.model)).toContain(modelo)
   })
 
+  test('un 429 pausa aunque el texto venga recortado antes de "quota"', () => {
+    // Caso real (01/11/2026): aiVisionService pasa error.message recortado a
+    // 100 caracteres, y el SDK de Google pone primero la URL.
+    const [modelo] = getModelChain()
+    const recortado =
+      '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/mod'
+
+    markModelDead(modelo, recortado, 429)
+
+    expect(getModelHealth().dead).not.toContain(modelo)
+    expect(getModelHealth().coolingDown.map(c => c.model)).toContain(modelo)
+  })
+
   test('sin status se asume permanente, como antes', () => {
     const [modelo] = getModelChain()
 
