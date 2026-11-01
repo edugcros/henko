@@ -503,7 +503,12 @@ const getVideoDuration = file =>
 
 const getJobFlag = (job, key) => Boolean(job?.[key] ?? job?.metadata?.[key])
 
-export const validateVariantsForSubmit = variants => {
+// `publish`: guardar como borrador solo pide variantes bien formadas (sin
+// combinaciones ni SKU repetidos). Publicar pide además lo mismo que el
+// backend (getPublishBlockers en productCtrl): precio en cada variante activa
+// y al menos una con stock. El stock negativo no se valida porque no puede
+// llegar: normalizeNumberValue lo lleva a 0 (había un chequeo inalcanzable).
+export const validateVariantsForSubmit = (variants, { publish = true } = {}) => {
   if (!safeArray(variants).length) {
     return 'Activaste variantes, pero todavía no generaste ninguna combinación.'
   }
@@ -531,12 +536,8 @@ export const validateVariantsForSubmit = variants => {
 
     variantKeys.add(variantKey)
 
-    if (normalizeNumberValue(variant.price) <= 0) {
+    if (publish && normalizeNumberValue(variant.price) <= 0) {
       return `La variante "${name}" necesita un precio mayor a 0.`
-    }
-
-    if (normalizeNumberValue(variant.stock) < 0) {
-      return `La variante "${name}" tiene stock inválido.`
     }
 
     const sku = normalizeSku(variant.sku)
@@ -549,10 +550,21 @@ export const validateVariantsForSubmit = variants => {
     }
   }
 
+  if (publish && !activeVariants.some(variant => normalizeNumberValue(variant.stock) > 0)) {
+    return 'Al menos una variante activa necesita stock mayor a 0.'
+  }
+
   return null
 }
 
-export const validateProductBasicsForSubmit = ({ values = {}, hasVariants = false }) => {
+// Los campos obligatorios los exige el modelo para cualquier producto, también
+// un borrador. Precio y stock recién para publicar: un borrador se puede
+// guardar sin stock. Misma regla y mismos textos que getPublishBlockers.
+export const validateProductBasicsForSubmit = ({
+  values = {},
+  hasVariants = false,
+  publish = true,
+}) => {
   const requiredFields = [
     ['titulo', 'El título es obligatorio'],
     ['descripcion', 'La descripción comercial es obligatoria'],
@@ -565,6 +577,8 @@ export const validateProductBasicsForSubmit = ({ values = {}, hasVariants = fals
   for (const [fieldName, errorMessage] of requiredFields) {
     if (!normalizeString(values[fieldName])) return errorMessage
   }
+
+  if (!publish) return null
 
   if (normalizeNumberValue(values.precio) <= 0) {
     return 'El precio debe ser mayor a 0.'
@@ -3282,7 +3296,7 @@ export const buildProductReadiness = ({
       key: 'stock',
       label: hasVariants ? 'Stock por variantes' : 'Stock',
       done: hasVariants
-        ? variants.some(variant => Number(variant.stock || 0) > 0)
+        ? variants.some(variant => variant.isActive !== false && Number(variant.stock || 0) > 0)
         : Number(stock || 0) > 0,
       required: true,
     },
@@ -3290,7 +3304,9 @@ export const buildProductReadiness = ({
       key: 'marca',
       label: 'Marca',
       done: Boolean(normalizeString(brand)),
-      required: false,
+      // Obligatoria: el modelo la exige y el guardado ya la pedía. La barra
+      // decía que no, y llegaba al 100% con un producto que no se guardaba.
+      required: true,
     },
     {
       key: 'ficha',
@@ -5369,11 +5385,14 @@ function AddProductForm() {
     }
     const collectedErrors = []
 
+    // Las fotos se piden para publicar; un borrador se guarda sin ellas.
     if (!fileList.length) {
-      collectedErrors.push({
-        section: SECTION_IDS.imagenes,
-        message: 'Debes subir al menos una imagen',
-      })
+      if (publishProduct) {
+        collectedErrors.push({
+          section: SECTION_IDS.imagenes,
+          message: 'Debes subir al menos una imagen',
+        })
+      }
     } else {
       const fileValidationError = validateSelectedFiles(fileList)
       if (fileValidationError) {
@@ -5384,7 +5403,11 @@ function AddProductForm() {
       }
     }
 
-    const basicsError = validateProductBasicsForSubmit({ values, hasVariants })
+    const basicsError = validateProductBasicsForSubmit({
+      values,
+      hasVariants,
+      publish: publishProduct,
+    })
     if (basicsError) {
       collectedErrors.push({
         section: /precio|cantidad|stock/i.test(basicsError)
@@ -5395,7 +5418,7 @@ function AddProductForm() {
     }
 
     if (hasVariants) {
-      const variantError = validateVariantsForSubmit(variants)
+      const variantError = validateVariantsForSubmit(variants, { publish: publishProduct })
 
       if (variantError) {
         collectedErrors.push({
@@ -5415,7 +5438,9 @@ function AddProductForm() {
       message.error(
         collectedErrors.length === 1
           ? collectedErrors[0].message
-          : `Hay ${collectedErrors.length} problemas que resolver antes de publicar`,
+          : `Hay ${collectedErrors.length} problemas que resolver antes de ${
+              publishProduct ? 'publicar' : 'guardar'
+            }`,
       )
       scrollToSection(collectedErrors[0].section || SECTION_IDS.imagenes)
       return
@@ -8450,11 +8475,11 @@ function AddProductForm() {
                                 type="error"
                                 showIcon
                                 style={{ borderRadius: 14 }}
-                                message={
+                                message={`No se pudo ${publishProduct ? 'publicar' : 'guardar'}: ${
                                   submitErrors.length === 1
-                                    ? 'No se pudo publicar: hay un problema para resolver'
-                                    : `No se pudo publicar: hay ${submitErrors.length} problemas para resolver`
-                                }
+                                    ? 'hay un problema para resolver'
+                                    : `hay ${submitErrors.length} problemas para resolver`
+                                }`}
                                 description={
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
                                     {submitErrors.map((err, idx) => (

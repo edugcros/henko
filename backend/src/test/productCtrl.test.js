@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
 import request from 'supertest'
 
@@ -9,7 +10,11 @@ import Tenant from '../models/tenantModel.js'
 import { connectTestDB, disconnectTestDB, resetCollections } from './testDB.js'
 import { authHeaders, createTestTenant, createTestUser, getCSRFToken } from './testSetup.js'
 import { decrementLineStock } from '../services/orderInventoryService.js'
-import { applyStockBaselines } from '../controller/productCtrl.js'
+import {
+  applyStockBaselines,
+  getPublishBlockers,
+  PUBLISHABLE_PRODUCT_QUERY,
+} from '../controller/productCtrl.js'
 
 describe('product controller', () => {
   let tenantContext
@@ -1058,6 +1063,23 @@ describe('alta recuperable · reintentar no duplica el producto', () => {
   test('publicar el borrador lo deja visible, y un borrador borrado no se publica', async () => {
     const borrador = await crear({ status: 'draft', visibility: 'hidden' })
     const borrado = await crear({ status: 'draft', visibility: 'hidden' })
+    // Completos: con foto, para que la regla de publicación no los frene.
+    // Directo a la colección: el plugin de tenant no deja tocar tenantId
+    // dentro de un $push, y la foto lo lleva.
+    await Product.collection.updateMany(
+      {
+        _id: {
+          $in: [borrador.body.data._id, borrado.body.data._id].map(
+            id => new mongoose.Types.ObjectId(id),
+          ),
+        },
+      },
+      {
+        $push: {
+          images: { url: 'https://cdn.test/a.webp', public_id: 'a', tenantId: ctx.tenant._id },
+        },
+      },
+    )
     await Product.updateOne(
       { _id: borrado.body.data._id },
       { $set: { isDeleted: true } },
@@ -1076,5 +1098,269 @@ describe('alta recuperable · reintentar no duplica el producto', () => {
     expect(publicado.status).toBe('active')
     expect(publicado.visibility).toBe('visible')
     expect(publicado.publishedAt).toBeTruthy()
+  })
+})
+
+describe('publicación · una sola regla para publicar, y los borradores se guardan incompletos', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const foto = () => ({ url: 'https://cdn.test/casco.webp', public_id: 'casco' })
+  const completo = (extra = {}) => ({
+    title: 'Casco integral AGV',
+    description: 'Casco con visor',
+    categoria: 'Cascos',
+    subcategoria: 'Integrales',
+    marca: 'AGV',
+    images: [foto()],
+    price: 150000,
+    stock: 3,
+    ...extra,
+  })
+  // El alta ignora `images` (las fotos se suben aparte): por eso ponerFoto.
+  const crearBorrador = async extra => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...completo(), status: 'draft', visibility: 'hidden', ...extra })
+    expect(res.statusCode).toBe(201)
+    return res.body.data._id
+  }
+  // Directo a la colección: el plugin de tenant no deja tocar tenantId dentro
+  // de un $push, y la foto lo lleva.
+  const ponerFoto = id =>
+    Product.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { $push: { images: { ...foto(), tenantId: ctx.tenant._id } } },
+    )
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+  const publicar = productIds =>
+    request(app).put('/api/product/admin/drafts/bulk-publish').set(headers()).send({ productIds })
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'publicacion-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  describe('la regla', () => {
+    test('un producto completo se puede publicar', () => {
+      expect(getPublishBlockers(completo())).toEqual([])
+    })
+
+    test('dice todo lo que falta, con los mismos textos que el formulario', () => {
+      expect(
+        getPublishBlockers({ title: 'Producto sin título', images: [], price: 0, stock: 0 }),
+      ).toEqual([
+        'El título es obligatorio',
+        'La descripción comercial es obligatoria',
+        'La categoría es obligatoria',
+        'La subcategoría es obligatoria',
+        'La marca es obligatoria',
+        'Debes subir al menos una imagen',
+        'El precio debe ser mayor a 0.',
+        'La cantidad en stock debe ser mayor a 0.',
+      ])
+    })
+
+    test('con variantes: todas las activas con precio y al menos una con stock', () => {
+      const variante = extra => ({ price: 1000, stock: 0, isActive: true, ...extra })
+      const conVariantes = variants => completo({ hasVariants: true, stock: 0, variants })
+
+      expect(getPublishBlockers(conVariantes([variante({ stock: 2 }), variante()]))).toEqual([])
+      expect(getPublishBlockers(conVariantes([variante(), variante()]))).toEqual([
+        'Al menos una variante activa necesita stock mayor a 0.',
+      ])
+      expect(getPublishBlockers(conVariantes([variante({ stock: 2, price: 0 })]))).toEqual([
+        'Todas las variantes activas necesitan un precio mayor a 0.',
+      ])
+      expect(
+        getPublishBlockers(conVariantes([variante({ stock: 5, price: 0, isActive: false })])),
+      ).toEqual(['El producto necesita al menos una variante activa.'])
+    })
+  })
+
+  // Lo mínimo de un borrador lo pone el modelo: título, descripción, marca,
+  // categoría y subcategoría. Precio, stock y fotos recién para publicar.
+  test('un borrador se guarda sin stock, sin precio y sin fotos', async () => {
+    const id = await crearBorrador({ price: 0, stock: 0 })
+
+    const guardado = await leer(id)
+    expect(guardado.status).toBe('draft')
+    expect(guardado.stock).toBe(0)
+  })
+
+  test('publicar en bloque publica lo completo y devuelve qué le falta al resto', async () => {
+    const listo = await crearBorrador()
+    await ponerFoto(listo)
+    const sinStock = await crearBorrador({ stock: 0 })
+    await ponerFoto(sinStock)
+    const sinFoto = await crearBorrador()
+
+    const res = await publicar([listo, sinStock, sinFoto])
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.published).toBe(1)
+    expect(res.body.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productId: String(sinStock),
+          blockers: ['La cantidad en stock debe ser mayor a 0.'],
+        }),
+        expect.objectContaining({
+          productId: String(sinFoto),
+          blockers: ['Debes subir al menos una imagen'],
+        }),
+      ]),
+    )
+    expect(res.body.skipped).toHaveLength(2)
+    expect((await leer(listo)).status).toBe('active')
+    expect((await leer(sinStock)).status).toBe('draft')
+    expect((await leer(sinFoto)).status).toBe('draft')
+  })
+
+  test('el filtro de la escritura y la regla dicen lo mismo sobre los mismos productos', async () => {
+    const variante = extra => ({ key: `k${Math.random()}`, price: 1000, stock: 0, ...extra })
+    const casos = {
+      completo: completo(),
+      sinFoto: completo({ images: [] }),
+      sinStock: completo({ stock: 0 }),
+      precioCero: completo({ price: 0 }),
+      marcaEnBlanco: completo({ marca: '   ' }),
+      tituloPorDefecto: completo({ title: 'Producto sin título' }),
+      variantesOk: completo({
+        hasVariants: true,
+        stock: 0,
+        variants: [variante({ stock: 2 }), variante()],
+      }),
+      variantesSinStock: completo({ hasVariants: true, stock: 0, variants: [variante()] }),
+      variantePrecioCero: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 2 }), variante({ price: 0 })],
+      }),
+      soloInactivaConStock: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 5, isActive: false })],
+      }),
+      inactivaSinPrecio: completo({
+        hasVariants: true,
+        variants: [variante({ stock: 2 }), variante({ price: 0, isActive: false })],
+      }),
+    }
+    const tag = `paridad-${Date.now()}`
+    const ids = {}
+    for (const [nombre, datos] of Object.entries(casos)) {
+      const { insertedId } = await Product.collection.insertOne({
+        ...datos,
+        images: datos.images.map(image => ({ ...image, tenantId: ctx.tenant._id })),
+        tenantId: ctx.tenant._id,
+        slug: `${tag}-${nombre}`,
+        tags: [tag],
+        status: 'draft',
+      })
+      ids[nombre] = String(insertedId)
+    }
+
+    const porFiltro = new Set(
+      (
+        await Product.find({ tags: tag, ...PUBLISHABLE_PRODUCT_QUERY })
+          .setOptions({ tenantId: ctx.tenant._id })
+          .lean()
+      ).map(product => String(product._id)),
+    )
+    const porRegla = new Set(
+      Object.entries(casos)
+        .filter(([, datos]) => getPublishBlockers(datos).length === 0)
+        .map(([nombre]) => ids[nombre]),
+    )
+
+    expect([...porFiltro].sort()).toEqual([...porRegla].sort())
+    expect(porRegla).toEqual(new Set([ids.completo, ids.variantesOk, ids.inactivaSinPrecio]))
+  })
+
+  test('un borrador que quedó incompleto entre la lectura y la escritura no se publica', async () => {
+    const id = await crearBorrador({ stock: 0 })
+    await ponerFoto(id)
+    // La lectura ve una versión vieja y completa; en la base ya tiene stock 0.
+    const vieja = { ...completo(), _id: new mongoose.Types.ObjectId(id), hasVariants: false }
+    const find = jest.spyOn(Product, 'find').mockImplementationOnce(() => ({
+      select: () => ({ setOptions: () => ({ lean: async () => [vieja] }) }),
+    }))
+
+    try {
+      const res = await publicar([id])
+
+      expect(res.body.published).toBe(0)
+      expect(res.body.skipped).toEqual([
+        expect.objectContaining({
+          productId: id,
+          blockers: ['La cantidad en stock debe ser mayor a 0.'],
+        }),
+      ])
+      expect((await leer(id)).status).toBe('draft')
+    } finally {
+      find.mockRestore()
+    }
+  })
+
+  test('pasar un borrador incompleto a activo desde la edición se rechaza y no cambia nada', async () => {
+    const id = await crearBorrador({ stock: 0 })
+
+    const res = await request(app)
+      .put(`/api/product/${id}`)
+      .set(headers())
+      .send({ status: 'active', visibility: 'visible' })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toMatch(/Debes subir al menos una imagen/)
+    expect(res.body.message).toMatch(/stock debe ser mayor a 0/)
+    expect((await leer(id)).status).toBe('draft')
+  })
+
+  test('un borrador completo sí pasa a activo desde la edición', async () => {
+    const id = await crearBorrador()
+    await ponerFoto(id)
+
+    const res = await request(app)
+      .put(`/api/product/${id}`)
+      .set(headers())
+      .send({ status: 'active', visibility: 'visible' })
+
+    expect(res.statusCode).toBe(200)
+    expect((await leer(id)).status).toBe('active')
+  })
+
+  test('un producto ya publicado que no cumple la regla se sigue pudiendo editar', async () => {
+    const res = await request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({ ...completo(), status: 'active', visibility: 'visible' })
+    const id = res.body.data._id
+
+    const edicion = await request(app)
+      .put(`/api/product/${id}`)
+      .set(headers())
+      .send({ description: 'Casco con visor y pinlock', status: 'active' })
+
+    expect(edicion.statusCode).toBe(200)
+    expect((await leer(id)).description).toBe('Casco con visor y pinlock')
   })
 })

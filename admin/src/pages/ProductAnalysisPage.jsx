@@ -84,6 +84,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
+import { splitBulkPublishResult } from '@features/product/productService'
 import { formatDate, formatRelativeTime } from '@utils/dateFormat'
 import { STATUS_META, STATUS_FILTER_OPTIONS } from '@constants/jobStatus'
 
@@ -949,12 +950,25 @@ const ProductAnalysisPage = () => {
         productIds,
       })
 
-      toast.success(data?.message || `${data?.published || 0} productos publicados`)
+      // Los incompletos no se publican: vuelven en `skipped` con lo que les
+      // falta y se quedan en la lista. Antes se sacaban todos los elegidos,
+      // aunque el backend no hubiera publicado alguno.
+      const { skipped, skippedIds, publishedIds } = splitBulkPublishResult(productIds, data)
 
-      const publishedSet = new Set(productIds)
-      setDrafts(current => current.filter(item => !publishedSet.has(getDraftId(item))))
-      setDraftsTotal(current => Math.max(0, current - productIds.length))
-      setSelectedDraftIds(new Set())
+      if (skipped.length) {
+        const [first] = skipped
+        toast.warning(
+          `${data?.published || 0} publicados. ${skipped.length} siguen como borrador porque les falta información. «${
+            first.title || 'Producto'
+          }»: ${first.blockers.join(' · ')}${skipped.length > 1 ? ' (siguen seleccionados)' : ''}`,
+        )
+      } else {
+        toast.success(data?.message || `${data?.published || 0} productos publicados`)
+      }
+
+      setDrafts(current => current.filter(item => !publishedIds.has(getDraftId(item))))
+      setDraftsTotal(current => Math.max(0, current - publishedIds.size))
+      setSelectedDraftIds(skippedIds)
     } catch (error) {
       toast.error(error?.response?.data?.message || 'No se pudo publicar la selección')
     } finally {
