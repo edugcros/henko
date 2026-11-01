@@ -89,6 +89,17 @@ const INFORME = {
   notes: ['El margen por comercio no incluye infraestructura.', 'El costo de IA sale del libro.'],
 }
 
+// Un mes del selector distinto del que muestra el informe. Elegir "la
+// segunda opción" dependía del reloj: el fixture es de 2026-10, y desde el
+// 1/11/2026 (UTC) la segunda opción ES 2026-10 —el mes ya elegido—, así que
+// no había nada que volver a pedir y el test fallaba todo noviembre.
+const OTRO_MES = buildPeriodOptions().find(option => option.value !== INFORME.period)
+
+const elegirOtroMes = async () => {
+  await userEvent.click(screen.getByRole('combobox', { name: /período/i }))
+  await userEvent.click(await screen.findByRole('option', { name: OTRO_MES.label }))
+}
+
 const montar = async (informe = INFORME) => {
   mockGetReport.mockResolvedValue(informe)
 
@@ -293,21 +304,17 @@ describe('Margen · lo que se agregó', () => {
   test('se puede elegir otro mes y se vuelve a pedir el reporte de ese mes', async () => {
     await montar()
 
-    await userEvent.click(screen.getByRole('combobox', { name: /período/i }))
-    const opciones = await screen.findAllByRole('option')
-
-    await userEvent.click(opciones[1])
+    await elegirOtroMes()
 
     await waitFor(() => expect(mockGetReport).toHaveBeenCalledTimes(2))
-    expect(mockGetReport).toHaveBeenLastCalledWith(buildPeriodOptions()[1].value)
+    expect(mockGetReport).toHaveBeenLastCalledWith(OTRO_MES.value)
   })
 
   test('mientras carga otro mes se sigue viendo el reporte anterior', async () => {
     await montar()
     mockGetReport.mockReturnValue(new Promise(() => {}))
 
-    await userEvent.click(screen.getByRole('combobox', { name: /período/i }))
-    await userEvent.click((await screen.findAllByRole('option'))[1])
+    await elegirOtroMes()
 
     expect(await screen.findByRole('progressbar')).toBeTruthy()
     expect(screen.getByText('Kiosco Lucía')).toBeTruthy()
