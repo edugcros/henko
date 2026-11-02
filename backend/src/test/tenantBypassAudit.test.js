@@ -142,6 +142,26 @@ describe('tenantPlugin · escapes dentro de una request', () => {
     expect(avisos()[0][1].operation).toBe('aggregate')
   })
 
+  test('un insertMany que escapa el filtro también', async () => {
+    await enRequestDe(TENANT_A, () =>
+      Nota.insertMany([{ tenantId: TENANT_B, titulo: 'otra' }], { ignoreTenant: true }),
+    )
+
+    expect(avisos()).toHaveLength(1)
+    expect(avisos()[0][1].operation).toBe('insertMany')
+  })
+
+  test('un insertMany con el motivo declarado no hace ruido', async () => {
+    await enRequestDe(TENANT_A, () =>
+      Nota.insertMany([{ tenantId: TENANT_B, titulo: 'otra' }], {
+        ignoreTenant: true,
+        platformScope: 'platform:migracion',
+      }),
+    )
+
+    expect(avisos()).toHaveLength(0)
+  })
+
   test('un update que escapa el filtro también', async () => {
     await enRequestDe(TENANT_A, () =>
       Nota.updateMany({}, { $set: { titulo: 'x' } }).setOptions({

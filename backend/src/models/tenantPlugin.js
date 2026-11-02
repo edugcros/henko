@@ -143,14 +143,70 @@ const getTenantIdFromDocumentContext = doc => {
   )
 }
 
+// Los operadores que escriben un campo de primer nivel. $setOnInsert no está:
+// se admite con el mismo comercio (assertValidTenantUpsert). Los de arrays van
+// aparte (assertNoTenantMutationInNestedOperators).
+const FIELD_WRITE_OPERATORS = [
+  '$set',
+  '$unset',
+  '$rename',
+  '$inc',
+  '$mul',
+  '$min',
+  '$max',
+  '$currentDate',
+]
+
+// Las etapas de un update con pipeline que pueden escribir tenantId.
+const PIPELINE_WRITE_STAGES = [
+  '$set',
+  '$addFields',
+  '$unset',
+  '$project',
+  '$replaceRoot',
+  '$replaceWith',
+]
+
+const isExclusion = value => value === 0 || value === false
+
+const projectDropsTenant = projection => {
+  if (!projection || typeof projection !== 'object') return false
+
+  const fields = Object.entries(projection).filter(([field]) => field !== '_id')
+  const tenant = projection.tenantId
+
+  if (tenant !== undefined) return tenant !== 1 && tenant !== true
+  // Sin tenantId en la proyección: la de exclusión lo conserva, la de
+  // inclusión lo descarta.
+  return fields.some(([, value]) => !isExclusion(value))
+}
+
+const pipelineStageWritesTenant = stage =>
+  PIPELINE_WRITE_STAGES.some(operator => {
+    const value = stage?.[operator]
+    if (value === undefined) return false
+    // $replaceRoot/$replaceWith cambian el documento entero, y con él su
+    // comercio. $unset admite un nombre o una lista.
+    if (operator === '$replaceRoot' || operator === '$replaceWith') return true
+    if (typeof value === 'string') return value === 'tenantId'
+    if (Array.isArray(value)) return value.includes('tenantId')
+    // Un $project que INCLUYE campos descarta todos los demás: si tenantId no
+    // está incluido tal cual, el documento queda sin comercio aunque la etapa
+    // no lo nombre.
+    if (operator === '$project') return projectDropsTenant(value)
+    return value?.tenantId !== undefined
+  })
+
 const hasForbiddenTenantMutation = update => {
   if (!update) return false
 
+  // Un update con pipeline (un array de etapas) no pasa por los operadores de
+  // abajo: sin esto, `[{ $set: { tenantId } }]` movía el documento.
+  if (Array.isArray(update)) return update.some(pipelineStageWritesTenant)
+
   return Boolean(
     update.tenantId !== undefined ||
-    update.$set?.tenantId !== undefined ||
-    update.$unset?.tenantId !== undefined ||
-    update.$rename?.tenantId !== undefined,
+    FIELD_WRITE_OPERATORS.some(operator => update[operator]?.tenantId !== undefined),
   )
 }
 
@@ -194,6 +250,38 @@ const assertNoTenantMutationInNestedOperators = update => {
   }
 }
 
+/**
+ * findOneAndReplace / replaceOne: el reemplazo es el documento entero, así que
+ * su tenantId no es una "mutación" a rechazar sino el campo que tiene que
+ * quedar. Sin él el documento quedaría huérfano; con otro, en otro comercio.
+ */
+const assertTenantReplacement = ({ query, tenantId, modelName }) => {
+  const replacement = query.getUpdate?.()
+  if (!replacement || typeof replacement !== 'object') return
+
+  const normalizedTenantId = ensureObjectId(tenantId)
+  const replacementTenantId = replacement.tenantId
+
+  if (replacementTenantId === undefined) {
+    if (normalizedTenantId) query.setUpdate({ ...replacement, tenantId: normalizedTenantId })
+    return
+  }
+
+  const normalizedReplacement = ensureObjectId(replacementTenantId)
+
+  if (
+    !normalizedTenantId ||
+    !normalizedReplacement ||
+    !normalizedReplacement.equals(normalizedTenantId)
+  ) {
+    throw createTenantError({
+      code: 'TENANT_MUTATION_FORBIDDEN',
+      model: modelName,
+      message: `[Tenant] Cannot modify tenantId for model "${modelName}"`,
+    })
+  }
+}
+
 const addTenantFilter = ({ query, tenantId, modelName }) => {
   const currentFilter = query.getFilter() || {}
   const normalizedTenantId = ensureObjectId(tenantId)
@@ -232,6 +320,16 @@ const getTenantIdFromPipeline = pipeline => {
   const tenantMatch = pipeline.find(stage => stage?.$match?.tenantId !== undefined)
   return tenantMatch?.$match?.tenantId || null
 }
+
+// Un $match de comercio solo acota si es la PRIMERA etapa. Más adelante
+// —después de un $group, un $lookup o un $unionWith— llega tarde: las etapas
+// anteriores ya corrieron sobre todos los comercios.
+//
+// Y solo si es el comercio que corresponde: `{ tenantId: null }` (o cualquier
+// cosa que no sea ese id) no acota a la tienda, y omitir el filtro por eso
+// devolvía filas sin comercio.
+const isTenantScopedFromStart = (pipeline, tenantId) =>
+  Boolean(ensureObjectId(pipeline[0]?.$match?.tenantId)?.equals(tenantId))
 
 // =====================================================
 // Plugin
@@ -322,14 +420,160 @@ export const tenantPlugin = (schema, options = {}) => {
     }
   }
 
-  schema.pre(['find', 'findOne', 'countDocuments'], applyTenantFilter)
+  function applyTenantReplaceGuard(next) {
+    if (shouldIgnoreTenant(this)) {
+      auditTenantBypass(this, {
+        modelName: this.model?.modelName,
+        operation: this.op || 'replace',
+      })
+      return next()
+    }
+
+    try {
+      const tenantId = getTenantIdFromQueryContext(this)
+
+      assertTenantReplacement({ query: this, tenantId, modelName: this.model?.modelName })
+      addTenantFilter({ query: this, tenantId, modelName: this.model?.modelName })
+
+      return next()
+    } catch (error) {
+      return next(error)
+    }
+  }
+
+  // Cada operación de consulta de Mongoose tiene su propio hook: la que no está
+  // en estas listas corre SIN filtro de comercio. findByIdAndDelete (que es
+  // findOneAndDelete), distinct y los reemplazos no estaban; hoy todos sus
+  // usos pasan el tenantId a mano, y eso es lo que no puede depender de que
+  // nadie se olvide.
+  schema.pre(['find', 'findOne', 'countDocuments', 'count', 'distinct'], applyTenantFilter)
   schema.pre(
-    ['findOneAndUpdate', 'updateMany', 'updateOne', 'deleteMany', 'deleteOne'],
+    [
+      'findOneAndUpdate',
+      'updateMany',
+      'updateOne',
+      'deleteMany',
+      'deleteOne',
+      'findOneAndDelete',
+      'findOneAndRemove',
+    ],
     applyTenantUpdateGuard,
   )
+  schema.pre(['findOneAndReplace', 'replaceOne'], applyTenantReplaceGuard)
+
+  // insertMany no dispara el hook de save: sin esto, cada fila entraba con el
+  // tenantId que trajera, aunque fuera de otro comercio que el de la request.
+  schema.pre('insertMany', function validateTenantOnInsertMany(next, docs, options = {}) {
+    try {
+      const modelName = this.modelName
+
+      if (options.ignoreTenant || options.skipTenant) {
+        // Como el resto de las salidas: auditTenantBypass lee platformScope de
+        // las opciones del contexto que recibe.
+        auditTenantBypass({ options }, { modelName, operation: 'insertMany' })
+        return next()
+      }
+
+      const explicitTenantId = options.tenantId || getTenantContext()?.tenantId
+      const contextTenantId = ensureObjectId(explicitTenantId)
+
+      // Un comercio pedido pero inválido no puede tratarse como "no hay
+      // comercio": las filas pasarían con el que trajeran.
+      if (explicitTenantId && !contextTenantId) {
+        throw createTenantError({
+          code: 'TENANT_INVALID',
+          model: modelName,
+          message: `[Tenant] Missing or invalid tenantId for model "${modelName}"`,
+        })
+      }
+
+      for (const doc of Array.isArray(docs) ? docs : [docs]) {
+        if (!doc || typeof doc !== 'object') continue
+
+        const docTenantId = ensureObjectId(doc.tenantId)
+
+        if (!docTenantId && !contextTenantId) {
+          throw createTenantError({
+            code: 'TENANT_INVALID',
+            model: modelName,
+            message: `[Tenant] Missing or invalid tenantId for model "${modelName}"`,
+          })
+        }
+
+        if (docTenantId && contextTenantId && !docTenantId.equals(contextTenantId)) {
+          throw createTenantError({
+            code: 'TENANT_MISMATCH',
+            model: modelName,
+            message: `[Tenant] Tenant mismatch for model "${modelName}": doc=${docTenantId} context=${contextTenantId}`,
+          })
+        }
+
+        if (!docTenantId) doc.tenantId = contextTenantId
+      }
+
+      return next()
+    } catch (error) {
+      return next(error)
+    }
+  })
+
+  // El comercio con el que se leyó cada documento, para que el save pueda
+  // distinguir "le cambiaron el comercio" de "no tenía y se le completa".
+  schema.post('init', function rememberLoadedTenant() {
+    this.$locals.loadedTenantId = this.tenantId ?? null
+  })
 
   schema.pre('save', function validateTenantOnSave(next) {
     try {
+      // Un documento que ya existe conserva su comercio: el contexto de la
+      // request NO se le aplica encima. Antes sí, y un documento de otro
+      // comercio (leído con ignoreTenant) que se guardaba dentro de una
+      // request pasaba en silencio al comercio de esa request.
+      if (!this.isNew) {
+        const modelName = this.constructor?.modelName
+
+        const ownTenantId = ensureObjectId(this.tenantId)
+        const contextTenantId = ensureObjectId(
+          this.$__?.saveOptions?.tenantId || this._tenantId || getTenantContext()?.tenantId,
+        )
+
+        if (this.isModified('tenantId')) {
+          // Se admite un solo caso: un documento viejo que se leyó SIN
+          // comercio y recibe justo el de la request, que es lo que este hook
+          // le ponía antes. Cualquier otro cambio es mover el documento.
+          const completesMissing =
+            !ensureObjectId(this.$locals.loadedTenantId) &&
+            ownTenantId &&
+            contextTenantId &&
+            ownTenantId.equals(contextTenantId)
+
+          if (!completesMissing) {
+            throw createTenantError({
+              code: 'TENANT_MUTATION_FORBIDDEN',
+              model: modelName,
+              message: `[Tenant] Cannot modify tenantId for model "${modelName}"`,
+            })
+          }
+
+          return next()
+        }
+
+        // Sin tenantId cargado (una proyección que no lo trajo) no se escribe
+        // nada: el save solo manda los campos modificados y el de la base
+        // queda como está.
+
+        if (ownTenantId && contextTenantId && !ownTenantId.equals(contextTenantId)) {
+          // Registra, no bloquea: mismo criterio que auditTenantBypass.
+          logger.error('[Tenant] Se guardó un documento de otro comercio dentro de una request', {
+            model: modelName,
+            tenantDelDocumento: String(ownTenantId),
+            tenantEnContexto: String(contextTenantId),
+          })
+        }
+
+        return next()
+      }
+
       const tenantId = getTenantIdFromDocumentContext(this)
       const normalizedTenantId = ensureObjectId(tenantId)
 
@@ -376,7 +620,22 @@ export const tenantPlugin = (schema, options = {}) => {
       )
     }
 
-    if (!pipelineTenantId) {
+    // Un $match inicial con OTRO comercio que el de la request se rechaza, como
+    // en las consultas (addTenantFilter). Antes se respetaba tal cual.
+    const contextTenantId = ensureObjectId(options.tenantId || requestContext?.tenantId)
+    if (pipelineTenantId && contextTenantId) {
+      const matchTenantId = ensureObjectId(pipelineTenantId)
+      if (!matchTenantId || !matchTenantId.equals(contextTenantId)) {
+        return next(
+          createTenantError({
+            code: 'TENANT_MISMATCH',
+            message: `[Tenant] Tenant mismatch for aggregate: match=${pipelineTenantId} context=${contextTenantId}`,
+          }),
+        )
+      }
+    }
+
+    if (!isTenantScopedFromStart(pipeline, normalizedTenantId)) {
       pipeline.unshift({ $match: { tenantId: normalizedTenantId } })
     }
 
