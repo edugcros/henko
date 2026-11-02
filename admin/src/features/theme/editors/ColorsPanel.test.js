@@ -6,7 +6,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ColorsPanel from './ColorsPanel.jsx'
 import { COLOR_PRESETS, DEFAULT_THEME_COLORS } from '../colorSystem.js'

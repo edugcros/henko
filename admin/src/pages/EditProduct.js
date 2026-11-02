@@ -29,7 +29,6 @@ import {
 } from 'antd'
 import {
   ArrowLeftOutlined,
-  CheckCircleOutlined,
   ClusterOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -160,12 +159,6 @@ const normalizeOptionalNumber = value => {
   const numericValue = Number(value)
   return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : null
 }
-
-const formatMoney = value =>
-  `$${Number(value || 0).toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
 
 const slugifyKeyPart = value =>
   normalizeString(value)
@@ -1141,7 +1134,7 @@ const EditProduct = () => {
       )
       setSpecificationRows(normalizeSpecSourceRows(normalizedProduct))
       setIsInitializing(false)
-    } catch (error) {
+    } catch {
       setLoadError('Error al procesar el producto')
       setIsInitializing(false)
     }
@@ -1578,7 +1571,7 @@ const EditProduct = () => {
           if (newVideoPreviewUrl) URL.revokeObjectURL(newVideoPreviewUrl)
           setNewVideoFile(null)
           setNewVideoPreviewUrl('')
-        } catch (videoError) {
+        } catch {
           message.warning(
             'Los cambios se guardaron, pero el video no pudo subirse. Podés reintentarlo.',
           )

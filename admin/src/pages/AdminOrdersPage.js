@@ -31,7 +31,6 @@ import {
   Select,
   Snackbar,
   Fade,
-  Container,
   Table,
   TableBody,
   TableCell,
@@ -47,7 +46,6 @@ import {
   Refresh,
   LocationOn,
   Email,
-  Phone,
   ExpandMore,
   ExpandLess,
   Info,
@@ -64,7 +62,6 @@ import {
 } from '@mui/icons-material'
 import {
   getOrdersThunk,
-  updateOrderStatusThunk,
   updateOrderPaymentStatusThunk,
   updateOrderFulfillmentStatusThunk,
   cancelOrderThunk,
@@ -880,7 +877,6 @@ OrderSummary.displayName = 'OrderSummary'
 const OrderControlPanel = memo(
   ({
     order,
-    onLegacyStatusChange,
     onPaymentStatusChange,
     onFulfillmentStatusChange,
     onCancel,
@@ -1055,7 +1051,6 @@ const OrderRow = memo(
     order,
     expanded,
     onToggle,
-    onLegacyStatusChange,
     onPaymentStatusChange,
     onFulfillmentStatusChange,
     onSaveShipment,
@@ -1217,7 +1212,6 @@ const OrderRow = memo(
 
                     <OrderControlPanel
                       order={order}
-                      onLegacyStatusChange={onLegacyStatusChange}
                       onPaymentStatusChange={onPaymentStatusChange}
                       onFulfillmentStatusChange={onFulfillmentStatusChange}
                       onCancel={onCancel}
@@ -1325,7 +1319,6 @@ const OrderDetailDialog = memo(
     open,
     onClose,
     order,
-    onLegacyStatusChange,
     onPaymentStatusChange,
     onFulfillmentStatusChange,
     onSaveShipment,
@@ -1456,7 +1449,6 @@ const OrderDetailDialog = memo(
 
                 <OrderControlPanel
                   order={order}
-                  onLegacyStatusChange={onLegacyStatusChange}
                   onPaymentStatusChange={onPaymentStatusChange}
                   onFulfillmentStatusChange={onFulfillmentStatusChange}
                   onCancel={onCancel}
@@ -1749,41 +1741,6 @@ const AdminOrdersPage = () => {
       page: 1,
     }))
   }, [])
-
-  const handleLegacyStatusChange = useCallback(
-    (orderId, newStatus) => {
-      if (isUpdating) return
-
-      const legacyStatus = normalizeOrderStatusForLegacyApi(newStatus)
-
-      if (legacyStatus === ORDER_STATUSES.CANCELLED || legacyStatus === ORDER_STATUSES.REFUNDED) {
-        const order = orders.find(item => item._id === orderId)
-
-        setConfirmDialog({
-          ...EMPTY_CONFIRM_DIALOG,
-          open: true,
-          orderId,
-          action: legacyStatus,
-          payload: { id: orderId, orderStatus: legacyStatus },
-          orderTotal: normalizeValue(order?.totals?.total),
-          orderNumber: getOrderDisplayId(order),
-        })
-
-        return
-      }
-
-      dispatch(updateOrderStatusThunk({ id: orderId, orderStatus: legacyStatus }))
-        .unwrap()
-        .then(() => {
-          showSnackbar('Estado comercial actualizado correctamente', 'success')
-          loadOrders()
-        })
-        .catch(error => {
-          showSnackbar(getErrorMessage(error, 'Error actualizando estado'), 'error')
-        })
-    },
-    [dispatch, isUpdating, loadOrders, orders, showSnackbar],
-  )
 
   const handlePaymentStatusChange = useCallback(
     (orderId, paymentStatus, orderTotal = 0) => {
@@ -2519,7 +2476,6 @@ const AdminOrdersPage = () => {
                         order={order}
                         expanded={expandedOrder === order._id}
                         onToggle={handleExpandOrder}
-                        onLegacyStatusChange={handleLegacyStatusChange}
                         onPaymentStatusChange={handlePaymentStatusChange}
                         onFulfillmentStatusChange={handleFulfillmentStatusChange}
                         onSaveShipment={handleSaveShipment}
@@ -2583,7 +2539,6 @@ const AdminOrdersPage = () => {
         open={detailDialogOpen}
         onClose={handleCloseDetailDialog}
         order={selectedOrder}
-        onLegacyStatusChange={handleLegacyStatusChange}
         onPaymentStatusChange={handlePaymentStatusChange}
         onFulfillmentStatusChange={handleFulfillmentStatusChange}
         onSaveShipment={handleSaveShipment}

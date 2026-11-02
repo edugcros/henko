@@ -10,7 +10,7 @@
 
 import React from 'react'
 import { jest } from '@jest/globals'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mockDispatch = jest.fn()

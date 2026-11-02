@@ -330,16 +330,6 @@ const SEO_POSITIONING_INTENT_OPTIONS = [
   { value: 'brand', label: 'Marca' },
 ]
 
-const QUICK_MODE_FIELD_KEYS = [
-  'imagenes',
-  'titulo',
-  'descripcion',
-  'categoria',
-  'subcategoria',
-  'precio',
-  'stock',
-]
-
 const DEFAULT_DYNAMIC_FIELD_TYPES = new Set(DYNAMIC_FIELD_TYPES.map(item => item.value))
 
 export const buildGeneratedVariantSku = (productTitle, attributes, index) => {
@@ -3599,15 +3589,6 @@ function AddProductForm() {
     [form, notifyFormMutation],
   )
 
-  const setProductFormFieldValue = useCallback(
-    (name, value) => {
-      setFormFieldValue(form, name, value)
-      setFormHasChanges(true)
-      notifyFormMutation()
-    },
-    [form, notifyFormMutation],
-  )
-
   const user = useSelector(state => state.user.user)
   const tenantId = user?.tenantId?._id || user?.tenantId || null
   const { isLoading, isError, message: productMessage } = useSelector(state => state.product)
@@ -4003,7 +3984,7 @@ function AddProductForm() {
     try {
       const { data } = await api.get('/product-analysis/agent-heartbeat')
       setAgentHeartbeat(data?.data || null)
-    } catch (error) {
+    } catch {
       // Indicador secundario: si falla no debe interrumpir el flujo de carga.
     }
   }, [])

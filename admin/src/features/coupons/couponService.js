@@ -1,5 +1,5 @@
 // src/features/coupons/couponService.js
-import { couponApi, ApiError } from '../../services/couponApi'
+import { couponApi } from '../../services/couponApi'
 
 // ======================================================
 // ERRORES PERSONALIZADOS
@@ -375,7 +375,7 @@ export const couponService = {
   },
 
   // Listar con cache
-  getCoupons: async (filters = {}, options = {}) => {
+  getCoupons: async (filters = {}) => {
     const { useCache = true, ...restFilters } = filters
     const cacheKey = `coupons:list:${JSON.stringify(restFilters)}`
 

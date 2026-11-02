@@ -7,7 +7,6 @@ import {
   selectTheme,
   selectActiveTheme,
   selectOriginalTheme,
-  selectThemeSection,
   selectHasUnsavedChanges,
   selectIsLoading,
   selectIsSaving,

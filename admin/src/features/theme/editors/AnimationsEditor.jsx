@@ -13,7 +13,6 @@ import {
   Switch,
   FormControlLabel,
   Slider,
-  Divider,
 } from '@mui/material'
 
 // ===============================
