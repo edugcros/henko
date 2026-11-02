@@ -106,6 +106,8 @@ const {
   runProductAttempt,
   describeProductAttemptFailure,
   resolveAiConfidencePercent,
+  selectJobsForReviewQueue,
+  resolveJobAnalysis,
 } = await import('./AddProduct.js')
 
 const MB = 1024 * 1024
@@ -1499,5 +1501,64 @@ describe('Alta de producto · el formulario usa el normalizador del backend', ()
     expect(normalizeAiAnalysisForForm({ titulo: 'Título crudo' }).fields.titulo).toBe(
       'Título crudo',
     )
+  })
+})
+
+describe('Alta de producto · qué entra a la cola de revisión de AutoSave', () => {
+  const trabajo = (id, status, autoSave = true) => ({
+    _id: id,
+    status,
+    metadata: { autoSaveProduct: autoSave },
+  })
+  const elegir = (cola, { failed = [], queued = [] } = {}) =>
+    selectJobsForReviewQueue(cola, {
+      failedIds: new Set(failed),
+      queuedIds: new Set(queued),
+    }).map(job => job._id)
+
+  test('entran los pendientes y también los que ya vienen analizados', () => {
+    expect(elegir([trabajo('a', 'pending'), trabajo('b', 'completed')])).toEqual(['a', 'b'])
+  })
+
+  test('no entran los que no son de AutoSave, ni los programados o ya tomados', () => {
+    expect(
+      elegir([
+        trabajo('a', 'pending', false),
+        trabajo('b', 'scheduled'),
+        trabajo('c', 'imported'),
+        trabajo('d', 'approved'),
+      ]),
+    ).toEqual([])
+  })
+
+  test('un trabajo que ya está en la cola no se prepara de nuevo al refrescar la bandeja', () => {
+    expect(
+      elegir([trabajo('a', 'completed'), trabajo('b', 'completed')], { queued: ['a'] }),
+    ).toEqual(['b'])
+  })
+
+  test('uno que falló al prepararse no se reintenta solo', () => {
+    expect(elegir([trabajo('a', 'pending')], { failed: ['a'] })).toEqual([])
+  })
+})
+
+describe('Alta de producto · la cola no vuelve a pagar un análisis ya hecho', () => {
+  test('si el trabajo ya viene analizado, usa ese análisis y no llama a la IA', async () => {
+    const analizar = jest.fn(async () => ({ titulo: 'nuevo' }))
+    const yaHecho = { titulo: 'Casco', normalized: { fields: {} } }
+
+    const analisis = await resolveJobAnalysis({ data: { analysis: yaHecho } }, analizar)
+
+    expect(analisis).toBe(yaHecho)
+    expect(analizar).not.toHaveBeenCalled()
+  })
+
+  test('si todavía no está analizado, lo analiza una vez', async () => {
+    const analizar = jest.fn(async () => ({ titulo: 'nuevo' }))
+
+    const analisis = await resolveJobAnalysis({ data: { analysis: null } }, analizar)
+
+    expect(analisis).toEqual({ titulo: 'nuevo' })
+    expect(analizar).toHaveBeenCalledTimes(1)
   })
 })

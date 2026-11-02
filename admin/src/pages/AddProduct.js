@@ -1946,6 +1946,36 @@ export const runProductAttempt = async ({
   return attempt
 }
 
+/**
+ * Los trabajos de AutoSave que la cola de revisión tiene que preparar.
+ *
+ * Entran los 'pending' y también los 'completed': un trabajo subido con
+ * análisis automático, o uno programado cuando llega su hora, ya viene
+ * analizado y queda 'completed'. Antes solo entraban los 'pending', así que
+ * esos no los procesaba nadie: la carga automática del formulario excluye
+ * los de AutoSave.
+ *
+ * Importar un 'completed' no le cambia el estado (sigue disponible para
+ * aprobar), así que al refrescar la bandeja vuelve: `queuedIds` son los que ya
+ * están en la cola de revisión, para no prepararlos dos veces.
+ */
+export const selectJobsForReviewQueue = (agentQueue, { failedIds, queuedIds }) =>
+  safeArray(agentQueue).filter(
+    job =>
+      ['pending', 'completed'].includes(job?.status) &&
+      job.metadata?.autoSaveProduct === true &&
+      !failedIds.has(job._id) &&
+      !queuedIds.has(job._id),
+  )
+
+/**
+ * El análisis de un trabajo de la bandeja: el que trae el import si ya estaba
+ * analizado, o uno nuevo. `analyze` solo se llama si hace falta: cada llamada
+ * es un análisis de IA que se paga.
+ */
+export const resolveJobAnalysis = async (importResponse, analyze) =>
+  importResponse?.data?.analysis || analyze()
+
 export const describeProductAttemptFailure = (attempt, error, fallback) => {
   const reason = error?.response?.data?.message || error?.message || fallback
 
@@ -3529,6 +3559,8 @@ function AddProductForm() {
   // job): un reintento sigue desde el paso que falló. Ver runProductAttempt.
   const productAttemptRef = useRef(null)
   const agentAttemptsRef = useRef(new Map())
+  // Trabajos que ya están en la cola de revisión (ver selectJobsForReviewQueue).
+  const reviewQueuedJobsRef = useRef(new Set())
   const imagePreviewsRef = useRef([])
   const lastAnalyzedImageSignatureRef = useRef('')
   const categoryConfigDebounceRef = useRef(null)
@@ -5027,7 +5059,11 @@ function AddProductForm() {
 
   const prepareAgentJobForReview = useCallback(
     async job => {
-      await api.post(`/product-analysis/${job._id}/import-to-add-product`)
+      const importResponse = await api.post(`/product-analysis/${job._id}/import-to-add-product`)
+      // Un trabajo ya analizado (por el backend al subirlo, o al llegar su
+      // hora) viene con su análisis: se usa ese, como hace el import manual,
+      // en vez de pagar otra llamada a la IA por la misma foto (ver
+      // resolveJobAnalysis, más abajo).
 
       resetProductWorkspace()
       await waitForUiReset()
@@ -5040,7 +5076,9 @@ function AddProductForm() {
       const filename = job.originalFilename || `agent-image-${Date.now()}.jpg`
       const mimeType = blob?.type || job.metadata?.mimeType || 'image/jpeg'
       const imageFile = new File([blob], filename, { type: mimeType })
-      const analysis = await analyzeImage(imageFile, { jobId: job._id })
+      const analysis = await resolveJobAnalysis(importResponse, () =>
+        analyzeImage(imageFile, { jobId: job._id }),
+      )
 
       if (!analysis) {
         throw new Error('La IA no devolvió análisis para la imagen')
@@ -5127,6 +5165,7 @@ function AddProductForm() {
   }, [])
 
   const removeReviewItem = useCallback(id => {
+    reviewQueuedJobsRef.current.delete(id)
     setAutoAgentReviewQueue(current => {
       const target = current.find(item => item.id === id)
       if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
@@ -5198,12 +5237,10 @@ function AddProductForm() {
   const processAutoAgentQueue = useCallback(async () => {
     if (!autoAgentEnabled || autoAgentRef.current || hasUserWorkspace) return
 
-    const jobsToProcess = agentQueue.filter(
-      job =>
-        job.status === 'pending' &&
-        job.metadata?.autoSaveProduct === true &&
-        !autoAgentFailedJobsRef.current.has(job._id),
-    )
+    const jobsToProcess = selectJobsForReviewQueue(agentQueue, {
+      failedIds: autoAgentFailedJobsRef.current,
+      queuedIds: reviewQueuedJobsRef.current,
+    })
 
     if (!jobsToProcess.length) return
 
@@ -5216,6 +5253,7 @@ function AddProductForm() {
       for (const job of jobsToProcess) {
         try {
           const item = await prepareAgentJobForReview(job)
+          reviewQueuedJobsRef.current.add(job._id)
           prepared.push({
             id: job._id,
             ...item,
