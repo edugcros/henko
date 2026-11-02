@@ -237,6 +237,16 @@ describe('operaciones que antes no tenían hook', () => {
     expect(await Ledger.collection.countDocuments({ tenantId: TIENDA_A })).toBe(3)
   })
 
+  test('insertMany con un comercio pedido pero inválido se rechaza', async () => {
+    // Sin esto, el id inválido valía como "no hay comercio" y las filas
+    // pasaban con el que trajeran.
+    await expect(
+      Ledger.insertMany([movimiento(TIENDA_B)], { tenantId: 'no-es-un-id' }),
+    ).rejects.toMatchObject({ code: 'TENANT_INVALID' })
+
+    expect(await Ledger.collection.countDocuments({})).toBe(3)
+  })
+
   test('insertMany sin comercio en ningún lado se rechaza', async () => {
     const { tenantId, ...sinComercio } = movimiento(undefined)
 
@@ -256,6 +266,23 @@ describe('mover de comercio por otras vías', () => {
     await expect(
       Ledger.updateMany({}, update).setOptions({ tenantId: TIENDA_A }),
     ).rejects.toMatchObject({ code: 'TENANT_MUTATION_FORBIDDEN' })
+  })
+
+  test('un $project que incluye campos sin incluir tenantId deja la fila sin comercio: se rechaza', async () => {
+    await expect(
+      Ledger.updateMany({}, [{ $project: { costUsd: 1 } }]).setOptions({ tenantId: TIENDA_A }),
+    ).rejects.toMatchObject({ code: 'TENANT_MUTATION_FORBIDDEN' })
+  })
+
+  test('un $project que conserva tenantId, o que solo excluye otros campos, se admite', async () => {
+    await Ledger.updateMany({}, [{ $project: { costUsd: 1, tenantId: 1, period: 1 } }]).setOptions({
+      tenantId: TIENDA_A,
+    })
+    await Ledger.updateMany({}, [{ $project: { period: 0 } }]).setOptions({ tenantId: TIENDA_A })
+
+    const filas = await Ledger.collection.find({ tenantId: TIENDA_A }).toArray()
+    expect(filas).toHaveLength(2)
+    expect(filas.every(f => f.period === undefined && f.costUsd > 0)).toBe(true)
   })
 
   test('un update con pipeline que no toca tenantId sigue andando', async () => {
@@ -336,6 +363,17 @@ describe('agregar · el $match de comercio', () => {
     await expect(
       Ledger.aggregate([{ $match: { tenantId: TIENDA_B } }]).option({ tenantId: TIENDA_A }),
     ).rejects.toMatchObject({ code: 'TENANT_MISMATCH' })
+  })
+
+  test('un $match inicial con tenantId null no acota a la tienda', async () => {
+    // Sin el filtro del comercio, devolvía las filas sin comercio asignado.
+    await Ledger.collection.insertOne(movimiento(null, { costUsd: 500 }))
+
+    const filas = await Ledger.aggregate([{ $match: { tenantId: null } }]).option({
+      tenantId: TIENDA_A,
+    })
+
+    expect(filas).toHaveLength(0)
   })
 
   test('un $match de comercio que llega tarde no evita el filtro del principio', async () => {

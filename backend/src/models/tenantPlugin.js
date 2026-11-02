@@ -167,6 +167,20 @@ const PIPELINE_WRITE_STAGES = [
   '$replaceWith',
 ]
 
+const isExclusion = value => value === 0 || value === false
+
+const projectDropsTenant = projection => {
+  if (!projection || typeof projection !== 'object') return false
+
+  const fields = Object.entries(projection).filter(([field]) => field !== '_id')
+  const tenant = projection.tenantId
+
+  if (tenant !== undefined) return tenant !== 1 && tenant !== true
+  // Sin tenantId en la proyección: la de exclusión lo conserva, la de
+  // inclusión lo descarta.
+  return fields.some(([, value]) => !isExclusion(value))
+}
+
 const pipelineStageWritesTenant = stage =>
   PIPELINE_WRITE_STAGES.some(operator => {
     const value = stage?.[operator]
@@ -176,6 +190,10 @@ const pipelineStageWritesTenant = stage =>
     if (operator === '$replaceRoot' || operator === '$replaceWith') return true
     if (typeof value === 'string') return value === 'tenantId'
     if (Array.isArray(value)) return value.includes('tenantId')
+    // Un $project que INCLUYE campos descarta todos los demás: si tenantId no
+    // está incluido tal cual, el documento queda sin comercio aunque la etapa
+    // no lo nombre.
+    if (operator === '$project') return projectDropsTenant(value)
     return value?.tenantId !== undefined
   })
 
@@ -306,7 +324,12 @@ const getTenantIdFromPipeline = pipeline => {
 // Un $match de comercio solo acota si es la PRIMERA etapa. Más adelante
 // —después de un $group, un $lookup o un $unionWith— llega tarde: las etapas
 // anteriores ya corrieron sobre todos los comercios.
-const isTenantScopedFromStart = pipeline => pipeline[0]?.$match?.tenantId !== undefined
+//
+// Y solo si es el comercio que corresponde: `{ tenantId: null }` (o cualquier
+// cosa que no sea ese id) no acota a la tienda, y omitir el filtro por eso
+// devolvía filas sin comercio.
+const isTenantScopedFromStart = (pipeline, tenantId) =>
+  Boolean(ensureObjectId(pipeline[0]?.$match?.tenantId)?.equals(tenantId))
 
 // =====================================================
 // Plugin
@@ -442,10 +465,27 @@ export const tenantPlugin = (schema, options = {}) => {
   // tenantId que trajera, aunque fuera de otro comercio que el de la request.
   schema.pre('insertMany', function validateTenantOnInsertMany(next, docs, options = {}) {
     try {
-      if (options.ignoreTenant || options.skipTenant) return next()
-
       const modelName = this.modelName
-      const contextTenantId = ensureObjectId(options.tenantId || getTenantContext()?.tenantId)
+
+      if (options.ignoreTenant || options.skipTenant) {
+        // Como el resto de las salidas: auditTenantBypass lee platformScope de
+        // las opciones del contexto que recibe.
+        auditTenantBypass({ options }, { modelName, operation: 'insertMany' })
+        return next()
+      }
+
+      const explicitTenantId = options.tenantId || getTenantContext()?.tenantId
+      const contextTenantId = ensureObjectId(explicitTenantId)
+
+      // Un comercio pedido pero inválido no puede tratarse como "no hay
+      // comercio": las filas pasarían con el que trajeran.
+      if (explicitTenantId && !contextTenantId) {
+        throw createTenantError({
+          code: 'TENANT_INVALID',
+          model: modelName,
+          message: `[Tenant] Missing or invalid tenantId for model "${modelName}"`,
+        })
+      }
 
       for (const doc of Array.isArray(docs) ? docs : [docs]) {
         if (!doc || typeof doc !== 'object') continue
@@ -595,7 +635,7 @@ export const tenantPlugin = (schema, options = {}) => {
       }
     }
 
-    if (!isTenantScopedFromStart(pipeline)) {
+    if (!isTenantScopedFromStart(pipeline, normalizedTenantId)) {
       pipeline.unshift({ $match: { tenantId: normalizedTenantId } })
     }
 
