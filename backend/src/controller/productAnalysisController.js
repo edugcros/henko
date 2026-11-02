@@ -26,7 +26,7 @@ import { escapeRegex } from '../utils/escapeRegex.js'
 import { buildProductSku } from '../utils/slugService.js'
 import { createProductRecord } from '../services/productCreationService.js'
 import logger from '../../config/logger.js'
-import * as aiVisionService from '../services/aiVisionService.js'
+import { analyzeImage, analyzeProductImageFromUrl } from '../services/aiVisionService.js'
 import { withNormalizedDraft } from '../services/autonomousProductBuilder.js'
 
 // =====================================================
@@ -453,47 +453,6 @@ const uploadImageToStorage = async ({ file, tenantId }) => {
   }
 }
 
-export const runVisualAnalysis = async ({ tenantId, file, originalFilename }) => {
-  /**
-   * Compatibilidad con distintas firmas posibles de tu aiVisionService.
-   * Recomendado final:
-   *
-   * aiVisionService.analyzeProductImage({
-   *   tenantId,
-   *   imageBuffer,
-   *   mimeType,
-   *   originalFilename,
-   * })
-   */
-  if (typeof aiVisionService.analyzeProductImage === 'function') {
-    if (aiVisionService.analyzeProductImage.length >= 3) {
-      return aiVisionService.analyzeProductImage(file.buffer, file.mimetype, tenantId)
-    }
-
-    return aiVisionService.analyzeProductImage({
-      tenantId,
-      imageBuffer: file.buffer,
-      mimeType: file.mimetype,
-      originalFilename,
-    })
-  }
-
-  if (typeof aiVisionService.analyzeImage === 'function') {
-    if (aiVisionService.analyzeImage.length >= 3) {
-      return aiVisionService.analyzeImage(file.buffer, file.mimetype, tenantId)
-    }
-
-    return aiVisionService.analyzeImage({
-      tenantId,
-      imageBuffer: file.buffer,
-      mimeType: file.mimetype,
-      originalFilename,
-    })
-  }
-
-  throw new Error('aiVisionService no exporta analyzeProductImage ni analyzeImage')
-}
-
 /**
  * Registra en ProductAnalysisJob una imagen analizada desde el dropzone
  * manual de AddProduct (POST /product/analyze-visual), para que quede
@@ -595,7 +554,7 @@ export const recordManualAnalysisJob = async ({
   }
 }
 
-const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFilename = '' }) => {
+const analyzeAndPersistJob = async ({ jobId, tenantId, file = null }) => {
   const now = new Date()
 
   let job = await ProductAnalysisJob.findOneAndUpdate(
@@ -635,19 +594,9 @@ const analyzeAndPersistJob = async ({ jobId, tenantId, file = null, originalFile
     let rawAnalysis
 
     if (file?.buffer) {
-      rawAnalysis = await runVisualAnalysis({
-        tenantId,
-        file,
-        originalFilename: originalFilename || job.originalFilename,
-      })
-    } else if (typeof aiVisionService.analyzeProductImageFromUrl === 'function') {
-      rawAnalysis = await aiVisionService.analyzeProductImageFromUrl({
-        tenantId,
-        imageUrl: job.imageUrl,
-        originalFilename: originalFilename || job.originalFilename,
-      })
+      rawAnalysis = await analyzeImage(file.buffer, file.mimetype, tenantId)
     } else {
-      throw new Error('No hay buffer disponible y la IA no soporta análisis desde URL')
+      rawAnalysis = await analyzeProductImageFromUrl({ tenantId, imageUrl: job.imageUrl })
     }
 
     if (!rawAnalysis || rawAnalysis.aiProcessed === false) {
@@ -1101,6 +1050,138 @@ export const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
   }
 }
 
+// Errores de la imagen que conviene reintentar (502) y los que son de la
+// imagen que mandó el usuario (400). El resto es un 500.
+const RETRYABLE_IMAGE_ERRORS = new Set([
+  'GEMINI_TIMEOUT',
+  'EMPTY_AI_RESPONSE',
+  'IMAGE_DOWNLOAD_FAILED',
+])
+
+const CLIENT_IMAGE_ERRORS = new Set([
+  'INVALID_IMAGE_BUFFER',
+  'EMPTY_IMAGE_BUFFER',
+  'EMPTY_IMAGE',
+  'IMAGE_TOO_LARGE',
+  'INVALID_IMAGE_MIME',
+  'INVALID_IMAGE_URL',
+  'INVALID_IMAGE_PROTOCOL',
+  'INVALID_IMAGE_SIGNATURE',
+  'BLOCKED_IMAGE_HOST',
+  'BLOCKED_PRIVATE_IMAGE_HOST',
+  'BLOCKED_PRIVATE_IMAGE_IP',
+  'IMAGE_HOST_RESOLUTION_FAILED',
+])
+
+/**
+ * La respuesta HTTP de un análisis de imagen que falló: código y cuerpo.
+ *
+ * @returns {{ status: number, body: { success: false, code: string, message: string } }}
+ */
+export const describeVisualAnalysisError = error => {
+  const code = error?.code || 'AI_ANALYSIS_FAILED'
+
+  if (code === 'AI_USAGE_LIMIT_EXCEEDED') {
+    return { status: 429, body: { success: false, code, message: error.message } }
+  }
+
+  // Config del servidor que impide completar el pedido aunque la IA haya
+  // respondido bien (por ejemplo, no hay dónde publicar la imagen analizada).
+  // El mensaje ya dice qué falta definir, así que se pasa tal cual en vez de
+  // disfrazarlo de fallo del proveedor de IA.
+  if (code === 'STORAGE_PUBLIC_URL_MISSING') {
+    return {
+      status: error.statusCode || 503,
+      body: { success: false, code, message: error.message },
+    }
+  }
+
+  // Un fallo de configuración del proveedor (key ausente o malformada) no es
+  // un error del request: sin el código, en producción solo se ve un 500 opaco
+  // y no hay forma de saber qué arreglar.
+  if (code === 'AI_PROVIDER_DISABLED' || code === 'AI_PROVIDER_KEY_MALFORMED') {
+    return {
+      status: 503,
+      body: {
+        success: false,
+        code,
+        message: 'El proveedor de IA no está configurado correctamente en el servidor',
+      },
+    }
+  }
+
+  let status = 500
+  if (RETRYABLE_IMAGE_ERRORS.has(code)) status = 502
+  else if (CLIENT_IMAGE_ERRORS.has(code)) status = 400
+
+  // El mensaje va tal cual (buildProviderError lo arma con la causa real) para
+  // que el frontend pueda mostrarlo sin depender de mirar el log del backend.
+  return {
+    status,
+    body: { success: false, code, message: error?.message || 'Error al analizar la imagen con IA' },
+  }
+}
+
+/**
+ * POST /product/analyze-visual: el análisis de la foto que se sube en
+ * AddProduct. Responde el análisis con el borrador para el formulario y deja
+ * el trabajo registrado en la cola (recordManualAnalysisJob).
+ */
+export const analyzeVisualProduct = asyncHandler(async (req, res) => {
+  const { file } = req
+  const tenantId = req.user?.tenantId
+
+  if (!file) {
+    return res.status(400).json({
+      success: false,
+      message: 'No se subió imagen',
+    })
+  }
+
+  try {
+    const analysis = await analyzeImage(file.buffer, file.mimetype, tenantId)
+
+    const job = await recordManualAnalysisJob({
+      tenantId,
+      userId: req.user?._id || req.user?.id || null,
+      file,
+      originalFilename: file.originalname,
+      analysis,
+      // AddProduct manda el id cuando está analizando un job que ya está en
+      // la cola, para que se actualice ese y no se cree un duplicado del
+      // mismo producto.
+      jobId: req.body?.jobId || null,
+    })
+
+    return res.json({
+      success: true,
+      // Con el borrador para el formulario: el mismo que recibe el import de
+      // un análisis de la cola (ver withNormalizedDraft).
+      data: withNormalizedDraft(analysis, {
+        onError: error =>
+          logger.warn('[ANALYZE VISUAL] No se pudo normalizar el análisis', {
+            error: error.message,
+          }),
+      }),
+      jobId: job?._id || null,
+    })
+  } catch (error) {
+    logger.error('[ANALYZE VISUAL ERROR]', {
+      code: error.code || 'UNKNOWN',
+      name: error.name,
+      message: error.message,
+      status: error.status ?? error.statusCode ?? null,
+      tenantId,
+      mimeType: file.mimetype,
+      imageBytes: file.buffer?.length ?? 0,
+      stack: error.stack,
+    })
+
+    const { status, body } = describeVisualAnalysisError(error)
+    return res.status(status).json(body)
+  }
+})
+
 export const createProductFromAnalysisJob = async ({
   job,
   overrides = {},
@@ -1352,7 +1433,6 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
           buffer: Buffer.from(file.buffer),
           mimetype: file.mimetype,
         },
-        originalFilename,
       })
       const retrySucceeded =
         retriedJob.status === JOB_STATUS.COMPLETED || retriedJob.status === JOB_STATUS.APPROVED
@@ -1501,7 +1581,6 @@ export const importImageForAnalysis = asyncHandler(async (req, res) => {
       buffer: Buffer.from(file.buffer),
       mimetype: file.mimetype,
     },
-    originalFilename,
   })
 
   const analysisSucceeded =

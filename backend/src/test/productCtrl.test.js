@@ -1690,3 +1690,44 @@ describe('variantes · la clave la decide el backend', () => {
     expect(res.body.message).toMatch(/duplicadas con la misma combinación/)
   })
 })
+
+describe('analyze-visual · el contexto de admin', () => {
+  let ctx
+  let admin
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'analyze-visual-admin@test.com',
+      role: 'admin',
+    })
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  const analizar = async domain => {
+    const csrf = await getCSRFToken(domain)
+    return request(app)
+      .post('/api/product/analyze-visual')
+      .set(authHeaders({ token: admin.token, domain, ...csrf }))
+  }
+
+  test('desde el dominio de admin llega al controlador', async () => {
+    const res = await analizar(ctx.adminDomain)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toBe('No se subió imagen')
+  })
+
+  test('desde el dominio de la tienda se rechaza, como el resto de las rutas de admin', async () => {
+    const res = await analizar(ctx.shopDomain)
+
+    expect(res.statusCode).toBeGreaterThanOrEqual(400)
+    expect(res.body.message).not.toBe('No se subió imagen')
+  })
+})

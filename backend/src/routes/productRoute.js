@@ -2,7 +2,6 @@
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / CSRF / ADMIN / STOREFRONT
 
 import express from 'express'
-import expressAsyncHandler from 'express-async-handler'
 
 import {
   createProduct,
@@ -37,11 +36,8 @@ import {
 import { uploadPhoto, productImgResize, uploadVideo } from '../middlewares/uploadImage.js'
 import { requireAiEntitlement } from '../middlewares/aiEntitlementMiddleware.js'
 import { AI_METRICS } from '../services/ai/aiPlanPolicy.js'
-import { analyzeImage } from '../services/aiVisionService.js'
-import { recordManualAnalysisJob } from '../controller/productAnalysisController.js'
+import { analyzeVisualProduct } from '../controller/productAnalysisController.js'
 import { generateProductSocialContent } from '../controller/socialPromotionCtrl.js'
-import { withNormalizedDraft } from '../services/autonomousProductBuilder.js'
-import logger from '../../config/logger.js'
 
 const router = express.Router()
 
@@ -61,133 +57,14 @@ const aiVisualLimiter = rateLimiter
 
 router.post(
   '/analyze-visual',
-  resolveTenantByDomain,
-  authMiddleware,
-  isAdmin,
+  adminContext,
   // Antes de subir y redimensionar la imagen: si el comercio ya no tiene
   // cupo, procesar el archivo es trabajo (y memoria) tirados a la basura.
   requireAiEntitlement(AI_METRICS.VISION),
   uploadPhoto.single('images'),
   productImgResize,
   aiVisualLimiter,
-  expressAsyncHandler(async (req, res) => {
-    const { file } = req
-    const tenantId = req.user?.tenantId
-
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No se subió imagen',
-      })
-    }
-
-    try {
-      const analysis = await analyzeImage(file.buffer, file.mimetype, tenantId)
-
-      const job = await recordManualAnalysisJob({
-        tenantId,
-        userId: req.user?._id || req.user?.id || null,
-        file,
-        originalFilename: file.originalname,
-        analysis,
-        // AddProduct manda el id cuando está analizando un job que ya
-        // está en la cola, para que se actualice ese y no se cree un
-        // duplicado del mismo producto.
-        jobId: req.body?.jobId || null,
-      })
-
-      return res.json({
-        success: true,
-        // Con el borrador para el formulario: el mismo que recibe el import
-        // de un análisis de la cola (ver withNormalizedDraft).
-        data: withNormalizedDraft(analysis, {
-          onError: error =>
-            logger.warn('[ANALYZE VISUAL] No se pudo normalizar el análisis', {
-              error: error.message,
-            }),
-        }),
-        jobId: job?._id || null,
-      })
-    } catch (error) {
-      logger.error('[ANALYZE VISUAL ERROR]', {
-        code: error.code || 'UNKNOWN',
-        name: error.name,
-        message: error.message,
-        status: error.status ?? error.statusCode ?? null,
-        tenantId,
-        mimeType: file.mimetype,
-        imageBytes: file.buffer?.length ?? 0,
-        stack: error.stack,
-      })
-
-      // Un fallo de configuración del proveedor (key ausente o malformada)
-      // no es un error del request: sin el código, en producción solo se ve
-      // un 500 opaco y no hay forma de saber qué arreglar.
-      const isProviderConfigError =
-        error.code === 'AI_PROVIDER_DISABLED' || error.code === 'AI_PROVIDER_KEY_MALFORMED'
-
-      if (error.code === 'AI_USAGE_LIMIT_EXCEEDED') {
-        return res.status(429).json({
-          success: false,
-          code: error.code,
-          message: error.message,
-        })
-      }
-
-      // Config del servidor que impide completar el pedido aunque la IA
-      // haya respondido bien (por ejemplo, no hay dónde publicar la imagen
-      // analizada). El mensaje ya dice qué falta definir, así que se pasa
-      // tal cual en vez de disfrazarlo de fallo del proveedor de IA.
-      if (error.code === 'STORAGE_PUBLIC_URL_MISSING') {
-        return res.status(error.statusCode || 503).json({
-          success: false,
-          code: error.code,
-          message: error.message,
-        })
-      }
-
-      const RETRYABLE_IMAGE_ERRORS = new Set([
-        'GEMINI_TIMEOUT',
-        'EMPTY_AI_RESPONSE',
-        'IMAGE_DOWNLOAD_FAILED',
-      ])
-
-      const CLIENT_IMAGE_ERRORS = new Set([
-        'INVALID_IMAGE_BUFFER',
-        'EMPTY_IMAGE_BUFFER',
-        'EMPTY_IMAGE',
-        'IMAGE_TOO_LARGE',
-        'INVALID_IMAGE_MIME',
-        'INVALID_IMAGE_URL',
-        'INVALID_IMAGE_PROTOCOL',
-        'INVALID_IMAGE_SIGNATURE',
-        'BLOCKED_IMAGE_HOST',
-        'BLOCKED_PRIVATE_IMAGE_HOST',
-        'BLOCKED_PRIVATE_IMAGE_IP',
-        'IMAGE_HOST_RESOLUTION_FAILED',
-      ])
-
-      const code = error.code || 'AI_ANALYSIS_FAILED'
-
-      let status
-      if (isProviderConfigError) status = 503
-      else if (RETRYABLE_IMAGE_ERRORS.has(code)) status = 502
-      else if (CLIENT_IMAGE_ERRORS.has(code)) status = 400
-      else status = 500
-
-      // Antes se devolvía 'Error al analizar la imagen con IA' para todo lo
-      // que no fuera config o cuota, tirando el mensaje que buildProviderError
-      // arma con la causa real. Ahora el mensaje va tal cual para que el
-      // frontend pueda mostrarlo sin depender de mirar el log del backend.
-      return res.status(status).json({
-        success: false,
-        code,
-        message: isProviderConfigError
-          ? 'El proveedor de IA no está configurado correctamente en el servidor'
-          : error.message || 'Error al analizar la imagen con IA',
-      })
-    }
-  }),
+  analyzeVisualProduct,
 )
 
 const conditionalCsrfProtection = (req, res, next) => {

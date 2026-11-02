@@ -295,10 +295,6 @@ function sanitizeLogMeta(meta = {}) {
   return safe
 }
 
-function loggerinfo(message, meta = {}) {
-  logger.info('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
-}
-
 function logError(message, meta = {}) {
   logger.error('[AI VISION SERVICE]', sanitizeLogMeta({ message, ...meta }))
 }
@@ -2271,15 +2267,6 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
   }
 }
 
-export async function analyzeProductImage(input, legacyMimeType = null, legacyTenantId = null) {
-  if (Buffer.isBuffer(input)) {
-    return analyzeImage(input, legacyMimeType, legacyTenantId)
-  }
-
-  const { tenantId, imageBuffer, mimeType } = input || {}
-  return analyzeImage(imageBuffer, mimeType, tenantId)
-}
-
 export async function analyzeProductImageFromUrl({ tenantId, imageUrl }) {
   if (!imageUrl || typeof imageUrl !== 'string') {
     const error = new Error('imageUrl inválida')
@@ -2351,10 +2338,4 @@ export async function analyzeProductImageFromUrl({ tenantId, imageUrl }) {
   const sniffedContentType = validateImageBuffer(buffer)
 
   return analyzeImage(buffer, sniffedContentType, tenantId)
-}
-
-export default {
-  analyzeImage,
-  analyzeProductImage,
-  analyzeProductImageFromUrl,
 }
