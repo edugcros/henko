@@ -1023,9 +1023,8 @@ export const buildProductDraftFromJob = ({ job, overrides = {}, userId }) => {
    * - visibility
    */
   // El SKU que cargó una persona (al aprobar, o el que mandó el agente de
-  // escritorio al importar) manda; si no hay, se genera como en createProduct.
-  // Sin SKU, el índice único { tenantId, sku } hacía fallar el segundo
-  // producto creado así en cada tienda (ver buildProductSku).
+  // escritorio al importar) manda; si no hay, se genera como en createProduct
+  // (ver buildProductSku).
   const manualSku = normalizeString(overrides.sku || job.metadata?.sku).toUpperCase()
 
   return {
