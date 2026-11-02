@@ -13,6 +13,7 @@ import { normalizeVariantSuggestions } from '../services/aiVisionService.js'
 import {
   buildProductDraftFromJob,
   createProductFromAnalysisJob,
+  describeVisualAnalysisError,
   sanitizeAnalysis,
 } from '../controller/productAnalysisController.js'
 import Product from '../models/productModel.js'
@@ -309,5 +310,47 @@ describe('alta automática desde un análisis · mismo servicio que el panel', (
 
     expect(product.slug).not.toBe(ocupado)
     expect(product.slug.startsWith(ocupado)).toBe(true)
+  })
+})
+
+// La respuesta de /analyze-visual cuando el análisis falla. Vivía dentro de la
+// ruta; ahora es una función del controlador y se puede probar sin la IA.
+describe('analyze-visual · respuesta de un análisis que falló', () => {
+  const fallo = (code, extra = {}) => Object.assign(new Error(`falló: ${code}`), { code }, extra)
+
+  test.each([
+    ['AI_USAGE_LIMIT_EXCEEDED', 429],
+    ['AI_PROVIDER_DISABLED', 503],
+    ['AI_PROVIDER_KEY_MALFORMED', 503],
+    ['STORAGE_PUBLIC_URL_MISSING', 503],
+    ['GEMINI_TIMEOUT', 502],
+    ['IMAGE_DOWNLOAD_FAILED', 502],
+    ['INVALID_IMAGE_MIME', 400],
+    ['BLOCKED_PRIVATE_IMAGE_IP', 400],
+    ['ALGO_QUE_NADIE_PREVIO', 500],
+  ])('%s responde %i', (code, status) => {
+    expect(describeVisualAnalysisError(fallo(code)).status).toBe(status)
+  })
+
+  test('el mensaje del error llega tal cual, salvo la configuración del proveedor', () => {
+    expect(describeVisualAnalysisError(fallo('GEMINI_TIMEOUT')).body).toEqual({
+      success: false,
+      code: 'GEMINI_TIMEOUT',
+      message: 'falló: GEMINI_TIMEOUT',
+    })
+    // La causa de una key mal cargada es del servidor, no del usuario.
+    expect(describeVisualAnalysisError(fallo('AI_PROVIDER_DISABLED')).body.message).toBe(
+      'El proveedor de IA no está configurado correctamente en el servidor',
+    )
+  })
+
+  test('el almacenamiento respeta el estado que trae el error', () => {
+    expect(
+      describeVisualAnalysisError(fallo('STORAGE_PUBLIC_URL_MISSING', { statusCode: 500 })).status,
+    ).toBe(500)
+  })
+
+  test('sin código, es un análisis fallido genérico', () => {
+    expect(describeVisualAnalysisError(new Error('x')).body.code).toBe('AI_ANALYSIS_FAILED')
   })
 })

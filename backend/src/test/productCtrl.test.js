@@ -1690,3 +1690,49 @@ describe('variantes · la clave la decide el backend', () => {
     expect(res.body.message).toMatch(/duplicadas con la misma combinación/)
   })
 })
+
+describe('analyze-visual · el contexto de admin', () => {
+  let ctx
+  let admin
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'analyze-visual-admin@test.com',
+      role: 'admin',
+    })
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  const analizar = async domain => {
+    const csrf = await getCSRFToken(domain)
+    return request(app)
+      .post('/api/product/analyze-visual')
+      .set(authHeaders({ token: admin.token, domain, ...csrf }))
+  }
+
+  // Lo que sigue al contexto (el cupo de IA, la imagen) depende del entorno:
+  // sin key de IA configurada, requireAiEntitlement corta con 503. Por eso se
+  // compara contra la respuesta exacta de requireAdminDomain y no contra el
+  // código final.
+  const RECHAZO_DE_DOMINIO = 'Acceso solo desde dominio administrativo'
+
+  test('desde el dominio de admin pasa el contexto de admin', async () => {
+    const res = await analizar(ctx.adminDomain)
+
+    expect(res.body.message).not.toBe(RECHAZO_DE_DOMINIO)
+  })
+
+  test('desde el dominio de la tienda se rechaza, como el resto de las rutas de admin', async () => {
+    const res = await analizar(ctx.shopDomain)
+
+    expect(res.statusCode).toBe(403)
+    expect(res.body.message).toBe(RECHAZO_DE_DOMINIO)
+  })
+})
