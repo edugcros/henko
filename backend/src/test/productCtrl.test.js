@@ -1717,17 +1717,22 @@ describe('analyze-visual · el contexto de admin', () => {
       .set(authHeaders({ token: admin.token, domain, ...csrf }))
   }
 
-  test('desde el dominio de admin llega al controlador', async () => {
+  // Lo que sigue al contexto (el cupo de IA, la imagen) depende del entorno:
+  // sin key de IA configurada, requireAiEntitlement corta con 503. Por eso se
+  // compara contra la respuesta exacta de requireAdminDomain y no contra el
+  // código final.
+  const RECHAZO_DE_DOMINIO = 'Acceso solo desde dominio administrativo'
+
+  test('desde el dominio de admin pasa el contexto de admin', async () => {
     const res = await analizar(ctx.adminDomain)
 
-    expect(res.statusCode).toBe(400)
-    expect(res.body.message).toBe('No se subió imagen')
+    expect(res.body.message).not.toBe(RECHAZO_DE_DOMINIO)
   })
 
   test('desde el dominio de la tienda se rechaza, como el resto de las rutas de admin', async () => {
     const res = await analizar(ctx.shopDomain)
 
-    expect(res.statusCode).toBeGreaterThanOrEqual(400)
-    expect(res.body.message).not.toBe('No se subió imagen')
+    expect(res.statusCode).toBe(403)
+    expect(res.body.message).toBe(RECHAZO_DE_DOMINIO)
   })
 })
