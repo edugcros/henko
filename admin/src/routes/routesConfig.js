@@ -1,5 +1,4 @@
 // admin/src/routes/routesConfig.js
-import react from 'react'
 
 import pages from '@pages'
 

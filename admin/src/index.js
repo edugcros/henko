@@ -7,7 +7,7 @@ import App from './App'
 import ErrorBoundary from '@components/ErrorBoundary/ErrorBoundary.js'
 import './App.css'
 import { store } from '@app/store'
-import { initCsrf, setApiStore } from '@utils/axiosConfig'
+import { setApiStore } from '@utils/axiosConfig'
 import SpinnerCentered from '@components/SpinnerCentered.jsx'
 // -----------------------------
 // Wrapper para inicialización

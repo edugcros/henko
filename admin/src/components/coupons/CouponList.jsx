@@ -38,7 +38,6 @@ import {
   DeleteForever as HardDeleteIcon,
   RestoreFromTrash as RestoreIcon,
   Layers as StackableIcon,
-  InfoOutlined as InfoIcon,
 } from '@mui/icons-material'
 
 // ======================================================

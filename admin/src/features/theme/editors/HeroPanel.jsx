@@ -14,7 +14,6 @@ import {
   FormControl,
   InputLabel,
   Slider,
-  Divider,
   Button,
 } from '@mui/material'
 import ImageUploader from '@components/ImageUploader'

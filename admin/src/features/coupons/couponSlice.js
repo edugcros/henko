@@ -1,6 +1,6 @@
 // src/features/coupons/couponSlice.js
 import { createSlice, createAsyncThunk, createAction } from '@reduxjs/toolkit'
-import { couponService, ValidationError, DuplicateError } from './couponService'
+import { couponService } from './couponService'
 
 const getCouponId = coupon => coupon?.id || coupon?._id
 
@@ -558,7 +558,7 @@ export const couponSlice = createSlice({
       })
 
       // ---------- GET STATS ----------
-      .addCase(getCouponStats.pending, state => {
+      .addCase(getCouponStats.pending, () => {
         // No bloquear UI
       })
       .addCase(getCouponStats.fulfilled, (state, action) => {

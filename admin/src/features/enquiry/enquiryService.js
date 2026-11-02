@@ -1,17 +1,5 @@
-// src/features/user/userService.js
+// src/features/enquiry/enquiryService.js
 import api, { fetchCsrfToken } from '@utils/axiosConfig'
-
-// ======================================================
-// Normalización estricta de respuestas AUTH
-// ======================================================
-const normalizeAuthResponse = res => {
-  if (!res) return null
-  const raw = res?.data?.data || res?.data || res
-  return {
-    user: raw?.user || raw?.data?.user || null,
-    token: raw?.token || raw?.data?.token || raw?.data?.accessToken || null,
-  }
-}
 
 // ======================================================
 // CSRF Loader (con auto-recuperación)

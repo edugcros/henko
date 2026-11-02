@@ -1,6 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import customerService from './customerService'
-import { toast } from 'react-toastify'
 
 const initialState = {
   customers: [],

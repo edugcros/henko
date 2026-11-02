@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import {
   Box,
-  Chip,
   FormControl,
   Grid,
   InputAdornment,

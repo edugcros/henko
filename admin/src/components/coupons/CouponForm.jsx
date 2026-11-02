@@ -1,5 +1,5 @@
 // src/components/coupons/CouponForm.jsx
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import PropTypes from 'prop-types'
 import './CouponForm.css'
 import ProductSelector from './ProductSelector'

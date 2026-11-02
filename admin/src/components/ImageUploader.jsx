@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Box, Typography, IconButton, CircularProgress, Button } from '@mui/material'
-import { CloudUpload, Delete, Image as ImageIcon } from '@mui/icons-material'
+import { Delete, Image as ImageIcon } from '@mui/icons-material'
 
 const ImageUploader = ({
   value,

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Typography, Slider, Paper, Grid, TextField } from '@mui/material'
+import { Box, Typography, Slider, Paper, Grid } from '@mui/material'
 
 const LayoutEditor = ({ value, onChange }) => {
   const layout = value || {}

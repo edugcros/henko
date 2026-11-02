@@ -94,19 +94,28 @@ export default [
       },
     },
     rules: {
-      'unused-imports/no-unused-imports': 'off',
+      // Los imports sin uso no los ve no-unused-vars (los delega a esta regla),
+      // así que con esta apagada se acumulaban sin aviso. React se exceptúa:
+      // el build (webpack.base.js) compila JSX con el runtime clásico, que lo
+      // necesita en scope aunque el archivo no lo nombre.
+      'unused-imports/no-unused-imports': ['warn', { varsIgnorePattern: '^React$' }],
       'unused-imports/no-unused-vars': [
         'warn',
         {
           vars: 'all',
-          varsIgnorePattern:
-            '^(MockComponent|LazyLoad|Component|Suspense|Navigate|Route|Routes|Router|Layout|SpinnerCentered|PrivateRoute|PublicRoute|__webpack_|exports|module|chunkId|__webpack_require__|self|webpackHotUpdate|React|(?:.*Components?.*|.*Service.*|.*Hooks.*|.*Pages.*|.*Utils.*|.*Context.*|.*Features.*|.*Route.*|Color))$',
+          // Solo React: con react/jsx-uses-vars ya no hace falta tapar por
+          // nombre los componentes que se usan en JSX.
+          varsIgnorePattern: '^React$',
           args: 'after-used',
           argsIgnorePattern: '^_',
         },
       ],
       'no-dupe-keys': 'error',
       'no-unused-vars': 'off',
+      // Marca como usada una variable que solo aparece en JSX (`<Card />`).
+      // Sin esta regla, unused-imports/no-unused-vars la reportaba como sin
+      // uso: un falso positivo por cada componente.
+      'react/jsx-uses-vars': 'error',
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       // Sin opciones inline A PROPOSITO: asi el plugin resuelve

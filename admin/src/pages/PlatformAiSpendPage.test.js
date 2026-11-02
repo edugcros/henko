@@ -414,7 +414,8 @@ test('sin comercios no dibuja la tabla', async () => {
 
 test('un reporte sin byTenant no rompe la pantalla', async () => {
   // El panel puede quedar desplegado antes que el backend.
-  const { byTenant, ...sinTenant } = REPORT
+  const sinTenant = { ...REPORT }
+  delete sinTenant.byTenant
   mockGetAiSpend.mockResolvedValue(sinTenant)
   render(<PlatformAiSpendPage />)
 
