@@ -1172,9 +1172,27 @@ const productSchema = new Schema(
 // =====================================================
 
 productSchema.index({ tenantId: 1, slug: 1 }, { unique: true })
-productSchema.index({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
-// Parcial y no sparse: en un índice compuesto, sparse indexa igual el documento
-// sin clientRequestId (tenantId siempre existe) y chocarían todos entre sí.
+// El SKU es único dentro de cada tienda, pero solo cuando hay uno.
+//
+// Era `{ unique: true, sparse: true }`, y en un índice compuesto sparse no
+// excluye nada: indexa el documento si tiene CUALQUIERA de los campos, y
+// tenantId lo tiene siempre. Un producto sin SKU entraba con sku null, y el
+// segundo de la misma tienda fallaba con E11000 (por ejemplo, al borrarle el
+// SKU en EditProduct). Por eso cada alta inventa uno (buildProductSku).
+//
+// Lleva nombre propio para poder crearlo al lado del viejo
+// (`tenantId_1_sku_1`) antes de borrar ese: así la tienda no queda ni un
+// momento sin unicidad de SKU. Ver src/scripts/migrateSkuIndex.js.
+export const SKU_INDEX_NAME = 'tenantId_1_sku_1_si_hay'
+productSchema.index(
+  { tenantId: 1, sku: 1 },
+  {
+    unique: true,
+    name: SKU_INDEX_NAME,
+    partialFilterExpression: { sku: { $type: 'string' } },
+  },
+)
+// Parcial y no sparse, por lo mismo que el del SKU.
 productSchema.index(
   { tenantId: 1, clientRequestId: 1 },
   { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } },

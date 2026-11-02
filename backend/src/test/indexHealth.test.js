@@ -148,3 +148,136 @@ describe('auditoría de índices · declaraciones ambiguas', () => {
     expect(unico.blockedReason).toBeNull()
   })
 })
+
+describe('índice del SKU de productos', () => {
+  let Product
+  let SKU_INDEX_NAME
+  let migrateSkuIndex
+  let LEGACY_SKU_INDEX_NAME
+
+  const tenantA = new mongoose.Types.ObjectId()
+  const tenantB = new mongoose.Types.ObjectId()
+  const producto = (tenantId, extra = {}) => ({
+    tenantId,
+    title: 'Remera',
+    slug: `remera-${new mongoose.Types.ObjectId()}`,
+    description: 'Remera de algodón',
+    marca: 'Henko',
+    categoria: 'Indumentaria',
+    subcategoria: 'Remeras',
+    price: 1000,
+    ...extra,
+  })
+
+  beforeAll(async () => {
+    ;({ default: Product, SKU_INDEX_NAME } = await import('../models/productModel.js'))
+    ;({ migrateSkuIndex, LEGACY_SKU_INDEX_NAME } = await import('../scripts/migrateSkuIndex.js'))
+    await Product.syncIndexes()
+  })
+
+  beforeEach(async () => {
+    await Product.collection.deleteMany({})
+  })
+
+  test('dos productos sin SKU en la misma tienda conviven', async () => {
+    // Con el índice viejo (sparse en un compuesto) el segundo fallaba con E11000.
+    await Product.collection.insertOne(producto(tenantA))
+    await Product.collection.insertOne(producto(tenantA, { sku: null }))
+
+    // Y por el modelo: un SKU vacío se normaliza a "sin SKU".
+    await new Product(producto(tenantA, { sku: '  ' })).save()
+
+    expect(await Product.collection.countDocuments({ tenantId: tenantA })).toBe(3)
+  })
+
+  test('el SKU sigue siendo único dentro de cada tienda, no entre tiendas', async () => {
+    await Product.collection.insertOne(producto(tenantA, { sku: 'REM-01' }))
+    await Product.collection.insertOne(producto(tenantB, { sku: 'REM-01' }))
+
+    await expect(
+      Product.collection.insertOne(producto(tenantA, { sku: 'REM-01' })),
+    ).rejects.toMatchObject({ code: 11000 })
+  })
+
+  describe('migración del índice viejo', () => {
+    let coleccion
+
+    beforeEach(async () => {
+      coleccion = mongoose.connection.db.collection(`sku_migracion_${Date.now()}`)
+      await coleccion.insertOne({ tenantId: tenantA })
+    })
+
+    afterEach(async () => {
+      await coleccion.drop().catch(() => undefined)
+    })
+
+    const nombres = async () => (await coleccion.indexes()).map(index => index.name).sort()
+
+    test('simula sin tocar nada, migra con apply y después no hace nada', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
+
+      expect(await migrateSkuIndex({ collection: coleccion })).toMatchObject({ action: 'plan' })
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
+
+      expect(await migrateSkuIndex({ collection: coleccion, apply: true })).toEqual({
+        action: 'migrated',
+        createdReplacement: true,
+        droppedLegacy: true,
+      })
+      expect(await nombres()).toEqual(['_id_', SKU_INDEX_NAME])
+
+      const [nuevo] = (await coleccion.indexes()).filter(i => i.name === SKU_INDEX_NAME)
+      expect(nuevo).toMatchObject({
+        unique: true,
+        partialFilterExpression: { sku: { $type: 'string' } },
+      })
+
+      expect(await migrateSkuIndex({ collection: coleccion, apply: true })).toMatchObject({
+        action: 'nothing',
+      })
+    })
+
+    test('si el nuevo ya existe (lo creó ensure:indexes), solo borra el viejo', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
+      await coleccion.createIndex(
+        { tenantId: 1, sku: 1 },
+        {
+          unique: true,
+          name: SKU_INDEX_NAME,
+          partialFilterExpression: { sku: { $type: 'string' } },
+        },
+      )
+
+      expect(await migrateSkuIndex({ collection: coleccion, apply: true })).toMatchObject({
+        action: 'migrated',
+        createdReplacement: false,
+      })
+      expect(await nombres()).toEqual(['_id_', SKU_INDEX_NAME])
+    })
+
+    test('si el viejo no es el esperado, frena sin tocar nada', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { sparse: true })
+
+      await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
+        code: 'UNEXPECTED_LEGACY_INDEX',
+      })
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
+    })
+
+    test('si no puede crear el nuevo, el viejo queda', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
+      // Que falle la creación (en producción, por ejemplo, un corte de red).
+      const fallaAlCrear = new Proxy(coleccion, {
+        get: (target, prop) =>
+          prop === 'createIndex'
+            ? () => Promise.reject(new Error('sin conexión'))
+            : target[prop].bind(target),
+      })
+
+      await expect(migrateSkuIndex({ collection: fallaAlCrear, apply: true })).rejects.toThrow(
+        'sin conexión',
+      )
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
+    })
+  })
+})

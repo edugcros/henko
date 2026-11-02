@@ -192,9 +192,11 @@ describe('agente · el producto creado desde un análisis lleva SKU', () => {
       await disconnectTestDB()
     })
 
-    test('sin SKU, el segundo producto de la tienda choca: por eso hace falta', async () => {
-      // Comprueba que el índice está activo; si no, el test de abajo pasaría
-      // sin probar nada.
+    test('el índice está activo: un SKU repetido choca, y sin SKU no', async () => {
+      // Sin SKU chocaban mientras el índice fue sparse (ver SKU_INDEX_NAME en
+      // productModel.js). El SKU repetido comprueba que el índice existe; si
+      // no, el test de abajo pasaría sin probar nada.
+      const conSku = sku => ({ ...buildProductDraftFromJob({ job: trabajo() }), sku })
       const sinSku = () => {
         const draft = buildProductDraftFromJob({ job: trabajo() })
         delete draft.sku
@@ -202,7 +204,9 @@ describe('agente · el producto creado desde un análisis lleva SKU', () => {
       }
 
       await Product.create(sinSku())
-      await expect(Product.create(sinSku())).rejects.toMatchObject({ code: 11000 })
+      await Product.create(sinSku())
+      await Product.create(conSku('REPETIDO'))
+      await expect(Product.create(conSku('REPETIDO'))).rejects.toMatchObject({ code: 11000 })
       await resetCollections(Product)
       await Product.createIndexes()
     })
