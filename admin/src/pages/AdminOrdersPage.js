@@ -128,8 +128,6 @@ const CONFIRM_ACTIONS = {
   REFUND_ORDER: 'refund_order',
   DELETE_ORDER: 'delete_order',
   FORCE_DELETE_ORDER: 'force_delete_order',
-  CANCELLED: 'cancelled',
-  REFUNDED: 'refunded',
 }
 
 const API_ERROR_CODES = {
@@ -178,15 +176,6 @@ const LEGACY_TO_UI_ORDER_STATUS = {
   refunded: ORDER_STATUSES.REFUNDED,
   open: ORDER_STATUSES.OPEN,
   shipped: ORDER_STATUSES.SHIPPED,
-}
-
-const UI_TO_LEGACY_ORDER_STATUS = {
-  open: ORDER_STATUSES.OPEN,
-  processing: ORDER_STATUSES.PROCESSING,
-  shipped: ORDER_STATUSES.SHIPPED,
-  delivered: ORDER_STATUSES.DELIVERED,
-  cancelled: ORDER_STATUSES.CANCELLED,
-  refunded: ORDER_STATUSES.REFUNDED,
 }
 
 // Cada estado tiene su color (ámbar: falta algo, azul: en marcha, verde: terminó bien, rojo: se cortó,
@@ -281,11 +270,6 @@ const normalizeString = value => String(value || '').trim()
 export const normalizeOrderStatusForUI = status => {
   const normalized = normalizeString(status).toLowerCase()
   return LEGACY_TO_UI_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
-}
-
-export const normalizeOrderStatusForLegacyApi = status => {
-  const normalized = normalizeString(status).toLowerCase()
-  return UI_TO_LEGACY_ORDER_STATUS[normalized] || ORDER_STATUSES.OPEN
 }
 
 export const buildApiFilters = filters => {
@@ -1913,18 +1897,10 @@ const AdminOrdersPage = () => {
     } else if (action === CONFIRM_ACTIONS.CANCEL_ORDER) {
       promise = dispatch(cancelOrderThunk(payload))
       successMessage = 'Orden cancelada correctamente'
-    } else if (action === CONFIRM_ACTIONS.REFUND_ORDER || action === CONFIRM_ACTIONS.REFUNDED) {
+    } else if (action === CONFIRM_ACTIONS.REFUND_ORDER) {
       promise = dispatch(refundOrderThunk({ id: payload?.id || confirmDialog.orderId }))
       successMessage =
         'Orden marcada como reembolsada — verificá que el reembolso se haya procesado en Mercado Pago'
-    } else if (action === CONFIRM_ACTIONS.CANCELLED) {
-      promise = dispatch(
-        cancelOrderThunk({
-          id: confirmDialog.orderId,
-          reason: 'Cancelación manual desde admin',
-        }),
-      )
-      successMessage = 'Orden cancelada correctamente'
     } else if (action === CONFIRM_ACTIONS.DELETE_ORDER) {
       promise = dispatch(deleteOrderThunk(payload))
       successMessage = 'Orden eliminada correctamente'
@@ -2048,17 +2024,11 @@ const AdminOrdersPage = () => {
   }, [orders, pagination.total, summary])
 
   const confirmDialogTitle = useMemo(() => {
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.CANCELLED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER) {
       return 'Confirmar Cancelación'
     }
 
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.REFUNDED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER) {
       return 'Confirmar Reembolso'
     }
 
@@ -2078,17 +2048,11 @@ const AdminOrdersPage = () => {
   }, [confirmDialog.action])
 
   const confirmDialogMessage = useMemo(() => {
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.CANCELLED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER) {
       return '¿Deseas cancelar esta orden? Restaura el stock reservado. Si el pago ya estaba aprobado, esta acción NO devuelve el dinero — para eso usá "Reembolsar".'
     }
 
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.REFUNDED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER) {
       return '¿Deseas marcar esta orden como reembolsada? Esto solo actualiza el registro interno — el reembolso real en Mercado Pago hay que hacerlo aparte, desde su panel.'
     }
 
@@ -2112,17 +2076,11 @@ const AdminOrdersPage = () => {
   }, [confirmDialog])
 
   const confirmDialogText = useMemo(() => {
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.CANCELLED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER) {
       return 'Sí, cancelar'
     }
 
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.REFUNDED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER) {
       return 'Sí, reembolsar'
     }
 
@@ -2144,17 +2102,13 @@ const AdminOrdersPage = () => {
   const confirmDialogColor = useMemo(() => {
     if (
       confirmDialog.action === CONFIRM_ACTIONS.CANCEL_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.CANCELLED ||
       confirmDialog.action === CONFIRM_ACTIONS.DELETE_ORDER ||
       confirmDialog.action === CONFIRM_ACTIONS.FORCE_DELETE_ORDER
     ) {
       return 'error'
     }
 
-    if (
-      confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER ||
-      confirmDialog.action === CONFIRM_ACTIONS.REFUNDED
-    ) {
+    if (confirmDialog.action === CONFIRM_ACTIONS.REFUND_ORDER) {
       return 'secondary'
     }
 

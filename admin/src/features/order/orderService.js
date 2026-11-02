@@ -128,28 +128,6 @@ const getOrders = async (params = {}, { signal } = {}) => {
 const getMyOrders = (page = 1, { signal } = {}) =>
   apiRequest('get', '/my-orders', undefined, { page }, signal)
 
-const updateOrderStatus = async ({ id, orderStatus }) => {
-  if (!id) {
-    return {
-      success: false,
-      message: 'ID de orden requerido',
-      errors: [],
-      code: 'ORDER_ID_REQUIRED',
-    }
-  }
-
-  if (!orderStatus || typeof orderStatus !== 'string') {
-    return {
-      success: false,
-      message: 'orderStatus inválido',
-      errors: [],
-      code: 'ORDER_STATUS_INVALID',
-    }
-  }
-
-  return apiRequest('put', `/${id}/status`, { orderStatus })
-}
-
 const updateOrderPaymentStatus = async ({ id, paymentStatus }) => {
   if (!id) {
     return {
@@ -254,7 +232,6 @@ const orderService = {
   getOrders,
   getMyOrders,
   createOrder,
-  updateOrderStatus,
   updateOrderPaymentStatus,
   updateOrderFulfillmentStatus,
   cancelOrder,

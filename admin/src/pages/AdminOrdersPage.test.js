@@ -19,7 +19,6 @@ import userEvent from '@testing-library/user-event'
 const mockDispatch = jest.fn()
 const thunk = tipo => jest.fn(args => ({ type: tipo, args }))
 const mockGetOrders = thunk('getOrders')
-const mockUpdateStatus = thunk('updateStatus')
 const mockUpdatePayment = thunk('updatePayment')
 const mockUpdateFulfillment = thunk('updateFulfillment')
 const mockCancel = thunk('cancel')
@@ -36,7 +35,6 @@ jest.unstable_mockModule('react-redux', () => ({
 
 jest.unstable_mockModule('../features/order/orderSlice', () => ({
   getOrdersThunk: mockGetOrders,
-  updateOrderStatusThunk: mockUpdateStatus,
   updateOrderPaymentStatusThunk: mockUpdatePayment,
   updateOrderFulfillmentStatusThunk: mockUpdateFulfillment,
   cancelOrderThunk: mockCancel,
@@ -52,7 +50,6 @@ const {
   formatCurrency,
   formatDateShort,
   normalizeOrderStatusForUI,
-  normalizeOrderStatusForLegacyApi,
   buildApiFilters,
   getOrderDisplayId,
   getOrderCustomerName,
@@ -294,12 +291,6 @@ describe('Pedidos · estados', () => {
     expect(normalizeOrderStatusForUI('cancelled')).toBe('cancelled')
     expect(normalizeOrderStatusForUI('algo raro')).toBe('open')
     expect(normalizeOrderStatusForUI('')).toBe('open')
-  })
-
-  test('hacia el servidor viejo solo viajan los estados conocidos', () => {
-    expect(normalizeOrderStatusForLegacyApi('cancelled')).toBe('cancelled')
-    expect(normalizeOrderStatusForLegacyApi('Refunded')).toBe('refunded')
-    expect(normalizeOrderStatusForLegacyApi('bogus')).toBe('open')
   })
 
   test('buildApiFilters limpia el estado y recorta la búsqueda a 100 caracteres', () => {
