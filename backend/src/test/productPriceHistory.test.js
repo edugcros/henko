@@ -296,6 +296,53 @@ describe('historial de precios · variantes', () => {
     })
   })
 
+  // La auditoría empareja cada cadena con su variante por clave: si la clave
+  // cambia y las filas viejas no, la cadena vieja queda huérfana.
+  test('cuando la clave cambia, las filas viejas de la variante pasan a la clave nueva', async () => {
+    const variantId = new mongoose.Types.ObjectId()
+    const { insertedId } = await Product.collection.insertOne({
+      tenantId: TENANT,
+      title: 'Campera',
+      slug: `campera-vieja-${Date.now()}`,
+      description: 'Campera',
+      marca: 'Henko',
+      categoria: 'Indumentaria',
+      subcategoria: 'Camperas',
+      price: 100000,
+      stock: 3,
+      hasVariants: true,
+      variants: [
+        {
+          _id: variantId,
+          tenantId: TENANT,
+          key: 'color:Azul Marino',
+          attributes: { color: 'Azul Marino' },
+          price: 100000,
+          stock: 3,
+          isActive: true,
+        },
+      ],
+    })
+    await ProductPriceHistory.collection.insertOne({
+      tenantId: TENANT,
+      productId: insertedId,
+      variantId: 'color:Azul Marino',
+      previousPrice: 90000,
+      newPrice: 100000,
+      currency: 'ARS',
+      createdAt: new Date(Date.now() - 60000),
+    })
+    const p = await Product.findById(insertedId).setOptions({ ignoreTenant: true })
+
+    // Un guardado sin cambio de precio: solo migra la clave.
+    p.description = 'Campera impermeable'
+    await p.save()
+
+    const rows = await historyFor(insertedId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].variantId).toBe('color:azul-marino')
+  })
+
   test('agregar una variante nueva no cuenta como cambio de precio', async () => {
     const p = await makeProduct()
 

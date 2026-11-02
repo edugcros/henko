@@ -1328,7 +1328,7 @@ const snapshotPrices = doc => ({
   variantsById: new Map(
     (doc.variants || [])
       .filter(v => v?._id)
-      .map(v => [String(v._id), { price: v.price, cost: v.costoUnitario }]),
+      .map(v => [String(v._id), { price: v.price, cost: v.costoUnitario, key: v.key }]),
   ),
 })
 
@@ -1392,7 +1392,21 @@ productSchema.post('save', async function recordPriceHistory(doc) {
       if (entry) entries.push(entry)
     }
 
-    if (!entries.length) return
+    // Variantes cuya clave cambió al guardarse (pasaron a la canónica, ver
+    // buildVariantKeyFromAttributes). Sus filas viejas del historial tienen la
+    // clave anterior en variantId, y la auditoría (priceHistoryAuditService)
+    // empareja cada cadena con su variante por clave: sin mudarlas, la cadena
+    // vieja quedaba huérfana y el próximo cambio abría una nueva.
+    const renamedKeys = (doc.variants || [])
+      .map(variant => {
+        const previousKey = variant?._id && before.variantsById?.get(String(variant._id))?.key
+        return previousKey && variant.key && previousKey !== variant.key
+          ? { from: String(previousKey), to: String(variant.key) }
+          : null
+      })
+      .filter(Boolean)
+
+    if (!entries.length && !renamedKeys.length) return
 
     const ctx = doc.$locals?.priceChange || {}
     const { default: ProductPriceHistory, PRICE_CHANGE_SOURCE } =
@@ -1402,6 +1416,19 @@ productSchema.post('save', async function recordPriceHistory(doc) {
     // historial entra en la MISMA transacción que el precio: o se guardan los
     // dos o ninguno. Sin ella se inserta suelto, como antes.
     const session = doc.$session() || null
+
+    for (const { from, to } of renamedKeys) {
+      await ProductPriceHistory.updateMany(
+        { tenantId: doc.tenantId, productId: doc._id, variantId: from },
+        { $set: { variantId: to } },
+        session ? { session } : {},
+      ).setOptions({ tenantId: doc.tenantId })
+    }
+
+    if (!entries.length) {
+      doc.$locals.priceSnapshot = snapshotPrices(doc)
+      return
+    }
 
     await ProductPriceHistory.insertMany(
       entries.map(entry => ({
