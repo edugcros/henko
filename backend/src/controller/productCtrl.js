@@ -1,7 +1,7 @@
 // 📁 src/controller/productController.js
 // VERSIÓN PRODUCCIÓN - MULTI-TENANT / MARKET READY / VARIANTES / IMÁGENES / RATINGS
 
-import Product from '../models/productModel.js'
+import Product, { buildVariantKeyFromAttributes } from '../models/productModel.js'
 import { escapeRegex } from '../utils/escapeRegex.js'
 import User from '../models/userModel.js'
 import Cart from '../models/cartModel.js'
@@ -1033,13 +1033,9 @@ const normalizeVariantsPayload = (rawVariants, tenantId) => {
   return rawVariants.map((variant, index) => {
     const attributes = normalizeVariantAttributes(variant.attributes || variant.combinacion || {})
 
+    // La misma clave que va a guardar el modelo (buildVariantKeyFromAttributes).
     const key =
-      normalizeText(variant.key) ||
-      Object.entries(attributes)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, value]) => `${key}:${value}`)
-        .join('|') ||
-      `variant-${index}`
+      buildVariantKeyFromAttributes(attributes) || normalizeText(variant.key) || `variant-${index}`
 
     return {
       _id: variant._id || variant.id || undefined,

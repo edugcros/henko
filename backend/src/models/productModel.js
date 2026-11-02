@@ -141,10 +141,35 @@ const normalizeAttributesObject = attributes => {
   }, {})
 }
 
-const buildVariantKeyFromAttributes = attributes => {
+const slugifyVariantValue = value =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+
+/**
+ * La clave de una variante: la única, la que decide el backend.
+ *
+ * Cada pantalla armaba la suya y el backend guardaba la que le mandaran:
+ *   - AddProduct: `color:azul-marino|talle:m` (minúsculas, sin acentos)
+ *   - EditProduct: `color:azul marino|talle:m` (con espacios y acentos)
+ *   - este modelo, si no venía ninguna: `color:Azul Marino|talle:M`
+ * Así, editar un producto creado en AddProduct le cambiaba la clave a todas
+ * sus variantes, y un cambio de precio en esa misma edición no quedaba en el
+ * historial (que buscaba el precio anterior por clave).
+ *
+ * El formato es el de AddProduct, para que las claves de esos productos no
+ * cambien: nombre del atributo normalizado (normalizeKeyPart) y valor en
+ * minúsculas, sin acentos, con guiones en lugar de espacios.
+ */
+export const buildVariantKeyFromAttributes = attributes => {
   return Object.entries(normalizeAttributesObject(attributes))
+    .filter(([key, value]) => key && String(value).trim())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}:${value}`)
+    .map(([key, value]) => `${key}:${slugifyVariantValue(value)}`)
     .join('|')
 }
 
@@ -259,11 +284,23 @@ const syncChildTenantIds = product => {
 }
 
 const normalizeVariants = variants => {
+  const seenKeys = new Set()
+
   for (const variant of variants || []) {
     const attributes = normalizeAttributesObject(variant.attributes)
 
     variant.attributes = attributes
-    variant.key = normalizeText(variant.key) || buildVariantKeyFromAttributes(attributes)
+    // La calcula el backend siempre que haya atributos; la que manda la
+    // pantalla queda solo para una variante sin atributos.
+    variant.key = buildVariantKeyFromAttributes(attributes) || normalizeText(variant.key)
+
+    if (seenKeys.has(variant.key)) {
+      const error = new Error(`Hay variantes duplicadas con la misma combinación: ${variant.key}`)
+      error.statusCode = 400
+      throw error
+    }
+    seenKeys.add(variant.key)
+
     variant.price = toMoney(variant.price)
     variant.costoUnitario = toMoneyOrNull(variant.costoUnitario)
     variant.stock = toNonNegativeInteger(variant.stock)
@@ -1212,33 +1249,6 @@ productSchema.methods.recalculateDerivedFields = function recalculateDerivedFiel
   return this
 }
 
-productSchema.methods.getVariantData = function getVariantData(attributes) {
-  if (!this.hasVariants) {
-    return {
-      price: this.price,
-      costoUnitario: this.costoUnitario,
-      stock: this.stock,
-      sku: this.sku,
-    }
-  }
-
-  const key = buildVariantKeyFromAttributes(attributes)
-  const variant = this.variants.find(item => item.key === key && item.isActive)
-
-  return variant
-    ? {
-        price: variant.price,
-        // Costo real de esta combinación puntual — si la variante no cargó
-        // el suyo, cae al costo del producto (puede seguir siendo null).
-        costoUnitario: variant.costoUnitario ?? this.costoUnitario,
-        stock: variant.stock,
-        sku: variant.sku,
-        image: variant.image,
-        variantId: variant._id,
-      }
-    : null
-}
-
 productSchema.methods.softDelete = async function softDelete({ userId = null } = {}) {
   this.isDeleted = true
   this.deletedAt = new Date()
@@ -1282,68 +1292,6 @@ productSchema.statics.recalculateAndSaveById = async function recalculateAndSave
   return product.save()
 }
 
-/**
- * Ajuste de stock atómico con validación de no-negatividad.
- * delta puede ser positivo o negativo.
- */
-productSchema.statics.updateStockAtomic = async function updateStockAtomic({
-  productId,
-  tenantId,
-  delta,
-  variantKey = null,
-}) {
-  const safeDelta = Number(delta)
-
-  if (!Number.isFinite(safeDelta) || safeDelta === 0) {
-    throw new Error('delta de stock inválido')
-  }
-
-  const product = await this.findOne({
-    _id: productId,
-    tenantId,
-    isDeleted: { $ne: true },
-  })
-
-  if (!product) return null
-
-  if (variantKey) {
-    const variant = product.variants.find(item => item.key === variantKey)
-
-    if (!variant) {
-      throw new Error('Variante no encontrada')
-    }
-
-    const nextVariantStock = Number(variant.stock || 0) + safeDelta
-
-    if (nextVariantStock < 0) {
-      throw new Error('Stock insuficiente para la variante')
-    }
-
-    variant.stock = nextVariantStock
-    product.markModified('variants')
-  } else {
-    const nextStock = Number(product.stock || 0) + safeDelta
-
-    if (nextStock < 0) {
-      throw new Error('Stock insuficiente')
-    }
-
-    product.stock = nextStock
-  }
-
-  product.recalculateDerivedFields()
-
-  if (product.stock <= 0 && product.status === 'active') {
-    product.status = 'out-of-stock'
-  }
-
-  if (product.stock > 0 && product.status === 'out-of-stock') {
-    product.status = 'active'
-  }
-
-  return product.save()
-}
-
 // =====================================================
 // TENANT PLUGIN
 // =====================================================
@@ -1366,6 +1314,9 @@ productSchema.statics.updateStockAtomic = async function updateStockAtomic({
 // Sin eso el cambio igual se registra, con source 'unknown': perder el motivo
 // es aceptable, perder el cambio no.
 
+// Las variantes se recuerdan por _id, que no cambia, y por clave de respaldo:
+// la clave de una variante vieja cambia la primera vez que se guarda con la
+// clave canónica (ver buildVariantKeyFromAttributes).
 const snapshotPrices = doc => ({
   price: doc.price,
   cost: doc.costoUnitario,
@@ -1373,6 +1324,11 @@ const snapshotPrices = doc => ({
     (doc.variants || [])
       .filter(v => v?.key)
       .map(v => [String(v.key), { price: v.price, cost: v.costoUnitario }]),
+  ),
+  variantsById: new Map(
+    (doc.variants || [])
+      .filter(v => v?._id)
+      .map(v => [String(v._id), { price: v.price, cost: v.costoUnitario, key: v.key }]),
   ),
 })
 
@@ -1422,7 +1378,9 @@ productSchema.post('save', async function recordPriceHistory(doc) {
 
     for (const variant of doc.variants || []) {
       if (!variant?.key) continue
-      const prevVariant = before.variants.get(String(variant.key))
+      const prevVariant =
+        (variant._id && before.variantsById?.get(String(variant._id))) ||
+        before.variants.get(String(variant.key))
       if (!prevVariant) continue
 
       const entry = buildEntry({
@@ -1434,7 +1392,21 @@ productSchema.post('save', async function recordPriceHistory(doc) {
       if (entry) entries.push(entry)
     }
 
-    if (!entries.length) return
+    // Variantes cuya clave cambió al guardarse (pasaron a la canónica, ver
+    // buildVariantKeyFromAttributes). Sus filas viejas del historial tienen la
+    // clave anterior en variantId, y la auditoría (priceHistoryAuditService)
+    // empareja cada cadena con su variante por clave: sin mudarlas, la cadena
+    // vieja quedaba huérfana y el próximo cambio abría una nueva.
+    const renamedKeys = (doc.variants || [])
+      .map(variant => {
+        const previousKey = variant?._id && before.variantsById?.get(String(variant._id))?.key
+        return previousKey && variant.key && previousKey !== variant.key
+          ? { from: String(previousKey), to: String(variant.key) }
+          : null
+      })
+      .filter(Boolean)
+
+    if (!entries.length && !renamedKeys.length) return
 
     const ctx = doc.$locals?.priceChange || {}
     const { default: ProductPriceHistory, PRICE_CHANGE_SOURCE } =
@@ -1444,6 +1416,19 @@ productSchema.post('save', async function recordPriceHistory(doc) {
     // historial entra en la MISMA transacción que el precio: o se guardan los
     // dos o ninguno. Sin ella se inserta suelto, como antes.
     const session = doc.$session() || null
+
+    for (const { from, to } of renamedKeys) {
+      await ProductPriceHistory.updateMany(
+        { tenantId: doc.tenantId, productId: doc._id, variantId: from },
+        { $set: { variantId: to } },
+        session ? { session } : {},
+      ).setOptions({ tenantId: doc.tenantId })
+    }
+
+    if (!entries.length) {
+      doc.$locals.priceSnapshot = snapshotPrices(doc)
+      return
+    }
 
     await ProductPriceHistory.insertMany(
       entries.map(entry => ({
