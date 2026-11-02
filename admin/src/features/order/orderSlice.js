@@ -72,25 +72,6 @@ export const createOrderThunk = createAsyncThunk(
   },
 )
 
-export const updateOrderStatusThunk = createAsyncThunk(
-  'order/updateStatus',
-  async (payload, thunkAPI) => {
-    try {
-      const response = await orderService.updateOrderStatus(payload)
-
-      if (!response?.success) {
-        return thunkAPI.rejectWithValue(response?.message || 'Error actualizando orden')
-      }
-
-      return response
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error?.response?.data?.message || error?.message || 'Error actualizando orden',
-      )
-    }
-  },
-)
-
 export const updateOrderPaymentStatusThunk = createAsyncThunk(
   'order/updatePaymentStatus',
   async (payload, thunkAPI) => {
@@ -449,12 +430,6 @@ const orderSlice = createSlice({
         state.isError = true
         state.message = errorMessage
       })
-
-      .addCase(updateOrderStatusThunk.pending, setPendingUpdate)
-      .addCase(updateOrderStatusThunk.fulfilled, setFulfilledUpdate)
-      .addCase(updateOrderStatusThunk.rejected, (state, action) =>
-        setRejectedUpdate(state, action, 'Error actualizando estado de la orden'),
-      )
 
       .addCase(updateOrderPaymentStatusThunk.pending, setPendingUpdate)
       .addCase(updateOrderPaymentStatusThunk.fulfilled, setFulfilledUpdate)
