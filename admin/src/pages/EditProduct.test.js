@@ -14,7 +14,8 @@ jest.unstable_mockModule('react-redux', () => ({
   useDispatch: () => jest.fn(),
 }))
 
-const { mapServerVariantToEditor, buildVariantPayload } = await import('./EditProduct.js')
+const { mapServerVariantToEditor, buildVariantPayload, buildVariantKey } =
+  await import('./EditProduct.js')
 
 const delServidor = {
   _id: 'v1',
@@ -56,5 +57,18 @@ describe('Editar producto · línea de base del stock', () => {
     expect(payload.stock).toBe(2)
     expect(payload).not.toHaveProperty('stockBaseline')
     expect(payload).not.toHaveProperty('_id')
+  })
+})
+
+describe('Editar producto · la clave de la variante es la del backend', () => {
+  // El backend (buildVariantKeyFromAttributes) y AddProduct arman
+  // `color:azul-marino|talle:m`. Acá se armaba `color:azul marino|talle:m`.
+  test('usa el mismo formato: minúsculas, sin acentos, guiones en lugar de espacios', () => {
+    expect(buildVariantKey({ Talle: 'M', Color: 'Azul Marino' })).toBe('color:azul-marino|talle:m')
+    expect(buildVariantKey({ color: 'Azúl marino', talle: 'm' })).toBe('color:azul-marino|talle:m')
+  })
+
+  test('dos escrituras de la misma combinación dan la misma clave', () => {
+    expect(buildVariantKey({ color: 'Negro' })).toBe(buildVariantKey({ color: ' negro ' }))
   })
 })

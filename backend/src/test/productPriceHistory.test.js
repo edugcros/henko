@@ -252,6 +252,50 @@ describe('historial de precios · variantes', () => {
     expect(rows.filter(r => r.variantId === 'talle-42')).toHaveLength(1)
   })
 
+  // Una variante guardada con una clave de otro formato (la de EditProduct o
+  // la que armaba el modelo) pasa a la clave canónica al guardarse. El precio
+  // anterior se busca por _id: antes se buscaba por clave, no lo encontraba y
+  // el cambio de precio de esa misma edición no quedaba registrado.
+  test('si la clave de la variante cambia al guardar, el cambio de precio igual queda', async () => {
+    const variantId = new mongoose.Types.ObjectId()
+    const { insertedId } = await Product.collection.insertOne({
+      tenantId: TENANT,
+      title: 'Campera',
+      slug: `campera-${Date.now()}`,
+      description: 'Campera',
+      marca: 'Henko',
+      categoria: 'Indumentaria',
+      subcategoria: 'Camperas',
+      price: 100000,
+      stock: 3,
+      hasVariants: true,
+      variants: [
+        {
+          _id: variantId,
+          tenantId: TENANT,
+          key: 'color:Azul Marino',
+          attributes: { color: 'Azul Marino' },
+          price: 100000,
+          stock: 3,
+          isActive: true,
+        },
+      ],
+    })
+    const p = await Product.findById(insertedId).setOptions({ ignoreTenant: true })
+
+    p.variants[0].price = 120000
+    await p.save()
+
+    const rows = await historyFor(insertedId)
+    const fila = rows.find(row => row.variantId !== null)
+    expect(p.variants[0].key).toBe('color:azul-marino')
+    expect(fila).toMatchObject({
+      variantId: 'color:azul-marino',
+      previousPrice: 100000,
+      newPrice: 120000,
+    })
+  })
+
   test('agregar una variante nueva no cuenta como cambio de precio', async () => {
     const p = await makeProduct()
 

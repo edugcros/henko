@@ -287,13 +287,27 @@ const buildVariantName = attributes => {
     .join(' / ')
 }
 
-const buildVariantKey = attributes => {
+const slugifyVariantValue = value =>
+  normalizeString(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+
+// El mismo formato que la clave que guarda el backend
+// (buildVariantKeyFromAttributes en productModel) y que AddProduct:
+// `color:azul-marino|talle:m`. Acá se usa para detectar combinaciones
+// repetidas y emparejar las variantes del servidor con las del editor; la
+// clave que se guarda la calcula el backend. Antes era `color:azul marino`, y
+// guardar desde acá le cambiaba la clave a cada variante creada en AddProduct.
+export const buildVariantKey = attributes => {
   const normalized = normalizeAttributes(attributes)
 
   return Object.entries(normalized)
     .filter(([key, value]) => normalizeString(key) && normalizeString(value))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${normalizeString(key)}:${normalizeString(value).toLowerCase()}`)
+    .map(([key, value]) => `${normalizeString(key)}:${slugifyVariantValue(value)}`)
     .join('|')
 }
 

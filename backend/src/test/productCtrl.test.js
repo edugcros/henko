@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 import request from 'supertest'
 
 import app from '../../app.js'
-import Product from '../models/productModel.js'
+import Product, { buildVariantKeyFromAttributes } from '../models/productModel.js'
 import ProductAnalysisJob from '../models/productAnalysisJobModel.js'
 import User from '../models/userModel.js'
 import Tenant from '../models/tenantModel.js'
@@ -1582,5 +1582,111 @@ describe('procedencia · qué hizo la IA y qué una persona', () => {
 
     expect(res.statusCode).toBe(201)
     expect((await leer(res.body.data._id)).aiConfidence).toBe(0.85)
+  })
+})
+
+describe('variantes · la clave la decide el backend', () => {
+  let ctx
+  let admin
+  let csrfAdmin
+
+  const headers = () =>
+    authHeaders({
+      token: admin.token,
+      domain: ctx.adminDomain,
+      csrfToken: csrfAdmin.csrfToken,
+      csrfCookie: csrfAdmin.csrfCookie,
+    })
+  const variante = (attributes, extra = {}) => ({ attributes, price: 1000, stock: 2, ...extra })
+  const crear = variants =>
+    request(app)
+      .post('/api/product')
+      .set(headers())
+      .send({
+        title: `Campera ${Math.random()}`,
+        description: 'Campera',
+        marca: 'Henko',
+        categoria: 'Indumentaria',
+        subcategoria: 'Camperas',
+        price: 1000,
+        hasVariants: true,
+        variants,
+      })
+  const leer = id => Product.findById(id).setOptions({ tenantId: ctx.tenant._id }).lean()
+
+  beforeAll(async () => {
+    await connectTestDB()
+    await resetCollections(Product, User, Tenant)
+    ctx = await createTestTenant()
+    admin = await createTestUser({
+      tenantId: ctx.tenant._id,
+      email: 'variantes-clave-admin@test.com',
+      role: 'admin',
+    })
+    csrfAdmin = await getCSRFToken(ctx.adminDomain)
+  })
+
+  afterAll(async () => {
+    await disconnectTestDB()
+  })
+
+  test('la clave no depende de mayúsculas, acentos ni del orden de los atributos', () => {
+    expect(buildVariantKeyFromAttributes({ Talle: 'M', Color: 'Azul Marino' })).toBe(
+      'color:azul-marino|talle:m',
+    )
+    expect(buildVariantKeyFromAttributes({ color: 'Azúl marino', talle: 'm' })).toBe(
+      'color:azul-marino|talle:m',
+    )
+    expect(buildVariantKeyFromAttributes({ color: 'Negro', talle: '' })).toBe('color:negro')
+    expect(buildVariantKeyFromAttributes({})).toBe('')
+  })
+
+  test('la clave que arma AddProduct se guarda igual', async () => {
+    const res = await crear([
+      variante({ color: 'Azul Marino', talle: 'M' }, { key: 'color:azul-marino|talle:m' }),
+    ])
+
+    expect(res.statusCode).toBe(201)
+    expect((await leer(res.body.data._id)).variants[0].key).toBe('color:azul-marino|talle:m')
+  })
+
+  test('la clave de EditProduct (con espacios) pasa a la canónica al guardar', async () => {
+    const res = await crear([variante({ color: 'Azul Marino' })])
+    const id = res.body.data._id
+    const [guardada] = (await leer(id)).variants
+
+    const edicion = await request(app)
+      .put(`/api/product/${id}`)
+      .set(headers())
+      .send({
+        hasVariants: true,
+        variants: [
+          {
+            _id: String(guardada._id),
+            key: 'color:azul marino',
+            attributes: { color: 'Azul Marino' },
+            price: 1200,
+            stock: 2,
+          },
+        ],
+      })
+
+    expect(edicion.statusCode).toBe(200)
+    const [editada] = (await leer(id)).variants
+    expect(editada.key).toBe('color:azul-marino')
+    expect(String(editada._id)).toBe(String(guardada._id))
+  })
+
+  test('sin clave, el backend la calcula', async () => {
+    const res = await crear([variante({ color: 'Rojo' })])
+
+    expect((await leer(res.body.data._id)).variants[0].key).toBe('color:rojo')
+  })
+
+  test('dos variantes con la misma combinación se rechazan aunque cambie la escritura', async () => {
+    const res = await crear([variante({ color: 'Negro' }), variante({ color: 'negro ' })])
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toMatch(/duplicadas con la misma combinación/)
   })
 })
