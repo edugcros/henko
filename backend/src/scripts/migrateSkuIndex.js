@@ -49,6 +49,22 @@ const isSkuKey = key =>
     ['sku', 1],
   ])
 
+// El nombre solo no prueba nada: un índice con ese nombre pero no único, o
+// con otro filtro, dejaría la tienda sin unicidad de SKU al borrar el viejo.
+const isExpectedReplacement = index =>
+  Boolean(index) &&
+  isSkuKey(index.key) &&
+  index.unique === true &&
+  JSON.stringify(index.partialFilterExpression) === JSON.stringify({ sku: { $type: 'string' } })
+
+const unexpectedReplacementError = () => {
+  const error = new Error(
+    `Ya existe "${SKU_INDEX_NAME}" pero no es el esperado (único y parcial sobre los SKU de tipo string). No se borró el viejo.`,
+  )
+  error.code = 'UNEXPECTED_REPLACEMENT_INDEX'
+  return error
+}
+
 /**
  * @param {object} params
  * @param {import('mongodb').Collection} params.collection La de productos, del
@@ -75,6 +91,8 @@ export const migrateSkuIndex = async ({ collection, apply = false }) => {
     throw error
   }
 
+  if (replacement && !isExpectedReplacement(replacement)) throw unexpectedReplacementError()
+
   if (!apply) {
     return { action: 'plan', createdReplacement: !replacement, droppedLegacy: true }
   }
@@ -88,11 +106,12 @@ export const migrateSkuIndex = async ({ collection, apply = false }) => {
   }
 
   // Se vuelve a mirar en la base antes de borrar: el viejo solo se va si el
-  // nuevo está realmente creado.
-  const created = (await collection.indexes()).some(index => index.name === SKU_INDEX_NAME)
+  // nuevo está realmente creado, y con la especificación que corresponde.
+  const created = (await collection.indexes()).find(index => index.name === SKU_INDEX_NAME)
   if (!created) {
     throw new Error(`No se encontró "${SKU_INDEX_NAME}" después de crearlo. No se borró el viejo.`)
   }
+  if (!isExpectedReplacement(created)) throw unexpectedReplacementError()
 
   await collection.dropIndex(LEGACY_SKU_INDEX_NAME)
 

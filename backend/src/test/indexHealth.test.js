@@ -255,6 +255,22 @@ describe('índice del SKU de productos', () => {
       expect(await nombres()).toEqual(['_id_', SKU_INDEX_NAME])
     })
 
+    test('si ya hay un índice con el nombre nuevo pero no es el esperado, no borra el viejo', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
+      // Mismo nombre, no único: borrar el viejo dejaría la tienda sin unicidad.
+      await coleccion.createIndex(
+        { tenantId: 1, sku: 1 },
+        { name: SKU_INDEX_NAME, partialFilterExpression: { sku: { $type: 'string' } } },
+      )
+
+      for (const apply of [false, true]) {
+        await expect(migrateSkuIndex({ collection: coleccion, apply })).rejects.toMatchObject({
+          code: 'UNEXPECTED_REPLACEMENT_INDEX',
+        })
+      }
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME, SKU_INDEX_NAME].sort())
+    })
+
     test('si el viejo no es el esperado, frena sin tocar nada', async () => {
       await coleccion.createIndex({ tenantId: 1, sku: 1 }, { sparse: true })
 
