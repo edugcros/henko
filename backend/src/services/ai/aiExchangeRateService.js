@@ -59,8 +59,11 @@ const saveSnapshots = async ({ rows, sourceCode, sourceUrl, capturedAt }) => {
     rows.map(row => ({
       updateOne: {
         filter: { _id: `BCRA:${sourceCode}:${row.effectiveDate}` },
+        // Primer valor observado por fecha efectiva: un snapshot histórico
+        // no se reescribe si el BCRA revisa posteriormente una serie publicada.
+        // Una corrección explícita requeriría un proceso de auditoría separado.
         update: {
-          $set: {
+          $setOnInsert: {
             dateKey: row.effectiveDate,
             source: 'bcra_api',
             sourceCode,
