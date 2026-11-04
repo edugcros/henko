@@ -164,14 +164,14 @@ describe('registrar el consumo de una herramienta', () => {
     expect(fila.tenantProviderCostUsd).toBe(0.04)
     expect(fila.toolPricingUnit).toBe('credit')
     expect(fila.toolSourceUrl).toBe('https://docs.tavily.com/documentation/api-credits')
-    expect(fila.pricingVersion).toMatch(/^henko-ai-pricing-2026-11\\+/)
+    expect(fila.pricingVersion).toMatch(/^henko-ai-pricing-2026-11\+/)
 
     // La fila se verifica sola.
     expect(fila.toolCostUsd).toBeCloseTo(fila.toolQuantity * fila.toolUnitCostUsd, 8)
   })
 
   test('un consumo BYOK de Gemini sigue cargando Tavily a la plataforma', async () => {
-    const period = '2033-05'
+    const period = '2033-04'
     const operationId = 'byok-con-tavily'
 
     await recordToolSpend({
@@ -453,8 +453,8 @@ describe('grounding de Google · se cuenta y se cobra solo', () => {
     const grounding = filas.find(f => f.tool === 'google_search')
     expect(grounding).toBeDefined()
     expect(grounding.toolQuantity).toBe(2)
-    expect(grounding.toolUnitCostUsd).toBe(0.035)
-    expect(grounding.toolCostUsd).toBeCloseTo(0.07, 6)
+    expect(grounding.toolUnitCostUsd).toBe(0.014)
+    expect(grounding.toolCostUsd).toBeCloseTo(0.028, 9)
     expect(grounding.toolFamily).toBe('webSearch')
     expect(grounding.callId).toContain('grounding')
 
