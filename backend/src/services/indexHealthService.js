@@ -236,6 +236,72 @@ const inspectExistingIndexes = async model => {
   }
 }
 
+/**
+ * Índices legacy que pueden permanecer temporalmente mientras se ejecuta una
+ * migración en dos pasos. Se reconocen SOLO si coinciden nombre, keys y
+ * opciones físicas, y si el índice de reemplazo sigue declarado en el schema.
+ *
+ * Esto no los considera equivalentes al schema ni oculta cualquier otro drift:
+ * los clasifica como retenidos intencionalmente y nunca los elimina.
+ */
+const RETAINED_LEGACY_INDEX_POLICIES = {
+  Product: [
+    {
+      name: 'tenantId_1_sku_1',
+      keys: { tenantId: 1, sku: 1 },
+      options: { unique: true, sparse: true },
+      replacementName: 'tenantId_1_sku_1_si_hay',
+      replacementKeys: { tenantId: 1, sku: 1 },
+      replacementOptions: {
+        unique: true,
+        partialFilterExpression: { sku: { $type: 'string' } },
+      },
+      migration: 'npm run migrate:sku-index:prod:apply',
+    },
+  ],
+}
+
+const describeRetainedLegacyIndex = (modelName, indexName, model, existingIndexes) => {
+  const policy = RETAINED_LEGACY_INDEX_POLICIES[modelName]?.find(
+    item => item.name === indexName,
+  )
+  if (!policy) return null
+
+  const physical = existingIndexes.find(index => index.name === policy.name)
+  if (
+    !physical ||
+    !sameKeyPattern(physical.key, policy.keys) ||
+    !sameSemanticOptions(physical, policy.options)
+  ) {
+    return null
+  }
+
+  const replacementDeclared = model.schema.indexes().some(([keys, options]) =>
+    options?.name === policy.replacementName &&
+    sameKeyPattern(keys, policy.replacementKeys) &&
+    sameSemanticOptions(options, policy.replacementOptions),
+  )
+  if (!replacementDeclared) return null
+
+  return {
+    model: modelName,
+    collection: model.collection.collectionName,
+    name: policy.name,
+    keys: policy.keys,
+    unique: true,
+    sparse: true,
+    retained: true,
+    actionTaken: 'none',
+    reason: 'Índice legacy conocido; se conserva hasta verificar y completar el índice de reemplazo.',
+    replacement: {
+      name: policy.replacementName,
+      keys: policy.replacementKeys,
+      options: policy.replacementOptions,
+    },
+    migration: policy.migration,
+  }
+}
+
 const describeIndex = (definition, existingIndexes = []) => {
   const name = indexNameFor(definition)
   const sameName = existingIndexes.find(index => index.name === name)
@@ -308,6 +374,7 @@ export const findMissingIndexes = async () => {
   const missing = []
   const failed = []
   const drift = []
+  const retainedLegacy = []
   let checked = 0
 
   for (const [name, model] of Object.entries(mongoose.models)) {
@@ -330,20 +397,30 @@ export const findMissingIndexes = async () => {
       // como pendiente si su definición semántica ya coincide.
       const pending = indexes.filter(index => !index.alreadyExists)
 
+      const actionableToDrop = []
+
+      for (const indexName of toDrop) {
+        const legacy = describeRetainedLegacyIndex(name, indexName, model, existingIndexes)
+        if (legacy) retainedLegacy.push(legacy)
+        else actionableToDrop.push(indexName)
+      }
+
       if (pending.length > 0) {
         missing.push({
           model: name,
           collection: model.collection.collectionName,
           indexes: pending,
-          toDrop,
+          // Solo se exponen como drift los índices no reconocidos. Los legacy
+          // esperados quedan en retainedLegacy con su migración correspondiente.
+          toDrop: actionableToDrop,
         })
       }
 
-      if (toDrop.length > 0) {
+      if (actionableToDrop.length > 0) {
         drift.push({
           model: name,
           collection: model.collection.collectionName,
-          indexesToDrop: toDrop,
+          indexesToDrop: actionableToDrop,
           actionTaken: 'none',
         })
       }
@@ -371,7 +448,7 @@ export const findMissingIndexes = async () => {
     }
   }
 
-  return { missing, failed, checked, drift }
+  return { missing, failed, checked, drift, retainedLegacy }
 }
 
 /**
@@ -387,7 +464,7 @@ export const findMissingIndexes = async () => {
  * @returns {Promise<{created: string[], createdIndexes: Array, errors: Array, missing: Array, drift: Array}>}
  */
 export const ensureAllIndexes = async () => {
-  const { missing, failed, checked, drift } = await findMissingIndexes()
+  const { missing, failed, checked, drift, retainedLegacy } = await findMissingIndexes()
   const created = []
   const createdIndexes = []
   const errors = failed.map(item => ({
@@ -479,19 +556,19 @@ export const ensureAllIndexes = async () => {
     if (modelCreated) created.push(item.model)
   }
 
-  return { created, createdIndexes, errors, missing, checked, drift }
+  return { created, createdIndexes, errors, missing, checked, drift, retainedLegacy }
 }
 
 /** Aviso de arranque/health check: solo informa; nunca modifica índices. */
 export const reportIndexHealth = async () => {
   try {
-    const { missing, failed, checked, drift } = await findMissingIndexes()
+    const { missing, failed, checked, drift, retainedLegacy } = await findMissingIndexes()
     const blockedCount = missing.reduce(
       (total, item) => total + item.indexes.filter(index => index.blockedReason).length,
       0,
     )
 
-    if (!missing.length && !failed.length && !drift.length) {
+    if (!missing.length && !failed.length && !drift.length && !retainedLegacy.length) {
       logger.info('[ÍNDICES] Todos los índices declarados están sincronizados', {
         modelos: checked,
       })
@@ -504,8 +581,16 @@ export const reportIndexHealth = async () => {
         {
           modelos: missing.map(item => ({
             modelo: item.model,
+            coleccion: item.collection,
             indicesFaltantes: item.indexes.length,
             indicesBloqueados: item.indexes.filter(index => index.blockedReason).length,
+            indices: item.indexes.map(index => ({
+              nombre: index.name,
+              keys: index.keys,
+              unique: index.unique,
+              partial: index.partial,
+              blockedReason: index.blockedReason,
+            })),
           })),
           blockedCount,
         },
@@ -516,6 +601,13 @@ export const reportIndexHealth = async () => {
       logger.warn(
         '[ÍNDICES] Hay índices físicos que difieren del schema. Requieren revisión explícita; no se eliminaron.',
         { drift },
+      )
+    }
+
+    if (retainedLegacy.length) {
+      logger.info(
+        '[ÍNDICES] Se conservan índices legacy conocidos hasta completar sus migraciones explícitas.',
+        { retainedLegacy },
       )
     }
 
