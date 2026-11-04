@@ -1353,8 +1353,8 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
   })
 
   test('una imagen de Cloudflare se cobra y se devuelve a SU tarifa, no a la de Gemini', async () => {
-    // Con una sola tarifa, cada fondo de Cloudflare sumaba USD 0,0336 al gasto
-    // de plataforma: ~1.490 imágenes gratis disparaban el techo de USD 50.
+    // La tarifa FLUX.1 schnell se calcula a partir de 57,6 neuronas para
+    // 1024x1024 y cuatro pasos: USD 0,0006336 por generación.
     const period = '2061-03'
     delete process.env.AI_COST_USD_PER_IMAGE_EDIT
 
@@ -1368,7 +1368,7 @@ describe('devolución · al precio que se cobró, no al de hoy', () => {
     })
     await asentar()
 
-    expect(await costoGuardado(period)).toBeCloseTo(0.00064, 8)
+    expect(await costoGuardado(period)).toBeCloseTo(0.0006336, 10)
 
     await refundAiBudget({
       tenantId: TENANT,
@@ -1494,7 +1494,7 @@ describe('relleno del libro · desde las llamadas al proveedor', () => {
   })
 
   test('reconstruye herramientas como toolCalls, no como tokens', async () => {
-    const period = '2062-06'
+    const period = '2062-08'
     const operationId = 'op-tool-perdido'
     await AiProviderCall.create({
       tenantId: TENANT,
