@@ -366,7 +366,7 @@ export const loadAllModels = async () => {
  * Compara las definiciones de los modelos con MongoDB. Solo lectura.
  * No crea ni elimina índices.
  *
- * @returns {Promise<{missing: Array, failed: Array, checked: number, drift: Array}>}
+ * @returns {Promise<{missing: Array, failed: Array, checked: number, drift: Array, retainedLegacy: Array}>}
  */
 export const findMissingIndexes = async () => {
   await loadAllModels()
@@ -572,7 +572,7 @@ export const reportIndexHealth = async () => {
       logger.info('[ÍNDICES] Todos los índices declarados están sincronizados', {
         modelos: checked,
       })
-      return { missing, failed, checked, drift }
+      return { missing, failed, checked, drift, retainedLegacy }
     }
 
     if (missing.length) {
@@ -615,7 +615,7 @@ export const reportIndexHealth = async () => {
       logger.warn('[ÍNDICES] No se pudo comprobar algún modelo', { failed })
     }
 
-    return { missing, failed, checked, drift }
+    return { missing, failed, checked, drift, retainedLegacy }
   } catch (error) {
     logger.warn('[ÍNDICES] La comprobación de índices falló', {
       error: error?.message || String(error),
