@@ -199,6 +199,42 @@ describe('índice del SKU de productos', () => {
     ).rejects.toMatchObject({ code: 11000 })
   })
 
+  test('el índice SKU legacy se informa como retenido y nunca como drop automático', async () => {
+    await Product.collection.createIndex(
+      { tenantId: 1, sku: 1 },
+      { name: LEGACY_SKU_INDEX_NAME, unique: true, sparse: true },
+    )
+
+    try {
+      const { retainedLegacy, drift } = await findMissingIndexes()
+      const legacy = retainedLegacy.find(
+        index => index.model === 'Product' && index.name === LEGACY_SKU_INDEX_NAME,
+      )
+
+      expect(legacy).toMatchObject({
+        model: 'Product',
+        collection: Product.collection.collectionName,
+        name: LEGACY_SKU_INDEX_NAME,
+        unique: true,
+        sparse: true,
+        retained: true,
+        actionTaken: 'none',
+        replacement: {
+          name: SKU_INDEX_NAME,
+          keys: { tenantId: 1, sku: 1 },
+        },
+        migration: 'npm run migrate:sku-index:prod:apply',
+      })
+      expect(drift.some(item => item.model === 'Product')).toBe(false)
+
+      // La comprobación es de solo lectura: el índice físico sigue existiendo.
+      const indexes = await Product.collection.listIndexes().toArray()
+      expect(indexes.some(index => index.name === LEGACY_SKU_INDEX_NAME)).toBe(true)
+    } finally {
+      await Product.collection.dropIndex(LEGACY_SKU_INDEX_NAME).catch(() => undefined)
+    }
+  })
+
   describe('migración del índice viejo', () => {
     let coleccion
 
