@@ -255,9 +255,10 @@ describe('registrar el consumo de una herramienta', () => {
     expect(tokens.toolCostUsd).toBe(0)
     expect(tokens.tool).toBeNull()
 
-    // ...y la de herramienta no inventa tokens.
+    // ...y la de herramienta no inventa tokens ni contamina costUsd:
+    // el campo histórico representa tokens; toolCostUsd conserva el crédito.
     expect(herramienta.toolCostUsd).toBe(0.04)
-    expect(herramienta.costUsd).toBe(0.04)
+    expect(herramienta.costUsd).toBe(0)
     expect(herramienta.tenantProviderCostUsd).toBe(0.04)
     expect(herramienta.totalTokens).toBe(0)
 
