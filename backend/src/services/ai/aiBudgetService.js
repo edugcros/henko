@@ -2810,9 +2810,10 @@ export const recordToolSpend = async ({
     amount: 0,
     provider,
     toolBreakdown,
-    // costUsd es el costo total que soporta HENKO en esta llamada. toolCostUsd
-    // conserva además el desglose para reportar el gasto por herramienta.
-    costUsd,
+    // costUsd conserva el costo de tokens. La herramienta permanece en
+    // toolCostUsd y tenantProviderCostUsd para que los agregados históricos
+    // que leen costUsd no sumen el mismo gasto dos veces.
+    costUsd: 0,
   })
 
   if (!nuevo) return
