@@ -288,6 +288,13 @@ describe('índice del SKU de productos', () => {
       })
     })
 
+    test('si no existe ni el legacy ni el reemplazo, no declara la migración completada', async () => {
+      await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
+        code: 'MISSING_REPLACEMENT_INDEX',
+      })
+      expect(await nombres()).toEqual(['_id_'])
+    })
+
     test('si el nuevo ya existe (lo creó ensure:indexes), solo borra el viejo', async () => {
       await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
       await coleccion.createIndex(
