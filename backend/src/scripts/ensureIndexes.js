@@ -32,35 +32,61 @@ const run = async () => {
   let exitCode
 
   if (!apply) {
-    const { missing, failed, checked } = await findMissingIndexes()
+    const { missing, failed, checked, drift, retainedLegacy } = await findMissingIndexes()
 
-    logger.info('[ÍNDICES] Simulación', { modelos: checked, conFaltantes: missing.length })
+    logger.info('[ÍNDICES] Simulación', {
+      modelos: checked,
+      conFaltantes: missing.length,
+      driftNoReconocido: drift.length,
+      indicesLegacyRetenidos: retainedLegacy.length,
+    })
 
     for (const item of missing) {
       logger.warn(`[ÍNDICES] Faltan en ${item.collection} (${item.model})`, {
-        indices: item.indexes,
+        indices: item.indexes.map(index => ({
+          nombre: index.name,
+          keys: index.keys,
+          unique: index.unique,
+          partial: index.partial,
+          blockedReason: index.blockedReason,
+        })),
       })
     }
 
+    if (drift.length) logger.warn('[ÍNDICES] Drift que requiere revisión', { drift })
+    if (retainedLegacy.length) {
+      logger.info('[ÍNDICES] Índices legacy retenidos; no se eliminarán en esta etapa.', {
+        retainedLegacy,
+      })
+    }
     if (failed.length) logger.warn('[ÍNDICES] No se pudo comprobar', { failed })
 
     logger.info(
-      missing.length
-        ? '[ÍNDICES] Simulación terminada. Usar --apply para crear los faltantes.'
-        : '[ÍNDICES] No falta ninguno.',
+      missing.length || failed.length || drift.length
+        ? '[ÍNDICES] Simulación terminada. Revisar el detalle antes de usar --apply.'
+        : '[ÍNDICES] No hay índices faltantes ni drift no reconocido.',
     )
 
-    exitCode = missing.length ? 1 : 0
+    exitCode = missing.length || failed.length || drift.length ? 1 : 0
   } else {
-    const { created, errors } = await ensureAllIndexes()
+    const { created, createdIndexes, errors, drift, retainedLegacy } = await ensureAllIndexes()
 
-    logger.info('[ÍNDICES] Creados', { modelos: created })
+    logger.info('[ÍNDICES] Índices creados', { modelos: created, createdIndexes })
+
+    if (retainedLegacy.length) {
+      // Intencionalmente no se dropean: la migración SKU tiene un paso separado
+      // que crea/verifica el reemplazo y recién después retira el índice viejo.
+      logger.info('[ÍNDICES] Índices legacy preservados para migración explícita.', {
+        retainedLegacy,
+      })
+    }
+    if (drift.length) logger.warn('[ÍNDICES] Drift no reconocido; no se eliminó nada.', { drift })
 
     for (const error of errors) {
       logger.error(`[ÍNDICES] No se pudo crear en ${error.model}`, error)
     }
 
-    exitCode = errors.length ? 1 : 0
+    exitCode = errors.length || drift.length ? 1 : 0
   }
 
   await mongoose.disconnect()
