@@ -12,7 +12,7 @@
 // getModelPrice recibe la fecha del consumo, y por eso el ledger guarda el
 // precio que se usó en vez de una referencia al catálogo.
 //
-// Verificado contra ai.google.dev/gemini-api/docs/pricing el 07/09/2026.
+// Verificado contra las fuentes oficiales de cada proveedor el 04/11/2026.
 // Los precios son USD por millón de tokens.
 
 import crypto from 'node:crypto'
@@ -144,6 +144,8 @@ const TOOL_CATALOG = [
   {
     tools: ['tavily_search'],
     family: TOOL_FAMILY.WEB_SEARCH,
+    pricingUnit: 'credit',
+    sourceUrl: 'https://docs.tavily.com/documentation/api-credits',
     from: null,
     until: null,
     unitCostUsd: 0.008,
@@ -151,33 +153,39 @@ const TOOL_CATALOG = [
   {
     tools: ['tavily_extract'],
     family: TOOL_FAMILY.CONTENT_EXTRACTION,
+    pricingUnit: 'credit',
+    sourceUrl: 'https://docs.tavily.com/documentation/api-credits',
     from: null,
     until: null,
     unitCostUsd: 0.008,
   },
 
   /**
-   * Google Search grounding. USD 35 por 1.000 consultas = 0,035 cada una.
+   * Google Search grounding. USD 14 por 1.000 consultas = USD 0,014 por consulta
+   * luego de las 5.000 consultas mensuales gratuitas compartidas por Gemini 3.x.
    *
    * LA UNIDAD ES LA CONSULTA, Y ESO CAMBIÓ CON LA GENERACIÓN 3.
    *
-   * En Gemini 2.5 y anteriores se facturaba POR PROMPT: una request con tres
-   * búsquedas adentro costaba una. Desde la 3 se factura por cada consulta que
-   * el modelo decide ejecutar, y HENKO corre 3.x — así que una sola respuesta
-   * puede costar varias veces esto.
+   * En Gemini 3 se factura cada consulta individual que ejecuta el modelo, no
+   * cada prompt del cliente. Esta tarifa representa el precio de lista posterior
+   * al cupo gratuito compartido. El medidor usa el precio de lista como techo
+   * conservador; no descuenta el cupo gratuito porque su saldo se comparte por
+   * proyecto Google y no existe todavía una lectura fiable de ese saldo por key.
    *
    * Hoy la cantidad es siempre cero: el parámetro `tools` de callGemini no lo
-   * pasa ningún llamador. Y no es por olvido — verificado contra la API con la
-   * key de producción HOY, los tres modelos de la cadena devuelven 429 con
-   * `tools` puesto y 200 sin él. El precio queda cargado para el día que eso
-   * cambie, y contarlo ya es automático (ver readUsage).
+   * pasa ningún llamador. Si se reactiva, la cantidad se registra desde
+   * groundingMetadata y el costo queda explícitamente como costo bruto de lista,
+   * no como importe conciliado de factura. Fuente: documentación oficial de
+   * precios de Gemini API.
    */
   {
     tools: ['google_search'],
     family: TOOL_FAMILY.WEB_SEARCH,
+    pricingUnit: 'query',
+    sourceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
     from: null,
     until: null,
-    unitCostUsd: 0.035,
+    unitCostUsd: 0.014,
   },
 ]
 
@@ -206,6 +214,8 @@ export const getToolPrice = (tool, at = new Date()) => {
       tool: name,
       family: entry.family || TOOL_FAMILY.OTHER,
       unitCostUsd: entry.unitCostUsd,
+      pricingUnit: entry.pricingUnit || 'unit',
+      sourceUrl: entry.sourceUrl || null,
     }
   }
 
@@ -221,6 +231,8 @@ export const getToolPrice = (tool, at = new Date()) => {
     tool: name,
     family: TOOL_FAMILY.OTHER,
     unitCostUsd: TOOL_FALLBACK_UNIT_COST,
+    pricingUnit: 'unknown',
+    sourceUrl: null,
     fallback: true,
   }
 }
@@ -253,7 +265,10 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
     family: price.family,
     quantity: unidades,
     unitCostUsd: price.unitCostUsd,
-    costUsd: Number((unidades * price.unitCostUsd).toFixed(6)),
+    pricingUnit: price.pricingUnit,
+    sourceUrl: price.sourceUrl,
+    pricingVersion: PRICING_VERSION,
+    costUsd: Number((unidades * price.unitCostUsd).toFixed(12)),
     fallback: Boolean(price.fallback),
   }
 }
@@ -277,16 +292,50 @@ export const computeToolCostUsd = ({ tool, quantity, at = new Date() } = {}) => 
  *
  *   gemini      USD 0,0336  estimación de 1K con Gemini 3.1 Flash Lite Image,
  *                           no una factura; AI_COST_USD_PER_IMAGE_EDIT la ajusta
- *   cloudflare  USD 0,00064 FLUX.1 schnell: ~58 neuronas por imagen de 1024×1024
+ *   cloudflare  USD 0,0006336 FLUX.1 schnell: 57,6 neuronas por imagen de 1024×1024
  *                           y 4 pasos, a USD 0,011 cada 1.000 neuronas (Workers
  *                           AI, verificado el 01/11/2026). Dentro de las 10.000
  *                           neuronas gratis por día no se factura, pero se costea
  *                           a la tarifa paga: es el techo, el mismo criterio que
  *                           Tavily, y un disyuntor no puede subestimar.
  */
+const CLOUDFLARE_IMAGE_NEURONS =
+  4 * 4.8 + // cuatro mosaicos de 512×512 para una salida de 1024×1024
+  4 * 9.6 // cuatro pasos de FLUX.1 schnell
+
+const CLOUDFLARE_USD_PER_1000_NEURONS = 0.011
+
 const IMAGE_CATALOG = [
-  { provider: 'gemini', from: null, until: null, perImage: 0.0336 },
-  { provider: 'cloudflare', from: null, until: null, perImage: 0.00064 },
+  {
+    provider: 'gemini',
+    model: 'gemini-3.1-flash-lite-image',
+    from: null,
+    until: null,
+    perImage: 0.0336,
+    pricingUnit: 'image_1k',
+    sourceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-3.1-flash-image',
+    from: null,
+    until: null,
+    perImage: 0.067,
+    pricingUnit: 'image_1k',
+    sourceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+  },
+  {
+    provider: 'cloudflare',
+    model: '@cf/black-forest-labs/flux-1-schnell',
+    from: null,
+    until: null,
+    // El endpoint usa 4 pasos y salida cuadrada 1024×1024. Se calcula desde
+    // las unidades oficiales, sin redondear 57,6 neuronas a 58 antes del costo.
+    perImage: (CLOUDFLARE_IMAGE_NEURONS * CLOUDFLARE_USD_PER_1000_NEURONS) / 1000,
+    pricingUnit: 'image_1024_4_steps',
+    estimatedNeurons: CLOUDFLARE_IMAGE_NEURONS,
+    sourceUrl: 'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+  },
 ]
 
 /** Proveedor contra el que se costea una imagen cuando nadie lo dice. */
@@ -299,26 +348,90 @@ export const DEFAULT_IMAGE_PROVIDER = 'gemini'
  * @param {string} [provider='gemini'] - quién genera la imagen
  * @returns {{perImage:number, source:'env'|'catalog'}}
  */
-export const getImagePrice = (at = new Date(), provider = DEFAULT_IMAGE_PROVIDER) => {
-  const name = String(provider || DEFAULT_IMAGE_PROVIDER).toLowerCase()
+export const getImagePrice = (
+  at = new Date(),
+  provider = DEFAULT_IMAGE_PROVIDER,
+  model = null,
+) => {
+  const name = String(provider || DEFAULT_IMAGE_PROVIDER).trim().toLowerCase()
+  const configuredGeminiModel = normalize(
+    process.env.GEMINI_IMAGE_MODEL ||
+      process.env.GOOGLE_IMAGE_MODEL ||
+      'gemini-3.1-flash-lite-image',
+  )
+  const requestedModel = normalize(
+    model || (name === DEFAULT_IMAGE_PROVIDER ? configuredGeminiModel : ''),
+  )
 
-  // El override de entorno es la estimación de GEMINI y gana solo para Gemini,
-  // informado como tal: un número que no salió del catálogo tiene que poder
-  // distinguirse cuando alguien audite el gasto.
-  const override = Number(process.env.AI_COST_USD_PER_IMAGE_EDIT)
-  if (name === DEFAULT_IMAGE_PROVIDER && Number.isFinite(override) && override >= 0) {
-    return { perImage: override, source: 'env' }
+  // El override explícito corresponde al modelo Gemini configurado y se
+  // identifica como estimación de entorno, nunca como precio oficial medido.
+  const overrideRaw = String(process.env.AI_COST_USD_PER_IMAGE_EDIT ?? '').trim()
+  const override = overrideRaw === '' ? Number.NaN : Number(overrideRaw)
+  if (
+    name === DEFAULT_IMAGE_PROVIDER &&
+    requestedModel === configuredGeminiModel &&
+    Number.isFinite(override) &&
+    override >= 0
+  ) {
+    return {
+      perImage: override,
+      source: 'env',
+      provider: DEFAULT_IMAGE_PROVIDER,
+      model: requestedModel,
+      pricingUnit: 'image_1k',
+      sourceUrl: null,
+      estimated: true,
+      fallback: false,
+    }
   }
 
   const when = at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date()
   const enVigencia = IMAGE_CATALOG.filter(e => inWindow(e, when))
-  // Un proveedor sin tarifa se costea como Gemini, el más caro: subestimar es
-  // el error que un disyuntor no se puede permitir.
-  const entry =
-    enVigencia.find(e => e.provider === name) ||
-    enVigencia.find(e => e.provider === DEFAULT_IMAGE_PROVIDER)
+  const providerEntries = enVigencia.filter(e => e.provider === name)
+  const exactEntry = providerEntries.find(e => e.model === requestedModel) ||
+    (requestedModel ? null : providerEntries[0])
 
-  return { perImage: entry ? entry.perImage : 0, source: 'catalog' }
+  if (exactEntry) {
+    return {
+      perImage: exactEntry.perImage,
+      source: 'catalog',
+      provider: exactEntry.provider,
+      model: exactEntry.model,
+      pricingUnit: exactEntry.pricingUnit,
+      sourceUrl: exactEntry.sourceUrl,
+      estimated: true,
+      fallback: false,
+      ...(exactEntry.estimatedNeurons !== undefined
+        ? { estimatedNeurons: exactEntry.estimatedNeurons }
+        : {}),
+    }
+  }
+
+  // Modelo/proveedor desconocido: usar la tarifa más cara del catálogo vigente
+  // como techo, pero preservar el identificador pedido y marcar el fallback.
+  const conservativeEntry =
+    providerEntries.reduce(
+      (highest, entry) => (!highest || entry.perImage > highest.perImage ? entry : highest),
+      null,
+    ) ||
+    enVigencia.reduce(
+      (highest, entry) => (!highest || entry.perImage > highest.perImage ? entry : highest),
+      null,
+    )
+
+  return {
+    perImage: conservativeEntry?.perImage ?? 0,
+    source: 'catalog',
+    provider: name || conservativeEntry?.provider || null,
+    model: requestedModel || conservativeEntry?.model || null,
+    pricingUnit: conservativeEntry?.pricingUnit ?? null,
+    sourceUrl: conservativeEntry?.sourceUrl ?? null,
+    estimated: true,
+    fallback: true,
+    ...(conservativeEntry?.estimatedNeurons !== undefined
+      ? { estimatedNeurons: conservativeEntry.estimatedNeurons }
+      : {}),
+  }
 }
 
 /**
@@ -628,7 +741,7 @@ export const getTierMultiplier = tier => {
  *
  * POR QUÉ NO ES SOLO UNA CONSTANTE ESCRITA A MANO.
  *
- * La etiqueta legible —'google-gemini-2026-09'— dice de qué tabla de precios
+ * La etiqueta legible —'henko-ai-pricing-2026-11'— dice de qué tabla de precios
  * se trata y es lo que uno quiere leer. Pero una versión que hay que subir a
  * mano solo sirve mientras alguien se acuerde, y ese fue el motivo por el que
  * esto no se hizo en el Bloque 5.
@@ -643,7 +756,7 @@ export const getTierMultiplier = tier => {
  * que es lo que permite agarrar un grupo entero de filas y decir si un deploy
  * cambió el costeo — incluso en las métricas donde la tarifa no se guarda.
  */
-const PRICING_LABEL = 'google-gemini-2026-09'
+const PRICING_LABEL = 'henko-ai-pricing-2026-11'
 
 const hashDelCatalogo = () =>
   crypto
@@ -661,7 +774,7 @@ const hashDelCatalogo = () =>
     .digest('hex')
     .slice(0, 8)
 
-/** Ej.: 'google-gemini-2026-09+1a2b3c4d'. Se calcula una vez por proceso. */
+/** Ej.: 'henko-ai-pricing-2026-11+1a2b3c4d'. Se calcula una vez por proceso. */
 export const PRICING_VERSION = `${PRICING_LABEL}+${hashDelCatalogo()}`
 
 /**
@@ -766,7 +879,9 @@ export const computeCostUsd = ({
     (freshInput * price.input + cached * price.cachedInput + output * price.output) / M
 
   return {
-    costUsd: Number(costUsd.toFixed(6)),
+    // Almacenar precisión de cálculo; redondear por llamada a 6 decimales
+    // pierde importes pequeños y amplifica el error en operaciones masivas.
+    costUsd: Number(costUsd.toFixed(12)),
     inputTokens: input,
     cachedInputTokens: cached || null,
     outputTokens: output,

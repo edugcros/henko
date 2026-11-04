@@ -786,6 +786,9 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
     expect(llamada.thinkingTokens).toBe(462)
     expect(llamada.serviceTier).toBe('standard')
     expect(llamada.cachedInputTokens).toBeNull()
+    expect(llamada.costCurrency).toBe('USD')
+    expect(llamada.tenantProviderCostCurrency).toBe('USD')
+    expect(llamada.priceCachedInputPerMillion).toBeCloseTo(0.025, 9)
 
     // La fila se verifica sola: costo = tokens × tarifa guardada.
     expect(llamada.priceInputPerMillion).toBeGreaterThan(0)

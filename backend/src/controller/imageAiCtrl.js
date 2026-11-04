@@ -17,6 +17,7 @@ import {
   buildBudgetDenialMessage,
   refundAiBudget,
   reserveAiBudget,
+  recordImageProviderCall,
 } from '../services/ai/aiBudgetService.js'
 
 const IMAGE_PURPOSES = new Set(['ad', 'social', 'alternative'])
@@ -116,6 +117,8 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     metric: AI_METRICS.IMAGE_EDITS,
     feature: AI_FEATURES.IMAGE_AI,
     provider: reservedProvider,
+    requestedModel:
+      reservedProvider === AI_PROVIDERS.GEMINI ? resolveImageModel() : null,
     // La key propia, si existe, solo optimiza el prompt. La generación de la
     // imagen se factura a la plataforma, por lo que se fuerza ese presupuesto.
     forcePlatformBilling: true,
@@ -131,6 +134,9 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
   }
 
   let result
+  // Se conserva el id de la operación que realmente generó la imagen, incluso
+  // cuando fue necesario hacer fallback a otro proveedor.
+  let actualOperationId = reservation.operationId
 
   try {
     const credentials = await resolveTenantAiCredentials(tenantId)
@@ -174,12 +180,14 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       operationId: reservation.operationId,
       provider: reservedProvider,
     })
+    actualOperationId = `${reservation.operationId}:${result.provider}`
     reservation = await reserveAiBudget({
       tenantId,
       metric: AI_METRICS.IMAGE_EDITS,
       feature: AI_FEATURES.IMAGE_AI,
       provider: result.provider,
-      operationId: `${reservation.operationId}:${result.provider}`,
+      requestedModel: result.model || null,
+      operationId: actualOperationId,
       forcePlatformBilling: true,
     })
     // La imagen ya está hecha: se entrega igual. Pasa solo si justo en el
@@ -193,6 +201,17 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
       })
     }
   }
+
+  // AiProviderCall es el respaldo durable para reponer el ledger si su
+  // escritura asíncrona falla. En fallback denegado, la imagen ya se generó:
+  // hay que contabilizar el gasto ocurrido igualmente.
+  await recordImageProviderCall({
+    tenantId,
+    operationId: actualOperationId,
+    provider: result.provider || reservedProvider,
+    model: result.model || null,
+    forceCharge: !reservation.allowed,
+  })
 
   const base64 = result.buffer.toString('base64')
 

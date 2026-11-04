@@ -68,8 +68,9 @@ describe('el precio de una herramienta', () => {
     expect(getToolPrice('tavily_search').unitCostUsd).toBe(0.008)
     expect(getToolPrice('tavily_extract').unitCostUsd).toBe(0.008)
 
-    // Google Search grounding: USD 35 por 1.000 consultas.
-    expect(getToolPrice('google_search').unitCostUsd).toBe(0.035)
+    // Google Search grounding: USD 14 por 1.000 consultas luego del cupo
+    // gratuito compartido de 5.000 consultas mensuales de Gemini 3.x.
+    expect(getToolPrice('google_search').unitCostUsd).toBe(0.014)
   })
 
   test('una herramienta desconocida se cobra cara, no gratis', () => {
@@ -89,6 +90,9 @@ describe('el precio de una herramienta', () => {
       family: 'webSearch',
       quantity: 1,
       unitCostUsd: 0.008,
+      pricingUnit: 'credit',
+      sourceUrl: 'https://docs.tavily.com/documentation/api-credits',
+      pricingVersion: expect.stringMatching(/^henko-ai-pricing-2026-11\+/),
       costUsd: 0.008,
       fallback: false,
     })
@@ -117,7 +121,10 @@ describe('el precio de una herramienta', () => {
       // proveedor no parte la serie historica.
       family: 'webSearch',
       quantity: 0,
-      unitCostUsd: 0.035,
+      unitCostUsd: 0.014,
+      pricingUnit: 'query',
+      sourceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+      pricingVersion: expect.stringMatching(/^henko-ai-pricing-2026-11\+/),
       costUsd: 0,
       fallback: false,
     })
@@ -151,9 +158,58 @@ describe('registrar el consumo de una herramienta', () => {
     expect(fila.toolUnitCostUsd).toBe(0.008)
     expect(fila.toolCostUsd).toBe(0.04)
     expect(fila.provider).toBe('tavily')
+    expect(fila.keySource).toBe('platform')
+    expect(fila.costCurrency).toBe('USD')
+    expect(fila.tenantProviderCostCurrency).toBe('USD')
+    expect(fila.tenantProviderCostUsd).toBe(0.04)
+    expect(fila.toolPricingUnit).toBe('credit')
+    expect(fila.toolSourceUrl).toBe('https://docs.tavily.com/documentation/api-credits')
+    expect(fila.pricingVersion).toMatch(/^henko-ai-pricing-2026-11\+/)
 
     // La fila se verifica sola.
     expect(fila.toolCostUsd).toBeCloseTo(fila.toolQuantity * fila.toolUnitCostUsd, 8)
+  })
+
+  test('un consumo BYOK de Gemini sigue cargando Tavily a la plataforma', async () => {
+    const period = '2033-11'
+    const operationId = 'byok-con-tavily'
+
+    await recordToolSpend({
+      tenantId: TENANT,
+      metric: AI_METRICS.MARKET_TOKENS,
+      tool: 'tavily_search',
+      quantity: 1,
+      profile: { ...PERFIL, keySource: 'tenant' },
+      period,
+      operationId,
+      provider: 'tavily',
+    })
+    await asentar()
+
+    const llamada = await AiProviderCall.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    const movimiento = await AiConsumptionLedger.findOne({
+      tenantId: TENANT,
+      period,
+      unit: 'toolCalls',
+    })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    const plataforma = await AiPlatformUsage.findOne({ period }).lean()
+
+    // La key BYOK solo paga Gemini. La credencial de Tavily sigue siendo de HENKO.
+    expect(llamada.keySource).toBe('platform')
+    expect(llamada.costUsd).toBe(0)
+    expect(llamada.tenantProviderCostUsd).toBe(0.008)
+    expect(llamada.toolCostUsd).toBe(0.008)
+
+    expect(movimiento.keySource).toBe('platform')
+    expect(movimiento.costCurrency).toBe('USD')
+    expect(movimiento.tenantProviderCostCurrency).toBe('USD')
+    expect(movimiento.costUsd).toBe(0.008)
+    expect(movimiento.tool).toBe('tavily_search')
+    expect(plataforma.estimatedCostUsd).toBeCloseTo(0.008, 9)
   })
 
   test('SEPARADO del costo por tokens, que es el punto del bloque', async () => {
@@ -199,9 +255,11 @@ describe('registrar el consumo de una herramienta', () => {
     expect(tokens.toolCostUsd).toBe(0)
     expect(tokens.tool).toBeNull()
 
-    // ...y la de herramienta no inventa tokens.
+    // ...y la de herramienta no inventa tokens ni contamina costUsd:
+    // el campo histórico representa tokens; toolCostUsd conserva el crédito.
     expect(herramienta.toolCostUsd).toBe(0.04)
     expect(herramienta.costUsd).toBe(0)
+    expect(herramienta.tenantProviderCostUsd).toBe(0.04)
     expect(herramienta.totalTokens).toBe(0)
 
     // Y el numero que importa: la herramienta cuesta mucho mas que el modelo.
@@ -396,8 +454,8 @@ describe('grounding de Google · se cuenta y se cobra solo', () => {
     const grounding = filas.find(f => f.tool === 'google_search')
     expect(grounding).toBeDefined()
     expect(grounding.toolQuantity).toBe(2)
-    expect(grounding.toolUnitCostUsd).toBe(0.035)
-    expect(grounding.toolCostUsd).toBeCloseTo(0.07, 6)
+    expect(grounding.toolUnitCostUsd).toBe(0.014)
+    expect(grounding.toolCostUsd).toBeCloseTo(0.028, 9)
     expect(grounding.toolFamily).toBe('webSearch')
     expect(grounding.callId).toContain('grounding')
 
@@ -555,7 +613,7 @@ describe('version del catalogo · reconstruir que tabla estaba activa', () => {
     const { PRICING_VERSION } = await import('../services/ai/aiModelPricing.js')
 
     const [etiqueta, hash] = PRICING_VERSION.split('+')
-    expect(etiqueta).toBe('google-gemini-2026-09')
+    expect(etiqueta).toBe('henko-ai-pricing-2026-11')
     expect(hash).toHaveLength(8)
     expect(Number.isNaN(parseInt(hash, 16))).toBe(false)
   })

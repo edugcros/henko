@@ -25,7 +25,7 @@ import { getPeriodSpendByTenant } from '../ai/aiSpendReportService.js'
 import {
   getEmailCostPerSendUsd,
   getPlanMonthlyPriceArs,
-  getUsdToArsRate,
+  getUsdToArsQuote,
   getPlatformMonthlyInfraCostUsd,
   getPlatformMonthlyStorageCostUsd,
   getWhatsappCostPerSendUsd,
@@ -124,7 +124,13 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   // convierten acá. Antes pasaba al revés —el precio del plan se convertía a
   // dólares— y por eso el margen se corría solo cada vez que se movía el cambio,
   // sin que nada avisara.
-  const usdToArs = getUsdToArsRate()
+  // Los períodos cerrados usan el último tipo de cambio registrado en
+  // PlatformAiSetting hasta el cierre de ese mes. El período en curso usa la
+  // última configuración disponible a la fecha de consulta.
+  const fxAsOf =
+    period === getCurrentPeriod() || !range ? new Date() : new Date(range.end.getTime() - 1)
+  const fxQuote = await getUsdToArsQuote({ asOf: fxAsOf })
+  const usdToArs = fxQuote.rate
   const aArs = usd => Math.round(usd * usdToArs)
 
   const tenantRows = tenants.map(tenant => {
@@ -256,10 +262,21 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       billable.reduce((sum, row) => sum + row.estimatedMarginArs, 0) -
       aArs(infraCostUsd) -
       aArs(storageCostUsd),
-    // Con qué se pasaron a pesos los costos que llegan en dólares. Va en la
-    // respuesta y no en una nota al pie: un margen calculado con un cambio
-    // viejo no es incorrecto, pero se lee distinto sabiendo cuál se usó.
+    // La tasa aplicada y su procedencia acompañan cada resultado en ARS.
     usdToArsRate: usdToArs,
+    usdToArsBaseCurrency: fxQuote.baseCurrency,
+    usdToArsQuoteCurrency: fxQuote.quoteCurrency,
+    usdToArsRateSource: fxQuote.source,
+    usdToArsRateSourceCode: fxQuote.sourceCode ?? null,
+    usdToArsRateSourceUrl: fxQuote.sourceUrl,
+    usdToArsRateType: fxQuote.rateType,
+    usdToArsRateEffectiveDate: fxQuote.effectiveDate ?? null,
+    usdToArsRateCapturedAt: fxQuote.capturedAt,
+    usdToArsRateChangedBy: fxQuote.changedBy,
+    usdToArsRateReason: fxQuote.reason,
+    usdToArsRateHistorical: fxQuote.historical,
+    usdToArsRateVerified: fxQuote.verified,
+    usdToArsRateAsOf: fxAsOf,
     byPlan,
   }
 
@@ -275,6 +292,7 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       'marginPercent es el margen sobre el precio del plan. Un mismo margen en pesos sobre planes distintos son negocios distintos, y en la columna de pesos se ven iguales.',
       'infraCostArs y storageCostArs son costos totales de la plataforma, no prorrateados por comercio — dividirlos individualmente inventaría una precisión que no existe hoy. Se restan una sola vez en totals.totalEstimatedMarginArs. Default estimado por investigación de precios públicos de Render/MongoDB Atlas/Cloudinary (ver aiPlanPolicy.js) — no es la factura real de HENKO, sobrescribible con PLATFORM_INFRA_MONTHLY_COST_USD / PLATFORM_STORAGE_MONTHLY_COST_USD en cuanto haya una factura real para comparar.',
       'communicationsCostArs por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
+      'Los costos originales se mantienen en USD. Para expresarlos en ARS se usa usdToArsRate y se informa fuente, código, tipo, fecha efectiva, fecha de captura y corte en totals. bcra_api identifica la cotización oficial BCRA REF (Comunicación A 3500, mayorista) y queda congelada por fecha efectiva; platform_setting es un override manual con historial, pero no una fuente externa verificada; environment y legacy_fallback no tienen historial de cambios demostrable y el margen en ARS debe leerse como estimación.',
       'planPriceArs null significa que ese plan todavía no tiene precio cargado en el panel — no se estima uno automáticamente, y mientras esté así el plan no se puede contratar.',
       'subscriptionStatus sí refleja cobro real: el alta cobra contra Mercado Pago y el webhook actualiza el estado en cada renovación, falla o baja.',
       'lifecycle.deletedInPeriodApprox es una aproximación (no hay campo deletedAt, se infiere de updatedAt) — no un dato exacto.',

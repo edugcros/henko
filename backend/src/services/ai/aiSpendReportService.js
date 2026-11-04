@@ -210,12 +210,27 @@ export const getPeriodSpendByModel = async period => {
  */
 export const getPeriodQuality = async period => {
   const ES_TOKENS = { $eq: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }
+  const NO_ES_TOKENS = { $ne: [{ $ifNull: ['$unit', 'units'] }, 'tokens'] }
   const SIN_MODELO = { $in: [{ $ifNull: ['$model', null] }, [null, '']] }
+  const FALLBACK_UNIDAD = {
+    $or: [
+      { $eq: ['$toolPricingFallback', true] },
+      { $eq: ['$unitPricingFallback', true] },
+    ],
+  }
 
-  // Excluyentes y en orden de gravedad: la primera que aplica se queda la fila.
+  // Las categorías de costo unitario no se cobran por tokens: el uso puede
+  // estar medido (créditos o imágenes), pero el importe se deriva del catálogo
+  // y todavía no es una factura conciliada. Por eso se etiqueta estimated.
+  // Para tokens, measured significa que el proveedor entregó desglose real
+  // entrada/salida; no significa que exista conciliación de factura.
   const clase = {
     $switch: {
       branches: [
+        {
+          case: NO_ES_TOKENS,
+          then: { $cond: [FALLBACK_UNIDAD, 'priceFallback', 'estimated'] },
+        },
         { case: SIN_MODELO, then: 'unknownModel' },
         { case: { $eq: ['$priceFallback', true] }, then: 'priceFallback' },
         { case: { $eq: ['$costEstimated', true] }, then: 'estimated' },
@@ -241,13 +256,33 @@ export const getPeriodQuality = async period => {
     priceFallback: { rows: 0, costUsd: 0 },
     unknownModel: { rows: 0, costUsd: 0 },
   }
-  const flatRate = { rows: 0, costUsd: 0 }
+  const flatRate = {
+    rows: 0,
+    costUsd: 0,
+    estimatedRows: 0,
+    estimatedCostUsd: 0,
+    fallbackRows: 0,
+    fallbackCostUsd: 0,
+  }
 
   for (const f of filas) {
-    const destino = f._id.tokens ? acc[f._id.clase] : flatRate
-    if (!destino) continue
-    destino.rows += f.rows
-    destino.costUsd += f.costUsd
+    if (f._id.tokens) {
+      const destino = acc[f._id.clase]
+      if (!destino) continue
+      destino.rows += f.rows
+      destino.costUsd += f.costUsd
+      continue
+    }
+
+    flatRate.rows += f.rows
+    flatRate.costUsd += f.costUsd
+    // Las unidades (imágenes/herramientas) llevan precio de lista estimado.
+    flatRate.estimatedRows += f.rows
+    flatRate.estimatedCostUsd += f.costUsd
+    if (f._id.clase === 'priceFallback') {
+      flatRate.fallbackRows += f.rows
+      flatRate.fallbackCostUsd += f.costUsd
+    }
   }
 
   const rows =
@@ -283,9 +318,19 @@ export const getPeriodQuality = async period => {
     // cuando no hubo gasto — es distinto de 0%.
     measuredShare: costUsd > 0 ? round((acc.measured.costUsd / costUsd) * 100, 1) : null,
 
-    // Imágenes y mensajes: precio por unidad, no por token. No entra en el
-    // porcentaje de arriba porque no hay desglose que medir ni suponer.
-    flatRate: { rows: flatRate.rows, costUsd: round(flatRate.costUsd, 6) },
+    // Imágenes y herramientas: cantidad por unidad, no por token. El uso
+    // puede ser real, pero el importe usa tarifa de catálogo y no está
+    // conciliado contra factura de proveedor.
+    flatRate: {
+      rows: flatRate.rows,
+      costUsd: round(flatRate.costUsd, 6),
+      estimatedRows: flatRate.estimatedRows,
+      estimatedCostUsd: round(flatRate.estimatedCostUsd, 6),
+      fallbackRows: flatRate.fallbackRows,
+      fallbackCostUsd: round(flatRate.fallbackCostUsd, 6),
+      pricingBasis: 'catalog',
+      invoiceReconciled: false,
+    },
   }
 }
 

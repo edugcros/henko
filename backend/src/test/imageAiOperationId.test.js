@@ -5,6 +5,7 @@ const TENANT_ID = '64b7f0000000000000000001'
 
 const mockReserve = jest.fn()
 const mockRefund = jest.fn()
+const mockRecordImageCall = jest.fn()
 const mockGenerate = jest.fn()
 const mockStudio = jest.fn()
 const mockGenerativeStatus = jest.fn()
@@ -16,6 +17,7 @@ jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   buildBudgetDenialMessage: () => 'sin cupo',
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
+  recordImageProviderCall: mockRecordImageCall,
 }))
 
 jest.unstable_mockModule('../services/imageAiService.js', () => ({
@@ -95,6 +97,9 @@ describe('imageAiCtrl · se cobra al precio de quien genera', () => {
 
     expect(mockReserve).toHaveBeenCalledTimes(1)
     expect(mockReserve).toHaveBeenCalledWith(expect.objectContaining({ provider: 'cloudflare' }))
+    expect(mockRecordImageCall).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'cloudflare', forceCharge: false }),
+    )
     expect(mockRefund).not.toHaveBeenCalled()
   })
 
@@ -104,6 +109,7 @@ describe('imageAiCtrl · se cobra al precio de quien genera', () => {
       buffer: Buffer.from('ok'),
       contentType: 'image/png',
       provider: 'gemini',
+      model: 'gemini-3.1-flash-lite-image',
     })
 
     const res = await correr()
@@ -115,8 +121,16 @@ describe('imageAiCtrl · se cobra al precio de quien genera', () => {
     expect(mockReserve).toHaveBeenLastCalledWith(
       expect.objectContaining({
         provider: 'gemini',
+        requestedModel: 'gemini-3.1-flash-lite-image',
         operationId: `${OPERATION_ID}:gemini`,
         forcePlatformBilling: true,
+      }),
+    )
+    expect(mockRecordImageCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'gemini',
+        model: 'gemini-3.1-flash-lite-image',
+        forceCharge: false,
       }),
     )
   })

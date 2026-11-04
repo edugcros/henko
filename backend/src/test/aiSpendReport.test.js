@@ -199,8 +199,56 @@ describe('calidad de la contabilidad', () => {
     expect(q.unknownModel).toBe(0)
     expect(q.measuredShare).toBe(100)
 
-    // Y no desaparecen: se informan aparte.
-    expect(q.flatRate).toEqual({ rows: 2, costUsd: 0.04 })
+    // Y no desaparecen: se informan aparte. El uso por unidad puede estar
+    // medido, pero el costo sigue siendo una tarifa de catálogo hasta conciliar
+    // contra la factura del proveedor.
+    expect(q.flatRate).toEqual({
+      rows: 2,
+      costUsd: 0.04,
+      estimatedRows: 2,
+      estimatedCostUsd: 0.04,
+      fallbackRows: 0,
+      fallbackCostUsd: 0,
+      pricingBasis: 'catalog',
+      invoiceReconciled: false,
+    })
+  })
+
+  test('herramientas se informan como costo estimado y fallback por separado', async () => {
+    await Ledger.collection.insertMany([
+      fila({
+        metric: 'marketTokens',
+        unit: 'toolCalls',
+        amount: 3,
+        costUsd: 0.024,
+        tool: 'tavily_search',
+        toolPricingEstimated: true,
+      }),
+      fila({
+        metric: 'marketTokens',
+        unit: 'toolCalls',
+        amount: 2,
+        costUsd: 0.1,
+        tool: 'unknown_tool',
+        toolPricingEstimated: true,
+        toolPricingFallback: true,
+      }),
+    ])
+
+    const q = await getPeriodQuality(PERIODO)
+
+    expect(q.rows).toBe(0)
+    expect(q.measuredShare).toBeNull()
+    expect(q.flatRate).toEqual({
+      rows: 2,
+      costUsd: 0.124,
+      estimatedRows: 2,
+      estimatedCostUsd: 0.124,
+      fallbackRows: 1,
+      fallbackCostUsd: 0.1,
+      pricingBasis: 'catalog',
+      invoiceReconciled: false,
+    })
   })
 
   test('el porcentaje mide PLATA, no filas', async () => {

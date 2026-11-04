@@ -124,12 +124,17 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
      * correcto es costUsd: antes de BYOK toda key era de HENKO.
      */
     tenantProviderCostUsd: { type: Number, default: 0, min: 0 },
+    costCurrency: { type: String, enum: ['USD'], default: 'USD' },
+    tenantProviderCostCurrency: { type: String, enum: ['USD'], default: 'USD' },
 
     // El precio vigente cuando ocurrió, congelado. Sin esto, recalcular un
     // costo histórico daría otro número apenas cambie el catálogo — y los
     // modelos 3.x ya tienen anunciada una duplicación para el 1/1/2027.
     priceInputPerMillion: { type: Number, default: null, min: 0 },
     priceOutputPerMillion: { type: Number, default: null, min: 0 },
+    priceCachedInputPerMillion: { type: Number, default: null, min: 0 },
+    serviceTier: { type: String, trim: true, default: null },
+    tierMultiplier: { type: Number, default: null, min: 0 },
 
     // true cuando el reparto entrada/salida se supuso a partir del total,
     // porque el proveedor solo devolvió totalTokenCount. Un costo repartido no
@@ -139,6 +144,28 @@ const aiConsumptionLedgerSchema = new mongoose.Schema(
     // true cuando el modelo no estaba en el catálogo y se aplicó la tarifa
     // conservadora. Marca una fila que conviene revisar, no un error.
     priceFallback: { type: Boolean, default: false },
+
+    // Detalle de herramientas externas: la unidad de amount es toolCalls y
+    // estos campos permiten reconstruir el gasto y su fuente desde el ledger.
+    tool: { type: String, trim: true, default: null, index: true },
+    toolFamily: { type: String, trim: true, default: null },
+    toolQuantity: { type: Number, default: null, min: 0 },
+    toolUnitCostUsd: { type: Number, default: null, min: 0 },
+    toolPricingUnit: { type: String, trim: true, default: null },
+    toolSourceUrl: { type: String, trim: true, default: null },
+    toolPricingFallback: { type: Boolean, default: false },
+    toolPricingEstimated: { type: Boolean, default: true },
+    pricingVersion: { type: String, trim: true, default: null },
+
+    // Proveedor y tarifa unitario de consumos que no se cobran por tokens.
+    provider: { type: String, trim: true, default: null, index: true },
+    unitLabel: { type: String, trim: true, default: null },
+    unitCostUsd: { type: Number, default: null, min: 0 },
+    unitPricingUnit: { type: String, trim: true, default: null },
+    unitPricingSource: { type: String, trim: true, default: null },
+    unitSourceUrl: { type: String, trim: true, default: null },
+    unitPricingEstimated: { type: Boolean, default: false },
+    unitPricingFallback: { type: Boolean, default: false },
   },
   {
     // Sin updatedAt: una fila del ledger no se modifica. Si algo estuvo mal, se

@@ -48,7 +48,8 @@ import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
 import {
   computeCostUsd,
   computeToolCostUsd,
-  computeImageCostUsd,
+  getImagePrice,
+  PRICING_VERSION,
   normalizeModelName,
 } from './aiModelPricing.js'
 import { getPeriodSpendByMetric, getTenantConsumptionBreakdown } from './aiSpendReportService.js'
@@ -375,6 +376,7 @@ const claimConsumption = async ({
   usage = null,
   // El desglose de una llamada a herramienta, cuando la fila es de eso.
   toolBreakdown = null,
+  unitBreakdown = null,
   costUsd = 0,
   // Lo que le cobró el proveedor a la key que se usó, sea de quien sea. Con
   // key de plataforma coincide con costUsd; con key del comercio, costUsd es
@@ -404,8 +406,22 @@ const claimConsumption = async ({
       thinkingTokens: usage?.thinkingTokens ?? null,
       // El desglose manda: es el que se topeó contra la entrada real.
       cachedInputTokens: breakdown?.cachedInputTokens ?? usage?.cachedInputTokens ?? null,
-      totalTokens: breakdown?.totalTokens ?? Math.max(0, Math.round(Number(amount) || 0)),
+      totalTokens:
+        breakdown?.totalTokens ??
+        (unitBreakdown || toolBreakdown ? 0 : Math.max(0, Math.round(Number(amount) || 0))),
+      usageUnit: toolBreakdown ? 'toolCalls' : unitBreakdown ? 'units' : 'tokens',
+      unitQuantity: unitBreakdown?.quantity ?? null,
+      unitLabel: unitBreakdown?.unitLabel ?? null,
+      unitCostUsd: unitBreakdown?.unitCostUsd ?? null,
+      unitCostTotalUsd: unitBreakdown?.costUsd ?? 0,
+      unitPricingUnit: unitBreakdown?.pricingUnit ?? null,
+      unitPricingSource: unitBreakdown?.source ?? null,
+      unitSourceUrl: unitBreakdown?.sourceUrl ?? null,
+      unitPricingEstimated: Boolean(unitBreakdown?.estimated),
+      unitPricingFallback: Boolean(unitBreakdown?.fallback),
       serviceTier: usage?.serviceTier ?? null,
+      costCurrency: 'USD',
+      tenantProviderCostCurrency: 'USD',
       costUsd: Number(costUsd) || 0,
       tenantProviderCostUsd:
         tenantProviderCostUsd === null ? Number(costUsd) || 0 : Number(tenantProviderCostUsd) || 0,
@@ -413,9 +429,11 @@ const claimConsumption = async ({
       plan,
       priceInputPerMillion: breakdown?.price?.input ?? null,
       priceOutputPerMillion: breakdown?.price?.output ?? null,
+      priceCachedInputPerMillion: breakdown?.price?.cachedInput ?? null,
       priceFallback: Boolean(breakdown?.price?.fallback),
       // Con qué catálogo se calculó. Ver PRICING_VERSION en aiModelPricing.js.
-      pricingVersion: breakdown?.pricingVersion ?? null,
+      pricingVersion:
+        breakdown?.pricingVersion ?? toolBreakdown?.pricingVersion ?? unitBreakdown?.pricingVersion ?? null,
       // El multiplicador que se APLICÓ. `serviceTier` de arriba es lo que
       // INFORMÓ el proveedor; esto es lo que el costeo hizo con esa
       // información, y son dos cosas distintas cuando el tier es desconocido.
@@ -430,6 +448,10 @@ const claimConsumption = async ({
       toolQuantity: toolBreakdown?.quantity ?? null,
       toolUnitCostUsd: toolBreakdown?.unitCostUsd ?? null,
       toolCostUsd: toolBreakdown?.costUsd ?? 0,
+      toolPricingUnit: toolBreakdown?.pricingUnit ?? null,
+      toolSourceUrl: toolBreakdown?.sourceUrl ?? null,
+      toolPricingFallback: Boolean(toolBreakdown?.fallback),
+      toolPricingEstimated: Boolean(toolBreakdown),
       ok,
       pricingFallback,
     })
@@ -611,6 +633,9 @@ const writeLedgerEntry = ({
   keySource = null,
   plan = null,
   breakdown = null,
+  toolBreakdown = null,
+  unitBreakdown = null,
+  provider = null,
   costUsd = 0,
   // Lo que le cobro el proveedor a la key usada. Con key de plataforma es el
   // mismo numero; con key del comercio, costUsd es cero y esto no.
@@ -626,7 +651,8 @@ const writeLedgerEntry = ({
     amount: Math.max(0, Math.round(Number(amount) || 0)),
     unit,
     operationId,
-    model,
+    model: model || unitBreakdown?.model || null,
+    provider: provider || unitBreakdown?.provider || null,
     keySource,
     plan,
     inputTokens: breakdown?.inputTokens ?? null,
@@ -635,10 +661,32 @@ const writeLedgerEntry = ({
     costUsd: Number(costUsd) || 0,
     tenantProviderCostUsd:
       tenantProviderCostUsd === null ? Number(costUsd) || 0 : Number(tenantProviderCostUsd) || 0,
+    costCurrency: 'USD',
+    tenantProviderCostCurrency: 'USD',
     priceInputPerMillion: breakdown?.price?.input ?? null,
     priceOutputPerMillion: breakdown?.price?.output ?? null,
+    priceCachedInputPerMillion: breakdown?.price?.cachedInput ?? null,
+    serviceTier: breakdown?.price?.tier ?? null,
+    tierMultiplier: breakdown?.price?.tierMultiplier ?? null,
     costEstimated: Boolean(breakdown?.estimated),
     priceFallback: Boolean(breakdown?.price?.fallback),
+    tool: toolBreakdown?.tool ?? null,
+    toolFamily: toolBreakdown?.family ?? null,
+    toolQuantity: toolBreakdown?.quantity ?? null,
+    toolUnitCostUsd: toolBreakdown?.unitCostUsd ?? null,
+    toolPricingUnit: toolBreakdown?.pricingUnit ?? null,
+    toolSourceUrl: toolBreakdown?.sourceUrl ?? null,
+    toolPricingFallback: Boolean(toolBreakdown?.fallback),
+    toolPricingEstimated: Boolean(toolBreakdown),
+    unitLabel: unitBreakdown?.unitLabel ?? null,
+    unitCostUsd: unitBreakdown?.unitCostUsd ?? null,
+    unitPricingUnit: unitBreakdown?.pricingUnit ?? null,
+    unitPricingSource: unitBreakdown?.source ?? null,
+    unitSourceUrl: unitBreakdown?.sourceUrl ?? null,
+    unitPricingEstimated: Boolean(unitBreakdown?.estimated),
+    unitPricingFallback: Boolean(unitBreakdown?.fallback),
+    pricingVersion:
+      breakdown?.pricingVersion ?? toolBreakdown?.pricingVersion ?? unitBreakdown?.pricingVersion ?? null,
   }).catch(error => {
     // 11000 es la violación del índice único de (tenant, operación, evento).
     // No es un fallo: es que este movimiento ya estaba registrado y alguien
@@ -1417,19 +1465,51 @@ const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) 
  * la cuota.
  *
  * La condición es una sola: que el precio sea una tarifa plana por unidad,
- * conocida antes de hacer el trabajo. Las ediciones de imagen la cumplen —
- * Replicate cobra por imagen, no por token, y el número sale de
- * AI_COST_USD_PER_IMAGE_EDIT. Las métricas de tokens NO la cumplen: su costo se
- * mide después, con el usageMetadata que devuelve Google, y cobrarlas por
- * adelantado sería inventar el número.
+ * conocida antes de hacer el trabajo. Las generaciones de imagen la cumplen:
+ * Gemini Image se tarifa por imagen y Cloudflare FLUX.1 schnell se estima con
+ * las neuronas de su configuración fija. Las métricas de tokens NO la cumplen:
+ * su costo se mide después, con el usageMetadata que devuelve el proveedor, y
+ * cobrarlas por adelantado sería inventar el número.
  *
  * Todo lo que devuelve algo mayor a cero acá queda contabilizado de forma
  * atómica con su cuota, y se revierte igual de atómicamente en el refund.
  */
-const getUpfrontCostUsd = (metric, amount, provider = null) =>
-  metric === AI_METRICS.IMAGE_EDITS
-    ? computeImageCostUsd(amount, new Date(), provider || undefined)
-    : 0
+const getUpfrontPricing = (
+  metric,
+  amount,
+  provider = null,
+  model = null,
+  at = new Date(),
+) => {
+  if (metric !== AI_METRICS.IMAGE_EDITS) return null
+
+  const price = getImagePrice(at, provider || undefined, model)
+  const amountValue = Number(amount)
+  const quantity =
+    Number.isFinite(amountValue) && amountValue > 0 ? Math.round(amountValue) : 0
+
+  if (!quantity || !Number.isFinite(Number(price.perImage)) || Number(price.perImage) < 0) {
+    return null
+  }
+
+  return {
+    provider: price.provider || provider || 'gemini',
+    model: price.model || null,
+    quantity,
+    unitLabel: 'image',
+    unitCostUsd: price.perImage,
+    costUsd: Number((quantity * price.perImage).toFixed(12)),
+    pricingUnit: price.pricingUnit || 'image',
+    source: price.source || 'catalog',
+    sourceUrl: price.sourceUrl || null,
+    estimated: true,
+    fallback: Boolean(price.fallback),
+    pricingVersion: PRICING_VERSION,
+  }
+}
+
+const getUpfrontCostUsd = (metric, amount, provider = null, model = null, at = new Date()) =>
+  getUpfrontPricing(metric, amount, provider, model, at)?.costUsd ?? 0
 
 /**
  * Lo que REALMENTE se cobró por esta operación, leído del libro.
@@ -1464,32 +1544,78 @@ const resolveUpfrontCostUsd = async ({
   amount,
   provider = null,
 }) => {
-  const recalculado = getUpfrontCostUsd(metric, amount, provider)
-
   // Solo imageEdits cobra por adelantado. Para el resto no hay nada que leer.
-  if (!(recalculado > 0) || !operationId) return recalculado
+  if (metric !== AI_METRICS.IMAGE_EDITS || !operationId) {
+    return getUpfrontCostUsd(metric, amount, provider)
+  }
+
+  const prefijo = `^${escapeRegex(String(operationId))}(?::|$)`
 
   try {
-    const filas = await AiConsumptionLedger.find({
+    // AiProviderCall es el respaldo durable y conserva el precio aplicado,
+    // proveedor/modelo efectivos y hasta un costo explícito de USD 0. No filtrar
+    // por costUsd > 0: el cero también es una liquidación válida.
+    const calls = await AiProviderCall.find({
+      tenantId,
+      period,
+      metric,
+      usageUnit: 'units',
+      $or: [
+        { operationId },
+        { operationId: { $regex: prefijo } },
+      ],
+    })
+      .select('costUsd unitCostTotalUsd usageUnit')
+      .lean()
+
+    if (calls.length) {
+      return calls.reduce(
+        (total, call) => total + Number(call.unitCostTotalUsd ?? call.costUsd ?? 0),
+        0,
+      )
+    }
+
+    // Compatibilidad con operaciones históricas anteriores al registro durable
+    // de llamadas de imagen. También incluye costos cero explícitos.
+    const ledgerRows = await AiConsumptionLedger.find({
       tenantId,
       period,
       metric,
       event: { $in: [LEDGER_EVENT.CONSUMED, LEDGER_EVENT.RESERVED] },
-      costUsd: { $gt: 0 },
-      $or: [{ operationId }, { operationId: { $regex: `^${escapeRegex(String(operationId))}:` } }],
+      unit: 'units',
+      $or: [{ operationId }, { operationId: { $regex: prefijo } }],
     })
       .select('costUsd')
       .lean()
 
-    const congelado = filas.reduce((suma, f) => suma + Number(f.costUsd || 0), 0)
+    if (ledgerRows.length) {
+      return ledgerRows.reduce((total, row) => total + Number(row.costUsd || 0), 0)
+    }
 
-    return congelado > 0 ? congelado : recalculado
+    // Último recurso para instalaciones históricas que no tienen ni
+    // AiProviderCall ni fila del ledger disponible.
+    const operation = await AiOperation.findOne({ tenantId, operationId })
+      .select('requestedModel createdAt')
+      .setOptions({ tenantId })
+      .lean()
+
+    return getUpfrontCostUsd(
+      metric,
+      amount,
+      provider,
+      operation?.requestedModel || null,
+      operation?.createdAt || new Date(),
+    )
   } catch (error) {
-    logger.warn('[AI BUDGET] No se pudo leer el costo congelado, se recalcula', {
+    logger.error('[AI BUDGET] No se pudo leer el costo congelado de la imagen', {
+      tenantId: String(tenantId),
       operationId,
       error: error.message,
     })
-    return recalculado
+    // Fallar cerrado en el importe de devolución: inventar el precio actual
+    // podría devolver plata no cobrada. El reconciliador puede recuperar el
+    // dato desde AiProviderCall cuando Mongo vuelva a estar disponible.
+    throw error
   }
 }
 
@@ -1752,6 +1878,9 @@ export const reserveAiBudget = async ({
   if (!id) throw new Error('reserveAiBudget requiere tenantId')
 
   const aiProfile = profile || (await loadTenantAiProfile(id))
+  // La función que paga puede ser distinta del origen de la key de Gemini
+  // usada por otra etapa. imageAi, por ejemplo, se factura siempre a HENKO.
+  const billingKeySource = forcePlatformBilling ? KEY_SOURCE.PLATFORM : aiProfile.keySource
   const subscription = getSubscriptionState(aiProfile)
 
   // Lo que el DUEÑO DE LA PLATAFORMA decidió sobre este comercio. Se lee una
@@ -1764,7 +1893,7 @@ export const reserveAiBudget = async ({
     resolveEffectiveLimit({
       plan: aiProfile.plan,
       metric: normalizedMetric,
-      keySource: aiProfile.keySource,
+      keySource: billingKeySource,
       tenantShare: tenantPolicy.share,
     }),
     limitOverride,
@@ -1781,7 +1910,7 @@ export const reserveAiBudget = async ({
     })
   }
 
-  if (aiProfile.keySource === KEY_SOURCE.NONE) {
+  if (billingKeySource === KEY_SOURCE.NONE) {
     return buildDeniedResult({
       metric: normalizedMetric,
       limit,
@@ -1840,7 +1969,7 @@ export const reserveAiBudget = async ({
 
   // BYOK no consume presupuesto de infraestructura de HENKO. Conservamos el
   // registro de uso porque el panel necesita visibilidad del consumo del tenant.
-  if (aiProfile.keySource === KEY_SOURCE.TENANT && !forcePlatformBilling) {
+  if (billingKeySource === KEY_SOURCE.TENANT) {
     await recordAiConsumption({
       tenantId: id,
       metric: normalizedMetric,
@@ -1921,7 +2050,7 @@ export const reserveAiBudget = async ({
         resolveEffectiveLimit({
           plan: aiProfile.plan,
           metric: guardMetric,
-          keySource: aiProfile.keySource,
+          keySource: billingKeySource,
           // La misma fracción que la métrica principal. Sin esto, acotar a un
           // comercio le apretaría los tokens que reserva y no los que gasta
           // como guarda — o sea, la mitad del freno.
@@ -1932,8 +2061,16 @@ export const reserveAiBudget = async ({
     }))
     .filter(guard => guard.limit !== UNLIMITED)
 
-  // El precio por imagen depende de quién la genera: ver IMAGE_CATALOG.
-  const upfrontCostUsd = getUpfrontCostUsd(normalizedMetric, reservationAmount, provider)
+  // El precio por imagen depende del proveedor y queda congelado en esta
+  // operación; el mismo breakdown alimenta la reserva y el libro.
+  const upfrontBreakdown = getUpfrontPricing(
+    normalizedMetric,
+    reservationAmount,
+    provider,
+    requestedModel,
+  )
+  const upfrontKnown = Boolean(upfrontBreakdown)
+  const upfrontCostUsd = upfrontBreakdown?.costUsd ?? 0
 
   // LA RESERVA FINANCIERA, antes que nada.
   //
@@ -1949,7 +2086,7 @@ export const reserveAiBudget = async ({
   // Una edición de imagen no se estima: su tarifa es plana y ya se conoce acá,
   // así que se compromete el número exacto.
   const usdBudget = getPlatformMonthlyUsdBudget()
-  const estimateUsd = upfrontCostUsd > 0 ? upfrontCostUsd : getEstimatedCostUsd(normalizedMetric)
+  const estimateUsd = upfrontKnown ? upfrontCostUsd : getEstimatedCostUsd(normalizedMetric)
 
   const reservedUsd = await reservePlatformCost({
     period,
@@ -2162,25 +2299,30 @@ export const reserveAiBudget = async ({
     // 'reserved' dejaría el gasto de imágenes fuera del reporte, que suma
     // 'consumed'; y dejaría abierta la pregunta "¿esta reserva llegó a
     // consumirse?" para un caso donde no puede no haberse consumido.
-    event: upfrontCostUsd > 0 ? LEDGER_EVENT.CONSUMED : LEDGER_EVENT.RESERVED,
+    event: upfrontKnown ? LEDGER_EVENT.CONSUMED : LEDGER_EVENT.RESERVED,
     operationId,
     metric: normalizedMetric,
     amount: reservationAmount,
     unit: TOKEN_METRICS.has(normalizedMetric) ? 'tokens' : 'units',
-    keySource: aiProfile.keySource,
+    keySource: billingKeySource,
     plan: aiProfile.plan,
     costUsd: upfrontCostUsd,
-    // `model` queda nulo: esto no lo cobra Google por token sino Replicate o
-    // Stability por imagen, así que no hay tarifa del catálogo que congelar. Y
-    // va marcado como estimado porque el costo por imagen es un supuesto
-    // configurable (AI_COST_USD_PER_IMAGE_EDIT), no una factura.
-    ...(upfrontCostUsd > 0 ? { breakdown: { estimated: true } } : {}),
+    provider: upfrontBreakdown?.provider ?? provider,
+    model: upfrontBreakdown?.model ?? null,
+    unitBreakdown: upfrontBreakdown,
+    // El costo por imagen es un precio de catálogo/configuración, no una
+    // factura del proveedor. Se conserva la fuente y el modelo ejecutado.
+    ...(upfrontKnown ? { breakdown: { estimated: true } } : {}),
   })
 
   // Cuando el costo se cobra por adelantado no hay medición posterior que
   // pueda cerrarla: reservar y consumir fueron el mismo acto, igual que en el
   // ledger, que ya la marca 'consumed' en este caso.
-  if (upfrontCostUsd > 0) {
+  if (upfrontKnown) {
+    // El costo ya pasó a estimatedCostUsd (también puede ser cero). Liberar la reserva evita contar
+    // la misma imagen dos veces (gasto liquidado + gasto todavía reservado).
+    await liquidarReserva({ tenantId: id, operationId, period })
+
     closeOperation({
       tenantId: id,
       operationId,
@@ -2566,6 +2708,7 @@ export const recordAiConsumption = async ({
     metric: normalizedMetric,
     amount: normalizedAmount,
     model: isTokenMetric ? usedModel : null,
+    provider,
     keySource: aiProfile.keySource,
     plan: aiProfile.plan,
     breakdown,
@@ -2655,9 +2798,10 @@ export const recordToolSpend = async ({
 
   const nuevo = await claimConsumption({
     tenantId: id,
-    // Congelados acá también: esta fila es el respaldo desde el que se
-    // reconstruye la del libro si aquella se pierde.
-    keySource: aiProfile.keySource,
+    // Tavily/Search se pagan con credenciales de HENKO, aun cuando Gemini
+    // haya corrido con BYOK. keySource identifica quién paga ESTA llamada.
+    keySource: KEY_SOURCE.PLATFORM,
+    tenantProviderCostUsd: costUsd,
     plan: aiProfile.plan,
     operationId,
     callId: llamada,
@@ -2666,7 +2810,9 @@ export const recordToolSpend = async ({
     amount: 0,
     provider,
     toolBreakdown,
-    // costUsd de la fila es el de TOKENS, y acá no hubo.
+    // costUsd conserva el costo de tokens. La herramienta permanece en
+    // toolCostUsd y tenantProviderCostUsd para que los agregados históricos
+    // que leen costUsd no sumen el mismo gasto dos veces.
     costUsd: 0,
   })
 
@@ -2704,14 +2850,171 @@ export const recordToolSpend = async ({
     operationId: ledgerKey(operationId, llamada),
     metric: normalizedMetric,
     amount: toolBreakdown.quantity,
-    keySource: aiProfile.keySource,
+    provider,
+    keySource: KEY_SOURCE.PLATFORM,
     plan: aiProfile.plan,
     costUsd,
+    tenantProviderCostUsd: costUsd,
+    toolBreakdown,
     // La unidad dice qué se está contando. 'tokens' y 'units' ya existían;
     // esta es la tercera clase y mezclarla con las otras dos haría que el
     // reporte sume créditos de Tavily con análisis de mercado.
     unit: 'toolCalls',
   })
+}
+
+/**
+ * Registra la llamada durable de un proveedor de generación de imágenes.
+ *
+ * La reserva de imageEdits ya liquidó la cuota y el costo estimado en el
+ * camino normal. Esta función agrega AiProviderCall como respaldo durable para
+ * reconstruir el ledger si su escritura asíncrona falla.
+ *
+ * En el único caso en que la imagen ya se generó pero la reserva del proveedor
+ * real fue denegada (fallback entre proveedores), forceCharge liquida el gasto
+ * ocurrido: no se puede deshacer una inferencia entregada al cliente.
+ */
+export const recordImageProviderCall = async ({
+  tenantId,
+  operationId,
+  provider,
+  model = null,
+  forceCharge = false,
+} = {}) => {
+  const id = clean(tenantId)
+  const operation = clean(operationId)
+  const actualProvider = clean(provider).toLowerCase()
+
+  if (!id || !operation || !actualProvider) return false
+
+  try {
+    const [operationRow, existingLedger, profile] = await Promise.all([
+      AiOperation.findOne({ tenantId: id, operationId: operation })
+        .setOptions({ tenantId: id })
+        .lean(),
+      AiConsumptionLedger.findOne({
+        tenantId: id,
+        operationId: operation,
+        metric: AI_METRICS.IMAGE_EDITS,
+        event: LEDGER_EVENT.CONSUMED,
+        unit: 'units',
+      })
+        .setOptions({ tenantId: id })
+        .lean(),
+      loadTenantAiProfile(id),
+    ])
+
+    const period = operationRow?.period || existingLedger?.period || getCurrentPeriod()
+    const quantity = Math.max(1, Math.round(Number(operationRow?.amount) || Number(existingLedger?.amount) || 1))
+
+    // Si la reserva ya escribió el libro, su tarifa congelada manda. No se
+    // vuelve a consultar el catálogo para una operación histórica.
+    const unitBreakdown = existingLedger
+      ? {
+          provider: existingLedger.provider || actualProvider,
+          model: existingLedger.model || model || null,
+          quantity,
+          unitLabel: existingLedger.unitLabel || 'image',
+          unitCostUsd:
+            existingLedger.unitCostUsd ??
+            Number(existingLedger.costUsd || 0) / quantity,
+          costUsd: Number(existingLedger.costUsd || 0),
+          pricingUnit: existingLedger.unitPricingUnit || 'image',
+          source: existingLedger.unitPricingSource || 'legacy_ledger',
+          sourceUrl: existingLedger.unitSourceUrl || null,
+          estimated: existingLedger.unitPricingEstimated ?? true,
+          fallback: Boolean(existingLedger.unitPricingFallback),
+          pricingVersion: existingLedger.pricingVersion || null,
+        }
+      : getUpfrontPricing(AI_METRICS.IMAGE_EDITS, quantity, actualProvider, model)
+
+    if (!unitBreakdown || !Number.isFinite(Number(unitBreakdown.costUsd)) || unitBreakdown.costUsd < 0) {
+      logger.error('[AI IMAGE ACCOUNTING] No hay tarifa válida para registrar la generación', {
+        tenantId: id,
+        operationId: operation,
+        provider: actualProvider,
+      })
+      return false
+    }
+
+    const costUsd = Number(unitBreakdown.costUsd)
+    const callRegistered = await claimConsumption({
+      tenantId: id,
+      operationId: operation,
+      callId: CALL_ID.MAIN,
+      period,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: quantity,
+      provider: actualProvider,
+      requestedModel: unitBreakdown.model,
+      actualModel: unitBreakdown.model,
+      unitBreakdown,
+      costUsd,
+      tenantProviderCostUsd: costUsd,
+      keySource: KEY_SOURCE.PLATFORM,
+      plan: operationRow?.plan || profile?.plan || 'starter',
+    })
+
+    // El índice único de AiProviderCall ganó la carrera: esta imagen ya quedó
+    // registrada. No se tocan contadores ni el ledger por segunda vez.
+    if (!callRegistered) return false
+
+    const mustCharge = forceCharge && !existingLedger
+
+    if (mustCharge) {
+      // La reserva del proveedor real fue denegada DESPUÉS de generar la
+      // imagen. El gasto ocurrió igualmente: contabilizarlo sin volver a
+      // consultar el presupuesto sería mentir sobre el costo real.
+      await ensureUsageDocument({ tenantId: id, period })
+      await AiUsage.updateOne(
+        { tenantId: id, period },
+        {
+          $inc: {
+            [counterPath(AI_METRICS.IMAGE_EDITS)]: quantity,
+            ...(costUsd > 0 ? { estimatedCostUsd: costUsd } : {}),
+          },
+          $set: { lastActivityAt: new Date() },
+        },
+      ).setOptions({ tenantId: id })
+
+      if (costUsd > 0) {
+        await registerPlatformConsumption({ tokens: 0, costUsd, period })
+      }
+
+      // La llamada durable ya existe; el ledger puede reponerse desde ella.
+      // La escritura habitual sigue sin bloquear la respuesta del comercio.
+      writeLedgerEntry({
+        tenantId: id,
+        period,
+        event: LEDGER_EVENT.CONSUMED,
+        operationId: operation,
+        metric: AI_METRICS.IMAGE_EDITS,
+        amount: quantity,
+        unit: 'units',
+        model: unitBreakdown.model,
+        provider: actualProvider,
+        keySource: KEY_SOURCE.PLATFORM,
+        plan: operationRow?.plan || profile?.plan || 'starter',
+        costUsd,
+        tenantProviderCostUsd: costUsd,
+        unitBreakdown,
+      })
+    }
+
+    return true
+  } catch (error) {
+    // La imagen ya está generada. Un fallo de registro no debe convertir una
+    // respuesta entregable en un 500; AiProviderCall/ledger dejan trazas y la
+    // auditoría operativa debe alertar para reintento.
+    logger.error('[AI IMAGE ACCOUNTING] No se pudo registrar la llamada de imagen', {
+      tenantId: id,
+      operationId: operation,
+      provider: actualProvider,
+      forceCharge,
+      error: error.message,
+    })
+    return false
+  }
 }
 
 export const recordTokenSpend = async ({
@@ -2878,6 +3181,7 @@ export const recordTokenSpend = async ({
     amount: breakdown.totalTokens,
     unit: 'tokens',
     model: breakdown.price.model || model,
+    provider,
     keySource: aiProfile.keySource,
     plan: aiProfile.plan,
     breakdown,
