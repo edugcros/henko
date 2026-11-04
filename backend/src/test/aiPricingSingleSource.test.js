@@ -373,7 +373,7 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
       totalTokens: 910,
     })
 
-    expect(Number((una.costUsd * 2).toFixed(6))).toBeCloseTo(0.00646, 6)
+    expect(una.costUsd * 2).toBeCloseTo(0.006459, 12)
   })
 
   test('el costo sube lo que el razonamiento vale', () => {
@@ -533,10 +533,9 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     })
 
     expect(r.cachedInputTokens).toBe(100)
-    // El costo viaja redondeado a 6 decimales, así que la expectativa se
-    // redondea igual en vez de pedirle al test una precisión que la función no
-    // promete.
-    expect(r.costUsd).toBe(Number(((100 * 0.025 + 10 * 1.5) / 1e6).toFixed(6)))
+    // Se conserva precisión sub-microdólar por llamada; el redondeo se hace
+    // después de agregar el período, no en cada operación.
+    expect(r.costUsd).toBeCloseTo((100 * 0.025 + 10 * 1.5) / 1e6, 12)
     expect(r.costUsd).toBeGreaterThan(0)
   })
 
@@ -649,7 +648,7 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     expect(r.inputTokens).toBe(13)
     expect(r.outputTokens).toBe(0)
     expect(r.assumedRatio).toBeNull()
-    expect(r.costUsd).toBe(Number(((13 * 0.75) / 1e6).toFixed(6)))
+    expect(r.costUsd).toBeCloseTo((13 * 0.75) / 1e6, 12)
   })
 
   test('la firma que dejo en produccion: 8581 repartidos 80/20', () => {
@@ -796,8 +795,8 @@ describe('pensar es salida, y la salida cuesta 5x', () => {
     // test se escribio antes de que existiera la cascada por modelo y el
     // cambio de numero es la prueba de que la cascada esta actuando.
     expect(conLoMedido.assumedRatio).toEqual({ ratio: 0.987, source: 'metric+model' })
-    // Redondeado a 6 decimales, que es lo que la funcion promete.
-    expect(conLoMedido.costUsd).toBe(Number(((9870 * 0.25 + 130 * 1.5) / 1e6).toFixed(6)))
+    // La función conserva precisión sub-microdólar hasta que se agregue el período.
+    expect(conLoMedido.costUsd).toBeCloseTo((9870 * 0.25 + 130 * 1.5) / 1e6, 12)
 
     // 0,005 contra 0,00266. Y sobrestimar corta el disyuntor antes de tiempo.
     expect(conElViejo.costUsd / conLoMedido.costUsd).toBeGreaterThan(1.8)
@@ -903,21 +902,31 @@ describe('imágenes · cada proveedor con su tarifa', () => {
 
   test('Cloudflare cuesta lo que cuesta, no la tarifa de Gemini', () => {
     delete process.env.AI_COST_USD_PER_IMAGE_EDIT
-    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBe(0.00064)
+    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBeCloseTo(0.0006336, 12)
     expect(getImagePrice(new Date(), 'gemini').perImage).toBe(0.0336)
-    expect(computeImageCostUsd(1490, new Date(), 'cloudflare')).toBeCloseTo(0.9536, 6)
+    expect(computeImageCostUsd(1490, new Date(), 'cloudflare')).toBeCloseTo(0.944064, 9)
   })
 
   test('el override es la estimación de Gemini y no pisa a Cloudflare', () => {
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
-    expect(getImagePrice(new Date(), 'gemini')).toEqual({ perImage: 0.05, source: 'env' })
-    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBe(0.00064)
+    expect(getImagePrice(new Date(), 'gemini')).toEqual(
+      expect.objectContaining({
+        perImage: 0.05,
+        source: 'env',
+        provider: 'gemini',
+        model: 'gemini-3.1-flash-lite-image',
+        estimated: true,
+        fallback: false,
+      }),
+    )
+    expect(getImagePrice(new Date(), 'cloudflare').perImage).toBeCloseTo(0.0006336, 12)
   })
 
   test('un proveedor sin tarifa se costea como el más caro, nunca como gratis', () => {
     delete process.env.AI_COST_USD_PER_IMAGE_EDIT
-    expect(getImagePrice(new Date(), 'replicate').perImage).toBe(0.0336)
-    expect(getImagePrice(new Date(), null).perImage).toBe(0.0336)
+    expect(getImagePrice(new Date(), 'replicate').perImage).toBe(0.067)
+    expect(getImagePrice(new Date(), 'replicate').fallback).toBe(true)
+    expect(getImagePrice(new Date(), null).perImage).toBe(0.067)
   })
 })
 
