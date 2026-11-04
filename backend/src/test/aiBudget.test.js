@@ -1448,8 +1448,10 @@ describe('aiBudgetService · recordTokenSpend', () => {
     expect(row.unit).toBe('units')
     expect(row.amount).toBe(3)
     expect(row.costUsd).toBeGreaterThan(0)
-    // No lo cobra Google por token: no hay tarifa del catálogo que congelar.
-    expect(row.model).toBeNull()
+    // Se congela el modelo real de imagen y la fuente de su tarifa unitaria.
+    expect(row.model).toBe('gemini-3.1-flash-lite-image')
+    expect(row.provider).toBe('gemini')
+    expect(row.unitPricingSource).toBe('catalog')
     expect(row.costEstimated).toBe(true)
   })
 
