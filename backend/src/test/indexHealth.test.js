@@ -199,6 +199,57 @@ describe('índice del SKU de productos', () => {
     ).rejects.toMatchObject({ code: 11000 })
   })
 
+  test('retiene el SKU legacy y reporta el reemplazo faltante sin eliminar índices', async () => {
+    // Simula exactamente el estado de producción: legacy presente, parcial
+    // nuevo todavía ausente.
+    await Product.collection.dropIndex(SKU_INDEX_NAME)
+    await Product.collection.createIndex(
+      { tenantId: 1, sku: 1 },
+      { name: LEGACY_SKU_INDEX_NAME, unique: true, sparse: true },
+    )
+
+    try {
+      const { missing, retainedLegacy, drift } = await findMissingIndexes()
+      const legacy = retainedLegacy.find(
+        index => index.model === 'Product' && index.name === LEGACY_SKU_INDEX_NAME,
+      )
+      const productMissing = missing.find(item => item.model === 'Product')
+      const replacement = productMissing?.indexes.find(index => index.name === SKU_INDEX_NAME)
+
+      expect(legacy).toMatchObject({
+        model: 'Product',
+        collection: Product.collection.collectionName,
+        name: LEGACY_SKU_INDEX_NAME,
+        unique: true,
+        sparse: true,
+        retained: true,
+        actionTaken: 'none',
+        replacement: {
+          name: SKU_INDEX_NAME,
+          keys: { tenantId: 1, sku: 1 },
+        },
+        migration: 'npm run migrate:sku-index:prod:apply',
+      })
+      expect(replacement).toMatchObject({
+        name: SKU_INDEX_NAME,
+        keys: { tenantId: 1, sku: 1 },
+        unique: true,
+        partial: { sku: { $type: 'string' } },
+        blockedReason: null,
+      })
+      expect(drift.some(item => item.model === 'Product')).toBe(false)
+
+      // La comprobación es de solo lectura: el legacy sigue en MongoDB y el
+      // índice nuevo aún no fue creado por el auditor.
+      const indexes = await Product.collection.listIndexes().toArray()
+      expect(indexes.some(index => index.name === LEGACY_SKU_INDEX_NAME)).toBe(true)
+      expect(indexes.some(index => index.name === SKU_INDEX_NAME)).toBe(false)
+    } finally {
+      await Product.collection.dropIndex(LEGACY_SKU_INDEX_NAME).catch(() => undefined)
+      await Product.syncIndexes()
+    }
+  })
+
   describe('migración del índice viejo', () => {
     let coleccion
 
@@ -237,6 +288,13 @@ describe('índice del SKU de productos', () => {
       })
     })
 
+    test('si no existe ni el legacy ni el reemplazo, no declara la migración completada', async () => {
+      await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
+        code: 'MISSING_REPLACEMENT_INDEX',
+      })
+      expect(await nombres()).toEqual(['_id_'])
+    })
+
     test('si el nuevo ya existe (lo creó ensure:indexes), solo borra el viejo', async () => {
       await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
       await coleccion.createIndex(
@@ -273,6 +331,15 @@ describe('índice del SKU de productos', () => {
 
     test('si el viejo no es el esperado, frena sin tocar nada', async () => {
       await coleccion.createIndex({ tenantId: 1, sku: 1 }, { sparse: true })
+
+      await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
+        code: 'UNEXPECTED_LEGACY_INDEX',
+      })
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
+    })
+
+    test('si el legacy no es sparse, no lo elimina aunque sea unique', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true })
 
       await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
         code: 'UNEXPECTED_LEGACY_INDEX',

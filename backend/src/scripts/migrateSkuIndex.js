@@ -55,6 +55,7 @@ const isExpectedReplacement = index =>
   Boolean(index) &&
   isSkuKey(index.key) &&
   index.unique === true &&
+  index.sparse !== true &&
   JSON.stringify(index.partialFilterExpression) === JSON.stringify({ sku: { $type: 'string' } })
 
 const unexpectedReplacementError = () => {
@@ -78,14 +79,29 @@ export const migrateSkuIndex = async ({ collection, apply = false }) => {
   const replacement = indexes.find(index => index.name === SKU_INDEX_NAME)
 
   if (!legacy) {
+    if (!replacement) {
+      const error = new Error(
+        `No existe el índice legacy ni el reemplazo "${SKU_INDEX_NAME}". No se declaró la migración como completada y no se tocó nada.`,
+      )
+      error.code = 'MISSING_REPLACEMENT_INDEX'
+      throw error
+    }
+
+    if (!isExpectedReplacement(replacement)) throw unexpectedReplacementError()
+
     return { action: 'nothing', createdReplacement: false, droppedLegacy: false }
   }
 
   // Solo se borra el índice que este script conoce. Si alguien lo cambió a
   // mano, mejor frenar que borrar algo que no se entiende.
-  if (!isSkuKey(legacy.key) || !legacy.unique || legacy.partialFilterExpression) {
+  if (
+    !isSkuKey(legacy.key) ||
+    legacy.unique !== true ||
+    legacy.sparse !== true ||
+    legacy.partialFilterExpression
+  ) {
     const error = new Error(
-      `El índice "${LEGACY_SKU_INDEX_NAME}" no es el esperado (único y sin filtro sobre tenantId+sku). No se tocó nada.`,
+      `El índice "${LEGACY_SKU_INDEX_NAME}" no es el esperado (único, sparse y sin filtro sobre tenantId+sku). No se tocó nada.`,
     )
     error.code = 'UNEXPECTED_LEGACY_INDEX'
     throw error
