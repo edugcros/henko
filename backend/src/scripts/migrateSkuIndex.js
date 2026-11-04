@@ -83,9 +83,14 @@ export const migrateSkuIndex = async ({ collection, apply = false }) => {
 
   // Solo se borra el índice que este script conoce. Si alguien lo cambió a
   // mano, mejor frenar que borrar algo que no se entiende.
-  if (!isSkuKey(legacy.key) || !legacy.unique || legacy.partialFilterExpression) {
+  if (
+    !isSkuKey(legacy.key) ||
+    legacy.unique !== true ||
+    legacy.sparse !== true ||
+    legacy.partialFilterExpression
+  ) {
     const error = new Error(
-      `El índice "${LEGACY_SKU_INDEX_NAME}" no es el esperado (único y sin filtro sobre tenantId+sku). No se tocó nada.`,
+      `El índice "${LEGACY_SKU_INDEX_NAME}" no es el esperado (único, sparse y sin filtro sobre tenantId+sku). No se tocó nada.`,
     )
     error.code = 'UNEXPECTED_LEGACY_INDEX'
     throw error
