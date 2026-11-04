@@ -199,17 +199,22 @@ describe('índice del SKU de productos', () => {
     ).rejects.toMatchObject({ code: 11000 })
   })
 
-  test('el índice SKU legacy se informa como retenido y nunca como drop automático', async () => {
+  test('retiene el SKU legacy y reporta el reemplazo faltante sin eliminar índices', async () => {
+    // Simula exactamente el estado de producción: legacy presente, parcial
+    // nuevo todavía ausente.
+    await Product.collection.dropIndex(SKU_INDEX_NAME)
     await Product.collection.createIndex(
       { tenantId: 1, sku: 1 },
       { name: LEGACY_SKU_INDEX_NAME, unique: true, sparse: true },
     )
 
     try {
-      const { retainedLegacy, drift } = await findMissingIndexes()
+      const { missing, retainedLegacy, drift } = await findMissingIndexes()
       const legacy = retainedLegacy.find(
         index => index.model === 'Product' && index.name === LEGACY_SKU_INDEX_NAME,
       )
+      const productMissing = missing.find(item => item.model === 'Product')
+      const replacement = productMissing?.indexes.find(index => index.name === SKU_INDEX_NAME)
 
       expect(legacy).toMatchObject({
         model: 'Product',
@@ -225,13 +230,23 @@ describe('índice del SKU de productos', () => {
         },
         migration: 'npm run migrate:sku-index:prod:apply',
       })
+      expect(replacement).toMatchObject({
+        name: SKU_INDEX_NAME,
+        keys: { tenantId: 1, sku: 1 },
+        unique: true,
+        partial: { sku: { $type: 'string' } },
+        blockedReason: null,
+      })
       expect(drift.some(item => item.model === 'Product')).toBe(false)
 
-      // La comprobación es de solo lectura: el índice físico sigue existiendo.
+      // La comprobación es de solo lectura: el legacy sigue en MongoDB y el
+      // índice nuevo aún no fue creado por el auditor.
       const indexes = await Product.collection.listIndexes().toArray()
       expect(indexes.some(index => index.name === LEGACY_SKU_INDEX_NAME)).toBe(true)
+      expect(indexes.some(index => index.name === SKU_INDEX_NAME)).toBe(false)
     } finally {
       await Product.collection.dropIndex(LEGACY_SKU_INDEX_NAME).catch(() => undefined)
+      await Product.syncIndexes()
     }
   })
 
