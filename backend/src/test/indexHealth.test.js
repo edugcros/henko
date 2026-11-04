@@ -331,6 +331,15 @@ describe('índice del SKU de productos', () => {
       expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
     })
 
+    test('si el legacy no es sparse, no lo elimina aunque sea unique', async () => {
+      await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true })
+
+      await expect(migrateSkuIndex({ collection: coleccion, apply: true })).rejects.toMatchObject({
+        code: 'UNEXPECTED_LEGACY_INDEX',
+      })
+      expect(await nombres()).toEqual(['_id_', LEGACY_SKU_INDEX_NAME])
+    })
+
     test('si no puede crear el nuevo, el viejo queda', async () => {
       await coleccion.createIndex({ tenantId: 1, sku: 1 }, { unique: true, sparse: true })
       // Que falle la creación (en producción, por ejemplo, un corte de red).
