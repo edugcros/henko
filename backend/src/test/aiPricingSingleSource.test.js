@@ -924,9 +924,18 @@ describe('imágenes · cada proveedor con su tarifa', () => {
 
   test('un proveedor sin tarifa se costea como el más caro, nunca como gratis', () => {
     delete process.env.AI_COST_USD_PER_IMAGE_EDIT
-    expect(getImagePrice(new Date(), 'replicate').perImage).toBe(0.067)
-    expect(getImagePrice(new Date(), 'replicate').fallback).toBe(true)
-    expect(getImagePrice(new Date(), null).perImage).toBe(0.067)
+    const desconocido = getImagePrice(new Date(), 'replicate')
+    const predeterminado = getImagePrice(new Date(), null)
+
+    // Un proveedor desconocido toma el mayor precio conocido y lo marca como
+    // fallback. null, en cambio, significa el proveedor/modelo predeterminado
+    // configurado (Gemini Flash Lite Image), que tiene tarifa propia.
+    expect(desconocido.perImage).toBe(0.067)
+    expect(desconocido.fallback).toBe(true)
+    expect(predeterminado.provider).toBe('gemini')
+    expect(predeterminado.model).toBe('gemini-3.1-flash-lite-image')
+    expect(predeterminado.perImage).toBe(0.0336)
+    expect(predeterminado.fallback).toBe(false)
   })
 })
 
