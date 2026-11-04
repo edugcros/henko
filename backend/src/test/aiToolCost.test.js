@@ -171,7 +171,7 @@ describe('registrar el consumo de una herramienta', () => {
   })
 
   test('un consumo BYOK de Gemini sigue cargando Tavily a la plataforma', async () => {
-    const period = '2033-04'
+    const period = '2033-08'
     const operationId = 'byok-con-tavily'
 
     await recordToolSpend({
