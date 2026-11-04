@@ -272,11 +272,11 @@ const aiProviderCallSchema = new mongoose.Schema(
      * tokens y no aparecía en ningún lado. Son 4,00 créditos por análisis,
      * iguales en las tres primeras corridas con registro.
      *
-     * costUsd conserva el costo total que HENKO soporta por esta llamada;
-     * toolCostUsd conserva el importe específico de la herramienta. Para una
-     * llamada de herramienta ambos coinciden, pero mantener el desglose permite
-     * comparar tokens frente a herramientas sin alterar los agregados de
-     * plataforma. tenantProviderCostUsd conserva lo cobrado a la key usada.
+     * costUsd conserva exclusivamente el costo de tokens, como en el
+     * contrato histórico de AiProviderCall. toolCostUsd registra por separado
+     * el costo de la herramienta y tenantProviderCostUsd quién soporta el gasto.
+     * Los agregados deben sumar costUsd + toolCostUsd, nunca duplicar ambos
+     * conceptos en costUsd y en su desglose.
      */
     tool: { type: String, trim: true, default: null, index: true },
 
