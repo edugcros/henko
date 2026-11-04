@@ -94,6 +94,11 @@ beforeEach(async () => {
   await Tenant.collection.deleteMany({})
   await AiConsumptionLedger.collection.deleteMany({})
   await AiUsage.collection.deleteMany({})
+  // Cada escenario económico utiliza la tasa de entorno de este test; no debe
+  // heredar un override manual creado por la suite de procedencia del FX.
+  await PlatformAiSetting.collection.deleteMany({
+    setting: PLATFORM_AI_SETTINGS.USD_ARS_RATE,
+  })
 })
 
 describe('de dónde sale el costo de IA', () => {
@@ -121,6 +126,11 @@ describe('de dónde sale el costo de IA', () => {
     // USD 2 × 1.000 = $2.000 de costo, sobre un plan de $10.000.
     expect(fila.aiCostArs).toBe(2000)
     expect(fila.estimatedMarginArs).toBe(8000)
+    expect(reporte.totals.usdToArsRate).toBe(1000)
+    expect(reporte.totals.usdToArsBaseCurrency).toBe('USD')
+    expect(reporte.totals.usdToArsQuoteCurrency).toBe('ARS')
+    expect(reporte.totals.usdToArsRateSource).toBe('environment')
+    expect(reporte.totals.usdToArsRateVerified).toBe(false)
   })
 
   test('el consumo con key propia del comercio NO entra al margen', async () => {

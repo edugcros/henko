@@ -462,7 +462,7 @@ const generateBgGemini = async (prompt, aspectRatio = '1:1', timeoutMs = 90000) 
     bytes: buffer.length,
     aspectRatio: safeRatio,
   })
-  return buffer
+  return { buffer, model: configuredModel }
 }
 
 // ─── Generar fondo con Cloudflare Workers AI ───────────────
@@ -613,7 +613,7 @@ const generateBgCloudflare = async (prompt, timeoutMs = 60000) => {
   if (!buffer.length) throw fail('Cloudflare devolvió una imagen vacía.', 502)
 
   logger.info('Background generado con Cloudflare Workers AI', { model, bytes: buffer.length })
-  return buffer
+  return { buffer, model }
 }
 
 // ─── Cadena de proveedores y disponibilidad ─────────────────
@@ -736,14 +736,22 @@ const generateBg = async (
 
     const startedAt = Date.now()
     try {
-      const buffer = await provider.generate(
+      const generated = await provider.generate(
         prompt,
         aspectRatio,
         Math.min(provider.timeoutMs, remaining),
       )
+      // Los proveedores devuelven buffer + modelo ejecutado. Conservar el
+      // modelo real evita aplicar precio al alias por defecto si el deploy
+      // cambió GEMINI_IMAGE_MODEL o la configuración de Cloudflare.
+      const output = Buffer.isBuffer(generated)
+        ? { buffer: generated, model: null }
+        : generated
+      const actualModel =
+        output.model ||
+        (name === 'gemini' ? resolveImageModel() : cloudflareConfig().model)
       if (unavailableMarkedAt[name] <= startedAt) unavailableUntil[name] = 0
-      // Quién generó importa para cobrar: cada proveedor tiene su tarifa.
-      return { buffer, provider: name }
+      return { buffer: output.buffer, provider: name, model: actualModel }
     } catch (error) {
       lastError = error
       logger.warn('[IMAGE AI] El proveedor no generó el fondo, se prueba el siguiente', {
@@ -914,7 +922,7 @@ export const generateVariation = async (
 
   // El recorte va primero: es obligatorio y si falla evitamos generar un fondo inútil.
   const cutout = await cutoutOf(normalized)
-  const { buffer: background, provider } = await generateBg(
+  const { buffer: background, provider, model } = await generateBg(
     optimizedPrompt,
     canvas.replicateRatio,
     deadline,
@@ -940,7 +948,7 @@ export const generateVariation = async (
 
   logger.info('generateVariation OK', { outputBytes: buffer.length, provider })
 
-  return { buffer, contentType: 'image/png', provider }
+  return { buffer, contentType: 'image/png', provider, model }
 }
 
 /**

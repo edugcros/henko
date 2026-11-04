@@ -22,7 +22,13 @@
 //
 // Convención heredada de aiUsageService: 0 = ilimitado.
 
-import { getPlatformAiOverride, PLATFORM_AI_SETTINGS } from './platformAiSettingService.js'
+import logger from '../../../config/logger.js'
+import {
+  getPlatformAiOverride,
+  getPlatformAiSettingAt,
+  PLATFORM_AI_SETTINGS,
+} from './platformAiSettingService.js'
+import { getBcraUsdArsQuote } from './aiExchangeRateService.js'
 
 const clean = value => String(value || '').trim()
 
@@ -569,7 +575,115 @@ export const getUsdToArsRate = () => {
     return Math.max(1, override)
   }
 
-  return Math.max(1, readEnvNumber('USD_ARS_RATE') ?? 1530)
+  const envRate = readEnvNumber('USD_ARS_RATE')
+  return envRate !== null && envRate > 0 ? envRate : 1530
+}
+
+/**
+ * Cotización de USD a ARS con procedencia y fecha verificables.
+ *
+ * `asOf` permite reconstruir qué override del panel estaba vigente al cierre
+ * del período informado. Las variables de entorno no tienen historial; cuando
+ * son la fuente, la respuesta lo declara expresamente y no presenta el dato
+ * como una cotización histórica demostrada.
+ *
+ * La tasa sigue siendo pesos argentinos por un dólar estadounidense.
+ */
+export const getUsdToArsQuote = async ({ asOf = new Date() } = {}) => {
+  const cutoff = asOf instanceof Date ? asOf : new Date(asOf)
+  if (Number.isNaN(cutoff.getTime())) {
+    throw new TypeError('getUsdToArsQuote requiere una fecha válida')
+  }
+
+  // El historial puede no estar disponible durante una caída de Mongo. En
+  // ese caso no se rompe el reporte: se conserva la mejor tasa operativa
+  // disponible, pero se etiqueta como no verificada históricamente.
+  let setting = null
+  try {
+    setting = await getPlatformAiSettingAt(PLATFORM_AI_SETTINGS.USD_ARS_RATE, cutoff)
+  } catch {
+    const cachedOverride = getPlatformAiOverride(PLATFORM_AI_SETTINGS.USD_ARS_RATE)
+    if (cachedOverride !== null && Number.isFinite(cachedOverride) && cachedOverride > 0) {
+      return {
+        rate: cachedOverride,
+        baseCurrency: 'USD',
+        quoteCurrency: 'ARS',
+        source: 'platform_setting_cache',
+        sourceUrl: null,
+        rateType: 'cached_manual',
+        capturedAt: null,
+        changedBy: null,
+        reason: 'El historial no está disponible; se utiliza el override en caché.',
+        historical: false,
+        verified: false,
+      }
+    }
+  }
+
+  const configuredRate = Number(setting?.value)
+
+  if (setting && setting.value !== null && Number.isFinite(configuredRate) && configuredRate > 0) {
+    return {
+      rate: configuredRate,
+      baseCurrency: 'USD',
+      quoteCurrency: 'ARS',
+      source: 'platform_setting',
+      sourceUrl: null,
+      rateType: 'manual',
+      capturedAt: setting.createdAt,
+      changedBy: setting.changedByEmail,
+      reason: setting.reason,
+      // El panel deja trazabilidad del valor y de quién lo cambió, pero
+      // una cotización manual no queda verificada contra una fuente oficial.
+      historical: true,
+      verified: false,
+    }
+  }
+
+  const envRate = readEnvNumber('USD_ARS_RATE')
+  if (envRate !== null && envRate > 0) {
+    return {
+      rate: Math.max(1, envRate),
+      baseCurrency: 'USD',
+      quoteCurrency: 'ARS',
+      source: 'environment',
+      sourceUrl: null,
+      rateType: 'configured_unversioned',
+      capturedAt: null,
+      changedBy: null,
+      reason: null,
+      historical: false,
+      verified: false,
+    }
+  }
+
+  // Sin override manual ni variable heredada, se utiliza la cotización
+  // oficial de referencia A 3500 publicada por el BCRA (código REF).
+  try {
+    const bcraQuote = await getBcraUsdArsQuote({ asOf: cutoff })
+    if (bcraQuote?.rate > 0) return bcraQuote
+  } catch (error) {
+    // La API externa no debe dejar sin informe al administrador. Se conserva
+    // el fallback legado, pero la respuesta queda explícitamente no verificada.
+    logger.warn('[AI FX] No se pudo obtener la cotización del BCRA', {
+      asOf: cutoff.toISOString(),
+      error: error.message,
+    })
+  }
+
+  return {
+    rate: 1530,
+    baseCurrency: 'USD',
+    quoteCurrency: 'ARS',
+    source: 'legacy_fallback',
+    sourceUrl: null,
+    rateType: 'fallback',
+    capturedAt: null,
+    changedBy: null,
+    reason: 'No existe override, USD_ARS_RATE ni snapshot disponible del BCRA; se usa el fallback legado.',
+    historical: false,
+    verified: false,
+  }
 }
 //
 // A diferencia de la primera versión de esto (que quedaba en 0 porque no
@@ -907,6 +1021,7 @@ export default {
   getSubscriptionState,
   getPlanMonthlyPriceArs,
   getPlanCatalog,
+  getUsdToArsQuote,
   getPlatformMonthlyTokenBudget,
   getSharedKeyTenantCap,
   getPlatformMonthlyInfraCostUsd,

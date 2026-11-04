@@ -24,10 +24,17 @@ process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base6
 
 const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
+const { default: AiConsumptionLedger } = await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
-const { reserveAiBudget, refundAiBudget, recordTokenSpend, AI_METRICS, DENY_REASONS } =
-  await import('../services/ai/aiBudgetService.js')
+const {
+  reserveAiBudget,
+  refundAiBudget,
+  recordTokenSpend,
+  recordImageProviderCall,
+  AI_METRICS,
+  DENY_REASONS,
+} = await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 const { cacheDel } = await import('../utils/cache.js')
 
@@ -58,6 +65,7 @@ beforeAll(async () => {
   await mongoose.connect(mongod.getUri())
   await AiOperation.init()
   await AiProviderCall.init()
+  await AiConsumptionLedger.init()
 }, 180000)
 
 afterAll(async () => {
@@ -106,6 +114,95 @@ const reservar = operationId =>
     period: PERIODO_REAL,
     operationId,
   })
+
+describe('imágenes facturadas a la plataforma aunque Gemini use BYOK', () => {
+  test('clasifica el pagador como plataforma y libera la reserva al liquidar', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = '1'
+
+    const operationId = nuevaClave()
+    const resultado = await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 1,
+      profile: { ...PERFIL, keySource: 'tenant' },
+      period: PERIODO_REAL,
+      operationId,
+      provider: 'cloudflare',
+      forcePlatformBilling: true,
+    })
+
+    expect(resultado.allowed).toBe(true)
+
+    const costoEsperado = 0.0006336
+    const operacion = await esperarA(
+      () => AiOperation.findOne({ tenantId: TENANT, operationId }).setOptions({ tenantId: TENANT }).lean(),
+      row => row?.status === 'completed',
+    )
+    const [usoTenant, usoPlataforma] = await Promise.all([
+      AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL }).setOptions({ tenantId: TENANT }).lean(),
+      AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
+    ])
+
+    expect(operacion.status).toBe('completed')
+    expect(operacion.reservedCostUsd).toBe(0)
+    expect(operacion.reservedTenantCostUsd).toBe(0)
+
+    // El importe pasa a gasto liquidado y deja de figurar como reserva.
+    expect(usoTenant.estimatedCostUsd).toBeCloseTo(costoEsperado, 10)
+    expect(usoTenant.reservedCostUsd).toBe(0)
+    expect(usoPlataforma.estimatedCostUsd).toBeCloseTo(costoEsperado, 10)
+    expect(usoPlataforma.reservedCostUsd).toBe(0)
+
+    // AiProviderCall queda como respaldo durable para reconstruir la fila
+    // contable si la escritura asíncrona del ledger se pierde.
+    await recordImageProviderCall({
+      tenantId: TENANT,
+      operationId,
+      provider: 'cloudflare',
+    })
+
+    const llamadaDurable = await AiProviderCall.findOne({
+      tenantId: TENANT,
+      operationId,
+      callId: 'main',
+    })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(llamadaDurable.usageUnit).toBe('units')
+    expect(llamadaDurable.unitQuantity).toBe(1)
+    expect(llamadaDurable.unitLabel).toBe('image')
+    expect(llamadaDurable.unitCostTotalUsd).toBeCloseTo(costoEsperado, 10)
+    expect(llamadaDurable.costCurrency).toBe('USD')
+    expect(llamadaDurable.tenantProviderCostCurrency).toBe('USD')
+    expect(llamadaDurable.costUsd).toBeCloseTo(costoEsperado, 10)
+    expect(llamadaDurable.tenantProviderCostUsd).toBeCloseTo(costoEsperado, 10)
+    expect(llamadaDurable.provider).toBe('cloudflare')
+    expect(llamadaDurable.actualModel).toBe('@cf/black-forest-labs/flux-1-schnell')
+    expect(llamadaDurable.unitPricingSource).toBe('catalog')
+    expect(llamadaDurable.unitSourceUrl).toBe(
+      'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+    )
+
+    // Aunque el perfil del comercio es BYOK, el gasto de esta operación lo
+    // paga HENKO y debe figurar como platform en el libro.
+    const fila = await esperarA(
+      () =>
+        AiConsumptionLedger.findOne({
+          tenantId: TENANT,
+          period: PERIODO_REAL,
+          operationId,
+          event: 'consumed',
+        })
+          .setOptions({ tenantId: TENANT })
+          .lean(),
+      row => Boolean(row),
+    )
+    expect(fila.keySource).toBe('platform')
+    expect(fila.costUsd).toBeCloseTo(costoEsperado, 10)
+    expect(fila.unit).toBe('units')
+  })
+})
 
 describe('lo que hay hoy en producción no cambia', () => {
   test('sin el techo en dólares, manda el de tokens igual que siempre', async () => {

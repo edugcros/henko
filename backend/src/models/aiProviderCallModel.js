@@ -124,6 +124,11 @@ const aiProviderCallSchema = new mongoose.Schema(
      */
     serviceTier: { type: String, trim: true, default: null },
 
+    // La moneda de costUsd y tenantProviderCostUsd se declara explícitamente.
+    // El catálogo normaliza proveedores externos a USD antes de persistir.
+    costCurrency: { type: String, enum: ['USD'], default: 'USD' },
+    tenantProviderCostCurrency: { type: String, enum: ['USD'], default: 'USD' },
+
     /**
      * Lo que le cuesta a HENKO esta llamada. CERO cuando el comercio usó su
      * propia key: en ese caso le factura Google al comercio, no a nosotros.
@@ -189,12 +194,13 @@ const aiProviderCallSchema = new mongoose.Schema(
      */
     priceInputPerMillion: { type: Number, default: null, min: 0 },
     priceOutputPerMillion: { type: Number, default: null, min: 0 },
+    priceCachedInputPerMillion: { type: Number, default: null, min: 0 },
 
     /** true si el modelo no está en el catálogo y se cobró con la tarifa tope. */
     priceFallback: { type: Boolean, default: false },
 
     /**
-     * Qué catálogo produjo este costo. Ej.: 'google-gemini-2026-09+dcf9cbfa'.
+     * Qué catálogo produjo este costo. Ej.: 'henko-ai-pricing-2026-11+dcf9cbfa'.
      *
      * Las tarifas de arriba ya contestan "cuánto costó ESTA fila". Esto
      * contesta otra pregunta: "qué tabla estaba activa", que es lo que permite
@@ -266,9 +272,11 @@ const aiProviderCallSchema = new mongoose.Schema(
      * tokens y no aparecía en ningún lado. Son 4,00 créditos por análisis,
      * iguales en las tres primeras corridas con registro.
      *
-     * costUsd sigue siendo el costo de TOKENS. El total de la fila es la suma
-     * de los dos: cambiarle el significado a costUsd habría movido en silencio
-     * todos los agregados que ya lo leen.
+     * costUsd conserva el costo total que HENKO soporta por esta llamada;
+     * toolCostUsd conserva el importe específico de la herramienta. Para una
+     * llamada de herramienta ambos coinciden, pero mantener el desglose permite
+     * comparar tokens frente a herramientas sin alterar los agregados de
+     * plataforma. tenantProviderCostUsd conserva lo cobrado a la key usada.
      */
     tool: { type: String, trim: true, default: null, index: true },
 
@@ -292,6 +300,31 @@ const aiProviderCallSchema = new mongoose.Schema(
     toolQuantity: { type: Number, default: null, min: 0 },
     toolUnitCostUsd: { type: Number, default: null, min: 0 },
     toolCostUsd: { type: Number, default: 0, min: 0 },
+    toolPricingUnit: { type: String, trim: true, default: null },
+    toolSourceUrl: { type: String, trim: true, default: null },
+    toolPricingFallback: { type: Boolean, default: false },
+    // La cantidad de créditos/consultas se mide; el importe se estima con
+    // precio de lista hasta que exista conciliación de factura del proveedor.
+    toolPricingEstimated: { type: Boolean, default: true },
+
+    // Consumos por unidad no basados en tokens: imágenes y otros motores
+    // tarifados por ejecución. usageUnit permite reconstruirlos sin
+    // reinterpretar un registro de unidad como si fueran tokens.
+    usageUnit: {
+      type: String,
+      enum: ['tokens', 'toolCalls', 'units'],
+      default: 'tokens',
+      index: true,
+    },
+    unitQuantity: { type: Number, default: null, min: 0 },
+    unitLabel: { type: String, trim: true, default: null },
+    unitCostUsd: { type: Number, default: null, min: 0 },
+    unitCostTotalUsd: { type: Number, default: 0, min: 0 },
+    unitPricingUnit: { type: String, trim: true, default: null },
+    unitPricingSource: { type: String, trim: true, default: null },
+    unitSourceUrl: { type: String, trim: true, default: null },
+    unitPricingEstimated: { type: Boolean, default: false },
+    unitPricingFallback: { type: Boolean, default: false },
 
     /**
      * true cuando el costo se calculó con un modelo ADIVINADO.

@@ -20,9 +20,16 @@ jest.unstable_mockModule('../../config/logger.js', () => ({
 }))
 
 const mockOverride = jest.fn()
+const mockSettingAt = jest.fn()
+const mockBcraQuote = jest.fn()
+
+jest.unstable_mockModule('../services/ai/aiExchangeRateService.js', () => ({
+  getBcraUsdArsQuote: mockBcraQuote,
+}))
 
 jest.unstable_mockModule('../services/ai/platformAiSettingService.js', () => ({
   getPlatformAiOverride: mockOverride,
+  getPlatformAiSettingAt: mockSettingAt,
   PLATFORM_AI_SETTINGS: {
     MONTHLY_TOKEN_BUDGET: 'monthlyTokenBudget',
     PER_TENANT_SHARE: 'perTenantShare',
@@ -36,14 +43,21 @@ jest.unstable_mockModule('../services/ai/platformAiSettingService.js', () => ({
   },
 }))
 
-const { getPlanMonthlyPriceArs, getPlanPriceSource, getPlanCatalog, getUsdToArsRate } =
-  await import('../services/ai/aiPlanPolicy.js')
+const {
+  getPlanMonthlyPriceArs,
+  getPlanPriceSource,
+  getPlanCatalog,
+  getUsdToArsRate,
+  getUsdToArsQuote,
+} = await import('../services/ai/aiPlanPolicy.js')
 
 const CLAVES = ['PLAN_PRICE_ARS_STARTER', 'PLAN_PRICE_ARS_PRO', 'USD_ARS_RATE']
 
 beforeEach(() => {
   jest.clearAllMocks()
   mockOverride.mockReturnValue(null)
+  mockSettingAt.mockResolvedValue(null)
+  mockBcraQuote.mockResolvedValue(null)
   for (const clave of CLAVES) delete process.env[clave]
 })
 
@@ -208,9 +222,95 @@ describe('tipo de cambio · configurable sin deploy', () => {
     expect(getUsdToArsRate()).toBe(1200)
   })
 
+  test('una variable USD_ARS_RATE igual a cero no se transforma en ARS 1', () => {
+    process.env.USD_ARS_RATE = '0'
+
+    expect(getUsdToArsRate()).toBe(1530)
+  })
+
   test('un negativo tampoco', () => {
     mockOverride.mockImplementation(clave => (clave === 'usdArsRate' ? -500 : null))
 
     expect(getUsdToArsRate()).toBe(1530)
+  })
+
+  test('la cotización informa el override y su fecha histórica', async () => {
+    const createdAt = new Date('2026-10-15T12:00:00.000Z')
+    mockSettingAt.mockResolvedValue({
+      setting: 'usdArsRate',
+      value: 1775,
+      changedByEmail: 'finanzas@henko.test',
+      reason: 'Cierre mensual',
+      createdAt,
+    })
+
+    const quote = await getUsdToArsQuote({ asOf: new Date('2026-10-31T23:59:59.999Z') })
+
+    expect(quote).toEqual({
+      rate: 1775,
+      baseCurrency: 'USD',
+      quoteCurrency: 'ARS',
+      source: 'platform_setting',
+      sourceUrl: null,
+      rateType: 'manual',
+      capturedAt: createdAt,
+      changedBy: 'finanzas@henko.test',
+      reason: 'Cierre mensual',
+      historical: true,
+      verified: false,
+    })
+    expect(mockSettingAt).toHaveBeenCalledWith(
+      'usdArsRate',
+      new Date('2026-10-31T23:59:59.999Z'),
+    )
+  })
+
+  test('el origen por entorno queda marcado como no versionado', async () => {
+    process.env.USD_ARS_RATE = '1800'
+
+    const quote = await getUsdToArsQuote()
+
+    expect(quote.rate).toBe(1800)
+    expect(quote.source).toBe('environment')
+    expect(quote.verified).toBe(false)
+    expect(quote.historical).toBe(false)
+  })
+
+  test('usa BCRA REF como fuente automática cuando no hay override manual ni env', async () => {
+    mockBcraQuote.mockResolvedValue({
+      rate: 1515.8766,
+      baseCurrency: 'USD',
+      quoteCurrency: 'ARS',
+      source: 'bcra_api',
+      sourceCode: 'REF',
+      sourceUrl: 'https://api.bcra.gob.ar/estadisticascambiarias/v1.0/Cotizaciones/REF',
+      rateType: 'comunicacion_a_3500_reference',
+      effectiveDate: '2026-10-30',
+      capturedAt: new Date('2026-10-31T00:01:00.000Z'),
+      changedBy: null,
+      reason: 'Tipo de cambio de referencia BCRA, Comunicación A 3500 (mayorista).',
+      historical: true,
+      verified: true,
+    })
+
+    const quote = await getUsdToArsQuote({ asOf: new Date('2026-10-31T23:59:59.999Z') })
+
+    expect(quote.source).toBe('bcra_api')
+    expect(quote.sourceCode).toBe('REF')
+    expect(quote.rate).toBe(1515.8766)
+    expect(quote.rateType).toBe('comunicacion_a_3500_reference')
+    expect(quote.effectiveDate).toBe('2026-10-30')
+    expect(quote.verified).toBe(true)
+    expect(mockBcraQuote).toHaveBeenCalledWith({
+      asOf: new Date('2026-10-31T23:59:59.999Z'),
+    })
+  })
+
+  test('el fallback legado se identifica como no verificado', async () => {
+    const quote = await getUsdToArsQuote()
+
+    expect(quote.rate).toBe(1530)
+    expect(quote.source).toBe('legacy_fallback')
+    expect(quote.verified).toBe(false)
   })
 })

@@ -543,11 +543,13 @@ export const rebuildPlatformProjection = async ({ period, apply = false }) => {
 // plan. Agregar una tercera escritura al camino caliente para datos que ya
 // están sería pagar dos veces por lo mismo.
 //
-// QUÉ NO RECONSTRUYE
+// QUÉ RECONSTRUYE
 //
-// Solo filas de consumo de TOKENS, que es lo que una llamada al proveedor es.
-// Las reservas y las devoluciones no tienen llamada detrás: si falta una de
-// esas, no hay de dónde sacarla y este reconstructor no la inventa.
+// Reconstruye consumos con una llamada durable: tokens de modelos,
+// créditos/consultas de herramientas y unidades como imágenes generadas.
+// Las reservas y devoluciones no tienen una llamada al proveedor detrás: si
+// falta una de esas filas, no hay de dónde sacar un importe real y este
+// reconstructor no debe inventarlo.
 //
 // ES IDEMPOTENTE POR LA BASE, NO POR UNA COMPROBACIÓN
 //
@@ -624,7 +626,19 @@ export const backfillLedgerFromProviderCalls = async ({
       tenantId: String(ll.tenantId),
       operationId: claveDeLibro(ll.operationId, ll.callId),
       metric: ll.metric,
-      costUsd: round(Number(ll.costUsd || 0), 6),
+      unit: ll.tool || ll.usageUnit === 'toolCalls' ? 'toolCalls' : ll.usageUnit === 'units' ? 'units' : 'tokens',
+      tool: ll.tool || null,
+      provider: ll.provider || null,
+      costUsd: round(
+        Number(
+          ll.tool
+            ? ll.toolCostUsd || 0
+            : ll.usageUnit === 'units'
+              ? ll.unitCostTotalUsd || ll.costUsd || 0
+              : ll.costUsd || 0,
+        ),
+        9,
+      ),
     })),
     applied: false,
     written: 0,
@@ -635,6 +649,19 @@ export const backfillLedgerFromProviderCalls = async ({
   let escritas = 0
 
   for (const ll of faltantes) {
+    const isToolCall = Boolean(ll.tool) || ll.usageUnit === 'toolCalls'
+    const isUnitCall = !isToolCall && ll.usageUnit === 'units'
+    const providerCostUsd = isToolCall
+      ? Number(ll.toolCostUsd) || 0
+      : isUnitCall
+        ? Number(ll.unitCostTotalUsd || ll.costUsd) || 0
+        : Number(ll.costUsd) || 0
+    const amount = isToolCall
+      ? Number(ll.toolQuantity) || 0
+      : isUnitCall
+        ? Number(ll.unitQuantity) || 0
+        : Number(ll.totalTokens) || 0
+
     try {
       await AiConsumptionLedger.create({
         tenantId: ll.tenantId,
@@ -642,21 +669,56 @@ export const backfillLedgerFromProviderCalls = async ({
         event: LEDGER_EVENT.CONSUMED,
         operationId: claveDeLibro(ll.operationId, ll.callId),
         metric: ll.metric,
-        amount: Math.max(0, Math.round(Number(ll.totalTokens) || 0)),
-        unit: 'tokens',
-        model: ll.actualModel,
+        amount: Math.max(0, Math.round(amount)),
+        unit: isToolCall ? 'toolCalls' : isUnitCall ? 'units' : 'tokens',
+        model: isToolCall ? null : ll.actualModel,
+        provider: ll.provider ?? null,
         // null cuando la llamada es anterior a estos campos. No saber es
         // mejor que inventar un plan o una procedencia de key.
         keySource: ll.keySource ?? null,
         plan: ll.plan ?? null,
-        inputTokens: ll.inputTokens ?? null,
-        outputTokens: ll.outputTokens ?? null,
-        totalTokens: ll.totalTokens ?? null,
-        costUsd: Number(ll.costUsd) || 0,
-        tenantProviderCostUsd: Number(ll.tenantProviderCostUsd) || 0,
-        priceInputPerMillion: ll.priceInputPerMillion ?? null,
-        priceOutputPerMillion: ll.priceOutputPerMillion ?? null,
-        priceFallback: Boolean(ll.priceFallback),
+        inputTokens: isToolCall || isUnitCall ? null : ll.inputTokens ?? null,
+        outputTokens: isToolCall || isUnitCall ? null : ll.outputTokens ?? null,
+        totalTokens: isToolCall || isUnitCall ? null : ll.totalTokens ?? null,
+        costUsd: providerCostUsd,
+        tenantProviderCostUsd: Number(ll.tenantProviderCostUsd) || providerCostUsd,
+        costCurrency: ll.costCurrency || 'USD',
+        tenantProviderCostCurrency:
+          ll.tenantProviderCostCurrency || ll.costCurrency || 'USD',
+        priceInputPerMillion:
+          isToolCall || isUnitCall ? null : ll.priceInputPerMillion ?? null,
+        priceOutputPerMillion:
+          isToolCall || isUnitCall ? null : ll.priceOutputPerMillion ?? null,
+        priceCachedInputPerMillion:
+          isToolCall || isUnitCall ? null : ll.priceCachedInputPerMillion ?? null,
+        serviceTier: isToolCall || isUnitCall ? null : ll.serviceTier ?? null,
+        tierMultiplier: isToolCall || isUnitCall ? null : ll.tierMultiplier ?? null,
+        costEstimated: isToolCall
+          ? false
+          : isUnitCall
+            ? Boolean(ll.unitPricingEstimated)
+            : Boolean(ll.costEstimated),
+        priceFallback: isToolCall
+          ? false
+          : isUnitCall
+            ? Boolean(ll.unitPricingFallback)
+            : Boolean(ll.priceFallback),
+        tool: isToolCall ? ll.tool : null,
+        toolFamily: isToolCall ? ll.toolFamily : null,
+        toolQuantity: isToolCall ? ll.toolQuantity : null,
+        toolUnitCostUsd: isToolCall ? ll.toolUnitCostUsd : null,
+        toolPricingUnit: isToolCall ? ll.toolPricingUnit : null,
+        toolSourceUrl: isToolCall ? ll.toolSourceUrl : null,
+        toolPricingFallback: isToolCall ? Boolean(ll.toolPricingFallback) : false,
+        toolPricingEstimated: isToolCall ? Boolean(ll.toolPricingEstimated ?? true) : false,
+        unitLabel: isUnitCall ? ll.unitLabel : null,
+        unitCostUsd: isUnitCall ? ll.unitCostUsd : null,
+        unitPricingUnit: isUnitCall ? ll.unitPricingUnit : null,
+        unitPricingSource: isUnitCall ? ll.unitPricingSource : null,
+        unitSourceUrl: isUnitCall ? ll.unitSourceUrl : null,
+        unitPricingEstimated: isUnitCall ? Boolean(ll.unitPricingEstimated) : false,
+        unitPricingFallback: isUnitCall ? Boolean(ll.unitPricingFallback) : false,
+        pricingVersion: ll.pricingVersion ?? null,
       })
 
       escritas += 1

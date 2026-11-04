@@ -219,8 +219,22 @@ export const setPlatformAiOverride = async ({
  *
  * Devuelve null cuando ese ajuste nunca se tocó.
  */
-export const getLatestPlatformAiSetting = async setting => {
-  const row = await PlatformAiSetting.findOne({ setting }).sort({ createdAt: -1 }).lean()
+export const getPlatformAiSettingAt = async (setting, at = new Date()) => {
+  if (!Object.values(PLATFORM_AI_SETTINGS).includes(setting)) {
+    throw new Error(`Ajuste de plataforma desconocido: ${setting}`)
+  }
+
+  const cutoff = at instanceof Date ? at : new Date(at)
+  if (Number.isNaN(cutoff.getTime())) {
+    throw new TypeError('getPlatformAiSettingAt requiere una fecha válida')
+  }
+
+  const row = await PlatformAiSetting.findOne({
+    setting,
+    createdAt: { $lte: cutoff },
+  })
+    .sort({ createdAt: -1 })
+    .lean()
 
   if (!row) return null
 
@@ -233,6 +247,10 @@ export const getLatestPlatformAiSetting = async setting => {
     createdAt: row.createdAt,
   }
 }
+
+/** La última fila de auditoría de un ajuste, sin límite de paginación. */
+export const getLatestPlatformAiSetting = async setting =>
+  getPlatformAiSettingAt(setting, new Date())
 
 export const getPlatformAiSettingHistory = async (limit = 20) => {
   const rows = await PlatformAiSetting.find({})
@@ -449,6 +467,7 @@ export default {
   setPlatformAiOverride,
   refreshPlatformAiSettings,
   getPlatformAiSettingHistory,
+  getPlatformAiSettingAt,
   getTenantAiPolicy,
   setTenantAiPolicy,
   getAllTenantAiPolicies,

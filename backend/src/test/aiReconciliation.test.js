@@ -1493,6 +1493,113 @@ describe('relleno del libro · desde las llamadas al proveedor', () => {
     expect(fila.plan).toBe('starter')
   })
 
+  test('reconstruye herramientas como toolCalls, no como tokens', async () => {
+    const period = '2062-06'
+    const operationId = 'op-tool-perdido'
+    await AiProviderCall.create({
+      tenantId: TENANT,
+      operationId,
+      callId: 'tool:tavily_search',
+      period,
+      metric: AI_METRICS.MARKET_TOKENS,
+      provider: 'tavily',
+      actualModel: null,
+      totalTokens: 0,
+      costUsd: 0,
+      tenantProviderCostUsd: 0.04,
+      keySource: 'platform',
+      plan: 'starter',
+      tool: 'tavily_search',
+      toolFamily: 'webSearch',
+      toolQuantity: 5,
+      toolUnitCostUsd: 0.008,
+      toolCostUsd: 0.04,
+      toolPricingUnit: 'credit',
+      toolSourceUrl: 'https://docs.tavily.com/documentation/api-credits',
+      toolPricingFallback: false,
+      pricingVersion: 'henko-ai-pricing-2026-11+testhash',
+    })
+
+    const informe = await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    expect(informe.missing).toHaveLength(1)
+    expect(informe.missing[0].unit).toBe('toolCalls')
+    expect(informe.missing[0].tool).toBe('tavily_search')
+    expect(informe.missing[0].costUsd).toBe(0.04)
+    expect(informe.written).toBe(1)
+
+    const fila = await AiConsumptionLedger.findOne({ period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(fila.unit).toBe('toolCalls')
+    expect(fila.amount).toBe(5)
+    expect(fila.costUsd).toBe(0.04)
+    expect(fila.tenantProviderCostUsd).toBe(0.04)
+    expect(fila.keySource).toBe('platform')
+    expect(fila.tool).toBe('tavily_search')
+    expect(fila.toolUnitCostUsd).toBe(0.008)
+    expect(fila.toolSourceUrl).toBe('https://docs.tavily.com/documentation/api-credits')
+    expect(fila.totalTokens).toBeNull()
+  })
+
+  test('reconstruye imágenes generadas como unidades y conserva su tarifa', async () => {
+    const period = '2062-07'
+    const operationId = 'op-image-perdida'
+
+    await AiProviderCall.create({
+      tenantId: TENANT,
+      operationId,
+      callId: 'main',
+      period,
+      metric: AI_METRICS.IMAGE_EDITS,
+      provider: 'cloudflare',
+      requestedModel: '@cf/black-forest-labs/flux-1-schnell',
+      actualModel: '@cf/black-forest-labs/flux-1-schnell',
+      usageUnit: 'units',
+      unitQuantity: 2,
+      unitLabel: 'image',
+      unitCostUsd: 0.0006336,
+      unitCostTotalUsd: 0.0012672,
+      unitPricingUnit: 'image_1024_4_steps',
+      unitPricingSource: 'catalog',
+      unitSourceUrl: 'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+      unitPricingEstimated: true,
+      unitPricingFallback: false,
+      pricingVersion: 'henko-ai-pricing-2026-11+testhash',
+      totalTokens: 0,
+      costUsd: 0.0012672,
+      tenantProviderCostUsd: 0.0012672,
+      keySource: 'platform',
+      plan: 'starter',
+    })
+
+    const informe = await backfillLedgerFromProviderCalls({ period, apply: true })
+
+    expect(informe.missing).toHaveLength(1)
+    expect(informe.missing[0].unit).toBe('units')
+    expect(informe.missing[0].provider).toBe('cloudflare')
+    expect(informe.missing[0].costUsd).toBe(0.0012672)
+    expect(informe.written).toBe(1)
+
+    const fila = await AiConsumptionLedger.findOne({ period })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+    expect(fila.unit).toBe('units')
+    expect(fila.amount).toBe(2)
+    expect(fila.totalTokens).toBeNull()
+    expect(fila.costUsd).toBe(0.0012672)
+    expect(fila.tenantProviderCostUsd).toBe(0.0012672)
+    expect(fila.provider).toBe('cloudflare')
+    expect(fila.model).toBe('@cf/black-forest-labs/flux-1-schnell')
+    expect(fila.unitLabel).toBe('image')
+    expect(fila.unitCostUsd).toBe(0.0006336)
+    expect(fila.unitPricingSource).toBe('catalog')
+    expect(fila.unitSourceUrl).toBe(
+      'https://developers.cloudflare.com/workers-ai/platform/pricing/',
+    )
+    expect(fila.unitPricingEstimated).toBe(true)
+  })
+
   test('no duplica lo que ya está en el libro', async () => {
     const period = '2062-03'
     await llamada(period)

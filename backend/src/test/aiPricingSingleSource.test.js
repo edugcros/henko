@@ -82,10 +82,18 @@ describe('precios · una sola fuente', () => {
 
 describe('precio por imagen · vive en el catálogo y lleva fecha', () => {
   const original = process.env.AI_COST_USD_PER_IMAGE_EDIT
+  const originalGeminiImageModel = process.env.GEMINI_IMAGE_MODEL
+  const originalGoogleImageModel = process.env.GOOGLE_IMAGE_MODEL
 
   afterEach(() => {
     if (original === undefined) delete process.env.AI_COST_USD_PER_IMAGE_EDIT
     else process.env.AI_COST_USD_PER_IMAGE_EDIT = original
+
+    if (originalGeminiImageModel === undefined) delete process.env.GEMINI_IMAGE_MODEL
+    else process.env.GEMINI_IMAGE_MODEL = originalGeminiImageModel
+
+    if (originalGoogleImageModel === undefined) delete process.env.GOOGLE_IMAGE_MODEL
+    else process.env.GOOGLE_IMAGE_MODEL = originalGoogleImageModel
   })
 
   test('el número no cambió al mudarse', () => {
@@ -97,6 +105,31 @@ describe('precio por imagen · vive en el catálogo y lleva fecha', () => {
     expect(computeImageCostUsd(3)).toBeCloseTo(0.1008, 10)
   })
 
+  test('la tarifa Gemini sigue al modelo que realmente se configura', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    delete process.env.GOOGLE_IMAGE_MODEL
+    process.env.GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image'
+
+    const precio = getImagePrice()
+
+    expect(precio.provider).toBe('gemini')
+    expect(precio.model).toBe('gemini-3.1-flash-image')
+    expect(precio.perImage).toBe(0.067)
+    expect(precio.fallback).toBe(false)
+  })
+
+  test('un modelo Gemini no catalogado usa el techo conservador y queda marcado', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+    delete process.env.GOOGLE_IMAGE_MODEL
+    process.env.GEMINI_IMAGE_MODEL = 'gemini-image-future-model'
+
+    const precio = getImagePrice()
+
+    expect(precio.model).toBe('gemini-image-future-model')
+    expect(precio.perImage).toBe(0.067)
+    expect(precio.fallback).toBe(true)
+  })
+
   test('el entorno lo corrige, y se sabe que vino de ahí', () => {
     process.env.AI_COST_USD_PER_IMAGE_EDIT = '0.05'
 
@@ -105,6 +138,37 @@ describe('precio por imagen · vive en el catálogo y lleva fecha', () => {
     // Un número que no salió del catálogo tiene que poder distinguirse cuando
     // alguien audite el gasto.
     expect(precio.source).toBe('env')
+  })
+
+  test('una variable de entorno vacía no convierte Gemini Image en gratuito', () => {
+    process.env.AI_COST_USD_PER_IMAGE_EDIT = '   '
+
+    const precio = getImagePrice()
+    expect(precio.perImage).toBe(0.0336)
+    expect(precio.source).toBe('catalog')
+  })
+
+  test('Cloudflare se calcula con 57,6 neuronas, no con 58 redondeadas', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+
+    const precio = getImagePrice(new Date(), 'cloudflare')
+    expect(precio.estimatedNeurons).toBeCloseTo(57.6, 8)
+    expect(precio.perImage).toBeCloseTo(0.0006336, 10)
+    expect(precio.model).toBe('@cf/black-forest-labs/flux-1-schnell')
+    expect(precio.estimated).toBe(true)
+    expect(precio.fallback).toBe(false)
+  })
+
+  test('proveedor de imagen desconocido queda marcado como fallback', () => {
+    delete process.env.AI_COST_USD_PER_IMAGE_EDIT
+
+    const precio = getImagePrice(new Date(), 'provider-not-configured')
+    // El proveedor pedido se conserva para diagnóstico; la tarifa de respaldo
+    // pertenece al modelo conocido más caro y queda marcada explícitamente.
+    expect(precio.provider).toBe('provider-not-configured')
+    expect(precio.model).toBe('gemini-3.1-flash-image')
+    expect(precio.perImage).toBe(0.067)
+    expect(precio.fallback).toBe(true)
   })
 
   test('cantidades que no son cantidades cuestan cero', () => {
@@ -123,6 +187,18 @@ describe('las tarifas siguen fechadas', () => {
 
     expect(antes.input).toBe(0.75)
     expect(despues.input).toBe(1.5)
+  })
+
+  test('un microconsumo conserva precisión sub-microdólar', () => {
+    const costo = computeCostUsd({
+      model: 'gemini-3.1-flash-lite',
+      inputTokens: 1,
+      outputTokens: 0,
+    })
+
+    // USD 0,25 por millón: un token equivale a USD 0,00000025.
+    // Redondear cada llamada a seis decimales lo convertía en cero.
+    expect(costo.costUsd).toBe(0.00000025)
   })
 
   test('un modelo desconocido se cobra caro, no gratis', () => {
