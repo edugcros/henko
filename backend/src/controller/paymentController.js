@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto'
 
-import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
+import Order, { ORDER_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
 
 import { Money } from '../utils/money.js'
 import {
@@ -232,6 +232,10 @@ const queueApprovedPaymentSideEffects = async ({ order, tenantId, userId, payer,
 // El filtro no admite pisar una orden cancelada o devuelta en el medio. Ahí no
 // hay efectos que correr: un pago aprobado sobre esa orden lo tiene que mirar una
 // persona, y la reconciliación lo muestra.
+//
+// orderStatus va como expresión y no con el valor del documento en memoria: ese
+// se leyó antes de cobrar, y si en el medio el comercio despachó la orden lo
+// pisaría. Solo una orden todavía abierta pasa a procesando.
 const persistApprovedPayment = async ({ order, tenantId }) => {
   const result = await Order.updateOne(
     {
@@ -239,18 +243,26 @@ const persistApprovedPayment = async ({ order, tenantId }) => {
       tenantId,
       paymentStatus: { $in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.APPROVED] },
     },
-    {
-      $set: {
-        paymentStatus: PAYMENT_STATUS.APPROVED,
-        orderStatus: order.orderStatus,
-        paidAt: order.paidAt,
-        paymentError: null,
-        paymentErrorCode: null,
-        'paymentIntent.status': PAYMENT_STATUS.APPROVED,
-        'paymentIntent.providerPaymentId': order.paymentIntent?.providerPaymentId,
-        'paymentIntent.providerRawStatus': order.paymentIntent?.providerRawStatus,
+    [
+      {
+        $set: {
+          paymentStatus: PAYMENT_STATUS.APPROVED,
+          orderStatus: {
+            $cond: [
+              { $eq: ['$orderStatus', ORDER_STATUS.OPEN] },
+              ORDER_STATUS.PROCESSING,
+              '$orderStatus',
+            ],
+          },
+          paidAt: order.paidAt,
+          paymentError: null,
+          paymentErrorCode: null,
+          'paymentIntent.status': PAYMENT_STATUS.APPROVED,
+          'paymentIntent.providerPaymentId': order.paymentIntent?.providerPaymentId,
+          'paymentIntent.providerRawStatus': order.paymentIntent?.providerRawStatus,
+        },
       },
-    },
+    ],
   ).setOptions({ tenantId })
 
   return Boolean(result?.matchedCount ?? result?.n)
@@ -334,13 +346,13 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
   })
 }
 
-// Una orden rechazada vuelve a pendiente para aceptar otro intento.
+// Una orden con el pago rechazado vuelve a pendiente para aceptar otro intento.
 //
 // El estado 'rejected' es final para los avisos de Mercado Pago (ver
 // canApplyPaymentTransition), así que sin esto un reintento aprobado no podía
 // cambiarlo: el comprador pagaba y la orden seguía rechazada. El camino es
 // explícito y solo lo abre el comprador intentando pagar.
-const reopenRejectedOrder = async ({ order, tenantId }) => {
+const reopenOrderForRetry = async ({ order, tenantId }) => {
   const rejectedPaymentId = order.paymentIntent.providerPaymentId
 
   if (rejectedPaymentId) {
@@ -390,7 +402,7 @@ const preparePaymentAttempt = async ({ order, tenantId, payment }) => {
   }
 
   if (status === PAYMENT_STATUS.REJECTED) {
-    await reopenRejectedOrder({ order, tenantId })
+    await reopenOrderForRetry({ order, tenantId })
     return null
   }
 
@@ -400,7 +412,26 @@ const preparePaymentAttempt = async ({ order, tenantId, payment }) => {
     message: 'Ya hay un pago en proceso para esta orden. Te avisamos cuando se confirme.',
   }
 
-  if (order.paymentIntent?.providerPaymentId) return pagoEnCurso
+  const storedPaymentId = order.paymentIntent?.providerPaymentId
+
+  if (storedPaymentId) {
+    // Un id guardado no prueba que el pago siga vivo: si el proceso cayó después
+    // de guardarlo y se perdió el aviso, la orden figura pendiente con un pago ya
+    // rechazado, y sin mirar el comprador no podría volver a intentar nunca. Si
+    // Mercado Pago no contesta se asume en curso: es el lado que no cobra.
+    const stored = await payment.get({ id: storedPaymentId }).catch(error => {
+      logger.warn('⚠️ No se pudo consultar el pago guardado de la orden', {
+        orderId: order._id?.toString?.(),
+        message: getSafeErrorMessage(error),
+      })
+      return null
+    })
+
+    if (!NEGATIVE_PAYMENT_STATUSES.has(normalizeMpStatus(stored?.status))) return pagoEnCurso
+
+    await reopenOrderForRetry({ order, tenantId })
+    return null
+  }
 
   // Un intento anterior sin id guardado: pudo fallar sin cobrar, o el proceso
   // pudo morir después de cobrar. Solo Mercado Pago lo sabe. Se pregunta recién
@@ -435,7 +466,24 @@ const preparePaymentAttempt = async ({ order, tenantId, payment }) => {
     return estado && !NEGATIVE_PAYMENT_STATUSES.has(estado)
   })
 
-  if (!huerfano) return null
+  if (!huerfano) {
+    // Los rechazos que no llegaron a guardarse se anotan ANTES de cobrar. Si no,
+    // su aviso atrasado encuentra la orden sin id, se la toma por el pago actual
+    // y deja la orden rechazada mientras el pago nuevo se aprueba: comprador
+    // cobrado y orden rechazada.
+    const rechazados = pagos
+      .filter(pago => pago?.id && NEGATIVE_PAYMENT_STATUSES.has(normalizeMpStatus(pago?.status)))
+      .map(pago => String(pago.id))
+
+    if (rechazados.length) {
+      await Order.updateOne(
+        { _id: order._id, tenantId: toObjectId(tenantId) },
+        { $addToSet: { 'paymentIntent.rejectedPaymentIds': { $each: rechazados } } },
+      ).setOptions({ tenantId })
+    }
+
+    return null
+  }
 
   // Queda vinculado y lo termina el webhook o la consulta de estado.
   await persistProviderPaymentId({

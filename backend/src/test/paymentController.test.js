@@ -56,7 +56,12 @@ jest.unstable_mockModule('../services/aiAgent/aiCartRecoveryService.js', () => (
   markCartRecoveryConverted: async () => undefined,
 }))
 
-const { default: Order, PAYMENT_STATUS } = await import('../models/orderModel.js')
+const {
+  default: Order,
+  FULFILLMENT_STATUS,
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+} = await import('../models/orderModel.js')
 const { default: Product } = await import('../models/productModel.js')
 const { default: User } = await import('../models/userModel.js')
 const { mpWebhook, processPayment } = await import('../controller/paymentController.js')
@@ -89,6 +94,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   jest.clearAllMocks()
+  // mockReset y no solo clear: una respuesta encolada que un test no consumió se
+  // filtraría al siguiente.
+  Object.values(mp).forEach(fn => fn.mockReset())
+  consumeOrderCouponIfNeeded.mockReset()
   consumeOrderCouponIfNeeded.mockImplementation(async () => null)
   mp.search.mockResolvedValue({ results: [] })
 
@@ -292,11 +301,37 @@ describe('no se cobra de más', () => {
   test('con un pago en curso no se crea otro', async () => {
     const orden = await crearOrden({}, { providerPaymentId: 'pago-en-curso' })
 
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-en-curso', 'in_process', orden))
     const res = await pagar(orden)
 
     expect(res.statusCode).toBe(409)
     expect(res.body.code).toBe('PAYMENT_PENDING')
     expect(mp.create).not.toHaveBeenCalled()
+  })
+
+  test('si Mercado Pago no contesta por el pago guardado, no se crea otro', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-en-curso' })
+
+    mp.get.mockRejectedValueOnce(new Error('sin conexión'))
+    const res = await pagar(orden)
+
+    expect(res.body.code).toBe('PAYMENT_PENDING')
+    expect(mp.create).not.toHaveBeenCalled()
+  })
+
+  // El proceso cayó después de guardar el id y se perdió el aviso del rechazo.
+  test('un pago guardado que en realidad se rechazó no traba la orden', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-rechazado' })
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-rechazado', 'rejected', orden))
+    mp.create.mockResolvedValueOnce(pagoEnMp('pago-nuevo', 'approved', orden))
+
+    const res = await pagar(orden)
+    const final = await releer(orden)
+
+    expect(res.body.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    expect(final.paymentIntent.providerPaymentId).toBe('pago-nuevo')
+    expect(final.paymentIntent.rejectedPaymentIds).toEqual(['pago-rechazado'])
   })
 
   test.each([
@@ -349,6 +384,26 @@ describe('no se cobra de más', () => {
     const res = await pagar(orden)
 
     expect(res.body.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+  })
+
+  // Un rechazo que no llegó a guardarse, con su aviso cayendo durante el cobro
+  // del reintento: dejaba la orden rechazada con el pago nuevo aprobado.
+  test('un rechazo sin vincular se anota antes de cobrar y su aviso no pisa la orden', async () => {
+    const orden = await crearOrden({ lastPaymentAttemptAt: new Date() })
+
+    mp.search.mockResolvedValueOnce({ results: [pagoEnMp('pago-viejo', 'rejected', orden)] })
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-viejo', 'rejected', orden))
+    mp.create.mockImplementationOnce(async () => {
+      await avisoDeWebhook('pago-viejo', orden)
+      return pagoEnMp('pago-nuevo', 'approved', orden)
+    })
+
+    await pagar(orden)
+
+    const final = await releer(orden)
+
+    expect(final.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    expect(final.paymentIntent.providerPaymentId).toBe('pago-nuevo')
   })
 
   test('si no se puede preguntar por el intento anterior, no se cobra', async () => {
@@ -458,6 +513,39 @@ describe('un pago aprobado siempre queda guardado', () => {
 
     expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
     expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+  })
+
+  test('aprobar no pisa una orden que el comercio despachó mientras se cobraba', async () => {
+    const orden = await crearOrden()
+
+    // Como lo hace el panel: guarda el documento, y eso sube su versión.
+    mp.create.mockImplementationOnce(async () => {
+      const enElPanel = await Order.findOne({ _id: orden._id, tenantId: TENANT }).setOptions({
+        tenantId: TENANT,
+      })
+      enElPanel.fulfillmentStatus = FULFILLMENT_STATUS.SHIPPED
+      await enElPanel.save({ tenantId: TENANT })
+
+      return pagoEnMp('pago-1', 'approved', orden)
+    })
+
+    await pagar(orden)
+
+    const final = await releer(orden)
+
+    expect(final.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    expect(final.orderStatus).toBe(ORDER_STATUS.SHIPPED)
+  })
+
+  test('una orden abierta pasa a procesando al aprobarse, aunque fallen los efectos', async () => {
+    const orden = await crearOrden()
+
+    consumeOrderCouponIfNeeded.mockRejectedValueOnce(new Error('falló el cupón'))
+    mp.create.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+
+    await pagar(orden)
+
+    expect((await releer(orden)).orderStatus).toBe(ORDER_STATUS.PROCESSING)
   })
 
   test('no se aprueba encima de una orden cancelada mientras se cobraba', async () => {
