@@ -171,6 +171,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -223,6 +224,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -284,6 +286,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -331,6 +334,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -532,6 +536,7 @@ describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
       createAuthorizableSubscription: mockCrearAutorizable,
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
     }))
 

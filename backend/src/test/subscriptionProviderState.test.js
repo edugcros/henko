@@ -711,6 +711,28 @@ describe('la suscripción sigue a Mercado Pago', () => {
     expect((await estado(tenant)).subscriptionStatus).toBe('trialing')
   })
 
+  test('de dos retomas de un evento abandonado solo una lo aplica', async () => {
+    const tenant = await conSuscripcion('trialing', { planSelected: 'pro' })
+    const eventos = mongoose.connection.collection('subscriptionwebhookevents')
+
+    await eventos.insertOne({
+      provider: 'mercadopago',
+      eventId: 'subscription_preapproval:pre-1',
+      eventType: 'subscription_preapproval',
+      subscriptionId: 'pre-1',
+      status: 'processing',
+      createdAt: new Date(),
+      updatedAt: new Date(Date.now() - 11 * 60 * 1000),
+    })
+
+    mp.get.mockResolvedValue({ id: 'pre-1', status: 'authorized' })
+
+    await Promise.all([aviso('pre-1'), aviso('pre-1')])
+
+    expect(mp.get).toHaveBeenCalledTimes(1)
+    expect((await estado(tenant)).subscriptionStatus).toBe('active')
+  })
+
   // Entre leer al comercio y activarlo, otro proceso pudo haberlo cambiado.
   test('no se activa con una suscripción que dejó de ser la del comercio', async () => {
     const leido = await conSuscripcion('trialing', { planSelected: 'pro' })

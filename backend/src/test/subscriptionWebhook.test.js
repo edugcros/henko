@@ -19,7 +19,12 @@
 
 import { jest } from '@jest/globals'
 
-const TENANT = { _id: '64b7f0000000000000000001', name: 'Comercio', plan: 'pro' }
+const TENANT = {
+  _id: '64b7f0000000000000000001',
+  name: 'Comercio',
+  plan: 'pro',
+  subscriptionStatus: 'active',
+}
 
 const mockVerify = jest.fn()
 const mockTenantFindOne = jest.fn()
@@ -63,12 +68,14 @@ jest.unstable_mockModule('../../config/logger.js', () => ({
 }))
 
 const mockResolveTarget = jest.fn()
+const mockFetchPreapproval = jest.fn()
 
 // resolveSubscriptionEventTarget sale a la API de Mercado Pago para traducir
 // un id de PAGO al id de la suscripcion. Acá se controla su respuesta: lo que
 // se prueba es qué hace el webhook con ella, no cómo se obtiene.
 jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
   resolveSubscriptionEventTarget: mockResolveTarget,
+  fetchPreapproval: mockFetchPreapproval,
   mapMercadoPagoSubscriptionStatus: estado =>
     ({ authorized: 'active', cancelled: 'cancelled' })[estado] || 'pending',
   readProviderBillingDates: () => ({
@@ -453,6 +460,163 @@ describe('webhook de suscripción · un recurso que cambia de estado', () => {
 
     expect(res.statusCode).toBe(500)
     expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('webhook de suscripción · los avisos de cobro llegan desordenados', () => {
+  const avisoDeCobro = {
+    headers: { 'x-signature': 'ts=1,v1=abc', 'x-request-id': 'req-cobro' },
+    originalUrl: '/api/webhooks/mercadopago/subscription',
+    body: { type: 'payment', data: { id: '179804496028' } },
+  }
+
+  const comercio = (subscriptionStatus, datos = {}) =>
+    mockTenantFindOne.mockResolvedValue({
+      ...TENANT,
+      plan: 'starter',
+      subscriptionStatus,
+      integrations: {
+        subscriptionMercadoPago: {
+          payerEmail: 'duenio@comercio.com',
+          planSelected: 'pro',
+          ...datos,
+        },
+      },
+    })
+
+  const cobro = (status, extra = {}) =>
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: 'mp-sub-1',
+      payment: { status, ...extra },
+    })
+
+  const conEmail = () =>
+    mockTenantUpdate.mockResolvedValue({
+      ...TENANT,
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+
+  const plantillas = () => mockSendEmail.mock.calls.map(([args]) => args.template)
+
+  beforeEach(() => {
+    mockFetchPreapproval.mockReset()
+  })
+
+  test.each(['approved', 'rejected'])(
+    'un cobro %s que llega después de la baja no revive al comercio',
+    async estado => {
+      comercio('cancelled')
+      cobro(estado)
+      mockFetchPreapproval.mockResolvedValue({ status: 'cancelled' })
+
+      const res = await correr(avisoDeCobro)
+
+      expect(res.statusCode).toBe(200)
+      expect(mockTenantUpdate).not.toHaveBeenCalled()
+      expect(mockSendEmail).not.toHaveBeenCalled()
+    },
+  )
+
+  test('un cobro aprobado antes de la autorización aplica el plan elegido', async () => {
+    comercio('trialing')
+    cobro('approved')
+    conEmail()
+    mockFetchPreapproval.mockResolvedValue({ status: 'authorized' })
+
+    await correr(avisoDeCobro)
+
+    const [filtro, activacion] = mockTenantUpdate.mock.calls[0]
+
+    expect(filtro['integrations.subscriptionMercadoPago.subscriptionId']).toBe('mp-sub-1')
+    expect(activacion.plan).toBe('pro')
+    expect(plantillas()).toEqual(['subscription-welcome', 'subscription-payment-confirmed'])
+  })
+
+  test('un cobro rechazado antes de la autorización deja el pago pendiente', async () => {
+    comercio('trialing')
+    cobro('rejected')
+    conEmail()
+    mockFetchPreapproval.mockResolvedValue({ status: 'authorized' })
+
+    await correr(avisoDeCobro)
+
+    expect(mockTenantUpdate.mock.calls.at(-1)[1].subscriptionStatus).toBe('past_due')
+  })
+
+  test('los tipos viejos tampoco reviven a un comercio cancelado', async () => {
+    comercio('cancelled')
+    mockFetchPreapproval.mockResolvedValue({ status: 'cancelled' })
+
+    await correr()
+    await correr({
+      ...avisoDeCobro,
+      body: { type: 'subscription_failed', data: { id: 'mp-sub-1' } },
+    })
+
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+
+  test('sin saber cómo está la suscripción se pide el reintento', async () => {
+    comercio('cancelled')
+    cobro('approved')
+    mockFetchPreapproval.mockRejectedValue(new Error('sin conexión'))
+
+    expect((await correr(avisoDeCobro)).statusCode).toBe(500)
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+
+  test('con un cobro en curso no se pregunta nada de más', async () => {
+    comercio('active')
+    cobro('approved')
+
+    await correr(avisoDeCobro)
+
+    expect(mockFetchPreapproval).not.toHaveBeenCalled()
+    expect(mockTenantUpdate).toHaveBeenCalled()
+  })
+
+  test('el rechazo guarda el motivo del proveedor y se lo explica al comercio', async () => {
+    comercio('active')
+    cobro('rejected', { status_detail: 'cc_rejected_high_risk' })
+    conEmail()
+
+    await correr(avisoDeCobro)
+
+    const [, cambios] = mockTenantUpdate.mock.calls[0]
+
+    expect(cambios['integrations.subscriptionMercadoPago.failureReason']).toBe(
+      'cc_rejected_high_risk',
+    )
+    expect(mockSendEmail.mock.calls[0][0].data.failureReason).toBe(
+      'El cobro fue rechazado por prevención de fraude',
+    )
+  })
+
+  test('un motivo desconocido no se le muestra crudo al comercio', async () => {
+    comercio('active')
+    cobro('rejected', { status_detail: 'cc_rejected_algo_nuevo' })
+    conEmail()
+
+    await correr(avisoDeCobro)
+
+    expect(mockSendEmail.mock.calls[0][0].data.failureReason).toBe(
+      'El emisor de la tarjeta rechazó el cobro',
+    )
+  })
+
+  test('dos retomas de un evento abandonado compiten por el mismo updatedAt', async () => {
+    const updatedAt = new Date(Date.now() - 11 * 60 * 1000)
+
+    mockEventCreate.mockRejectedValue(duplicado())
+    mockEventFindOne.mockResolvedValue({ _id: 'evt-1', status: 'processing', updatedAt })
+
+    await correr()
+
+    expect(mockEventUpdate.mock.calls[0][0]).toEqual({
+      _id: 'evt-1',
+      status: 'processing',
+      updatedAt,
+    })
   })
 })
 

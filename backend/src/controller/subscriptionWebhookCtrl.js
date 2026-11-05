@@ -9,6 +9,7 @@ import { sendTemplateEmail } from '../services/emailService.js'
 import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
 import { AI_PLANS } from '../services/ai/aiPlanPolicy.js'
 import {
+  fetchPreapproval,
   mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
   resolveSubscriptionEventTarget,
@@ -32,6 +33,18 @@ const ESTADOS_DE_COBRO = ['active', 'past_due']
 // Si el proceso murió con el evento en la mano, nadie más lo iba a retomar: el
 // reintento de Mercado Pago lo encontraba "en curso" y contestaba 200 para siempre.
 const EVENTO_EN_CURSO_MS = 10 * 60 * 1000
+
+// Lo que se le dice al comercio. El código de Mercado Pago queda guardado tal cual
+// para diagnosticar, pero 'cc_rejected_high_risk' no le dice nada a quien lo lee.
+const MOTIVOS_DE_RECHAZO = Object.freeze({
+  cc_rejected_insufficient_amount: 'La tarjeta no tiene fondos suficientes',
+  cc_rejected_high_risk: 'El cobro fue rechazado por prevención de fraude',
+  cc_rejected_call_for_authorize: 'El banco pide que autorices el cobro',
+  cc_rejected_card_disabled: 'La tarjeta está inhabilitada',
+  cc_rejected_max_attempts: 'Se superó la cantidad de intentos con esta tarjeta',
+  cc_rejected_bad_filled_security_code: 'El código de seguridad de la tarjeta es incorrecto',
+  cc_rejected_bad_filled_date: 'La fecha de vencimiento de la tarjeta es incorrecta',
+})
 
 const sendResponse = (res, statusCode, success, message, data = null) => {
   res.status(statusCode).json({
@@ -138,8 +151,16 @@ export const handleSubscriptionWebhook = async (req, res) => {
     // pasar a una sola de dos entregas simultáneas.
     event = previo
 
+    //
+    // updatedAt entra en el filtro porque 'processing' sobre 'processing' no
+    // cambia el estado: sin él, dos retomas de un evento abandonado pasaban las
+    // dos. Esta misma escritura lo mueve, así que solo una lo encuentra.
     const tomado = await SubscriptionWebhookEvent.updateOne(
-      { _id: previo._id, status: previo.status },
+      {
+        _id: previo._id,
+        status: previo.status,
+        ...(previo.updatedAt ? { updatedAt: previo.updatedAt } : {}),
+      },
       { $set: { status: WEBHOOK_EVENT_STATUS.PROCESSING, error: null } },
     )
 
@@ -219,11 +240,15 @@ export const handleSubscriptionWebhook = async (req, res) => {
         break
 
       case 'subscription_authorized':
-        await handlePaymentAuthorized(tenant, data)
+        if (await suscripcionVigente(tenant, preapprovalId)) {
+          await handlePaymentAuthorized(tenant, data)
+        }
         break
 
       case 'subscription_failed':
-        await handlePaymentFailed(tenant, data)
+        if (await suscripcionVigente(tenant, preapprovalId)) {
+          await handlePaymentFailed(tenant, data)
+        }
         break
 
       case 'subscription_canceled':
@@ -244,7 +269,9 @@ export const handleSubscriptionWebhook = async (req, res) => {
         const estado = String(payment?.status || '').toLowerCase()
 
         if (estado === 'approved') {
-          await handlePaymentAuthorized(tenant, data)
+          if (await suscripcionVigente(tenant, preapprovalId)) {
+            await handlePaymentAuthorized(tenant, data)
+          }
         } else if (['rejected', 'cancelled'].includes(estado)) {
           logger.warn('Cobro de suscripción rechazado por el proveedor', {
             tenantId: String(tenant._id),
@@ -254,7 +281,11 @@ export const handleSubscriptionWebhook = async (req, res) => {
             paymentMethod: payment?.payment_method_id || null,
             paymentType: payment?.payment_type_id || null,
           })
-          await handlePaymentFailed(tenant, data)
+
+          if (await suscripcionVigente(tenant, preapprovalId)) {
+            // El sobre del aviso solo trae el id: el motivo está en el pago.
+            await handlePaymentFailed(tenant, { id: data.id, reason: payment?.status_detail })
+          }
         } else {
           logger.info('Cobro de suscripción en estado no terminal', {
             tenantId: String(tenant._id),
@@ -363,6 +394,38 @@ export const activateAuthorizedSubscription = async (tenant, preapproval) => {
   }
 
   return activado
+}
+
+/**
+ * Decide si un aviso de cobro le corresponde a la suscripción de este comercio.
+ *
+ * Los avisos no llegan en orden. El de un cobro puede llegar después de una baja, y
+ * aplicarlo reactivaba a un comercio cancelado o lo dejaba con el pago pendiente,
+ * que además le impide volver a suscribirse. Y puede llegar antes que el de la
+ * autorización: el comercio quedaba activo y el plan elegido no se aplicaba nunca.
+ *
+ * Con un cobro en curso no hay nada que preguntar. Si no, decide Mercado Pago.
+ * Si no contesta, el error pide el reintento: no se decide sin saber.
+ */
+const suscripcionVigente = async (tenant, preapprovalId) => {
+  if (ESTADOS_DE_COBRO.includes(tenant.subscriptionStatus)) return true
+
+  const preapproval = await fetchPreapproval(preapprovalId)
+  const estado = mapMercadoPagoSubscriptionStatus(preapproval?.status, preapproval?.reason || '')
+
+  if (estado !== 'active') {
+    logger.warn('Aviso de cobro de una suscripción que no está vigente', {
+      tenantId: String(tenant._id),
+      preapprovalId,
+      estado: preapproval?.status || null,
+    })
+
+    return false
+  }
+
+  await activateAuthorizedSubscription(tenant, { ...preapproval, id: preapprovalId })
+
+  return true
 }
 
 /**
@@ -520,7 +583,8 @@ const handlePaymentFailed = async (tenant, data) => {
         template: 'subscription-payment-failed',
         data: {
           tenantName: updated.name,
-          failureReason: data.reason || 'Razón desconocida',
+          failureReason:
+            MOTIVOS_DE_RECHAZO[data.reason] || 'El emisor de la tarjeta rechazó el cobro',
           // Misma razón que en subscriptionPaymentService: ADMIN_BASE_URL no
           // existe en la config, el link del email salía "undefined/...".
           actionUrl: `${env.adminUrl}/admin/mi-suscripcion`,
