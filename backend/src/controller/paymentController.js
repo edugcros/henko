@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto'
 
-import Order, { PAYMENT_STATUS } from '../models/orderModel.js'
+import Order, { ORDER_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
 
 import { Money } from '../utils/money.js'
 import {
@@ -38,6 +38,7 @@ import {
   getStatusMessage,
   mapMercadoPagoError,
   NEGATIVE_PAYMENT_STATUSES,
+  normalizeMpStatus,
 } from '../services/paymentMercadoPagoService.js'
 import {
   createMercadoPagoPaymentClient,
@@ -104,17 +105,18 @@ const buildStableHash = value => {
     .slice(0, 24)
 }
 
-const buildPaymentIdempotencyKey = ({ tenantId, order, token }) => {
-  const existingPaymentIntentId =
-    order?.paymentIntent?.id ||
-    order?.paymentIntent?._id ||
-    order?.paymentIntent?.attemptId ||
-    order?.paymentIntent?.providerPaymentId
-
-  const attemptFingerprint = existingPaymentIntentId || buildStableHash(token)
-
-  return `mp:${tenantId}:${order._id}:${attemptFingerprint}`
-}
+// Una clave por INTENTO, y el intento lo define el token de la tarjeta, que es
+// de un solo uso.
+//
+// Usaba paymentIntent.id, que toda orden tiene y no cambia, así que la clave era
+// la misma en todos los intentos de una orden. Mercado Pago devuelve la
+// respuesta guardada cuando se repite una clave: quien reintentaba con otra
+// tarjeta recibía el rechazo de la primera.
+//
+// Esa clave fija era también, sin que nadie lo hubiera pedido, lo que impedía un
+// segundo cobro. Esa protección ahora es explícita: ver preparePaymentAttempt.
+const buildPaymentIdempotencyKey = ({ tenantId, order, token }) =>
+  `mp:${tenantId}:${order._id}:${buildStableHash(token)}`
 
 const getErrorLogPayload = ({ error, tenantId, orderId }) => {
   const basePayload = {
@@ -217,8 +219,67 @@ const queueApprovedPaymentSideEffects = async ({ order, tenantId, userId, payer,
   })
 }
 
+// Deja escrito que el pago se aprobó, antes de cualquier efecto.
+//
+// El estado se guardaba recién con el order.save del final de
+// commitApprovedPaymentIfNeeded. Si algo fallaba antes de ese save, el reclamo de
+// efectos ya estaba tomado y nadie volvía a guardar: el comprador pagó, se le dijo
+// que estaba aprobado, y la orden quedaba pendiente para siempre.
+//
+// Va con updateOne y no con save para no depender de la versión del documento:
+// otra escritura concurrente no puede hacer perder este dato.
+//
+// El filtro no admite pisar una orden cancelada o devuelta en el medio. Ahí no
+// hay efectos que correr: un pago aprobado sobre esa orden lo tiene que mirar una
+// persona, y la reconciliación lo muestra.
+//
+// orderStatus va como expresión y no con el valor del documento en memoria: ese
+// se leyó antes de cobrar, y si en el medio el comercio despachó la orden lo
+// pisaría. Solo una orden todavía abierta pasa a procesando.
+const persistApprovedPayment = async ({ order, tenantId }) => {
+  const result = await Order.updateOne(
+    {
+      _id: order._id,
+      tenantId,
+      paymentStatus: { $in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.APPROVED] },
+    },
+    [
+      {
+        $set: {
+          paymentStatus: PAYMENT_STATUS.APPROVED,
+          orderStatus: {
+            $cond: [
+              { $eq: ['$orderStatus', ORDER_STATUS.OPEN] },
+              ORDER_STATUS.PROCESSING,
+              '$orderStatus',
+            ],
+          },
+          paidAt: order.paidAt,
+          paymentError: null,
+          paymentErrorCode: null,
+          'paymentIntent.status': PAYMENT_STATUS.APPROVED,
+          'paymentIntent.providerPaymentId': order.paymentIntent?.providerPaymentId,
+          'paymentIntent.providerRawStatus': order.paymentIntent?.providerRawStatus,
+        },
+      },
+    ],
+  ).setOptions({ tenantId })
+
+  return Boolean(result?.matchedCount ?? result?.n)
+}
+
 const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, req }) => {
   if (order.paymentStatus !== PAYMENT_STATUS.APPROVED) return null
+
+  if (!(await persistApprovedPayment({ order, tenantId }))) {
+    logger.error('🚨 Pago aprobado sobre una orden que ya no admite aprobarse', {
+      orderId: order._id?.toString?.(),
+      tenantId: String(tenantId),
+      providerPaymentId: order.paymentIntent?.providerPaymentId || null,
+    })
+
+    return null
+  }
 
   // Reclamo atómico: processPayment, el webhook y el polling de
   // getPaymentStatus pueden llegar acá para la MISMA orden casi al mismo
@@ -240,20 +301,41 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
 
   order.paymentEffectsCommittedAt = claimed.paymentEffectsCommittedAt
 
-  if (!order.stockCommittedAt) {
-    await confirmSoldStock(order.products, tenantId)
-    order.stockCommittedAt = new Date()
+  // Si esto falla se suelta el reclamo: el pago ya quedó guardado como aprobado y
+  // el próximo webhook o consulta de estado termina lo que falta. Sin soltarlo,
+  // esos efectos no corrían nunca. Repetir no duplica nada: confirmar el stock no
+  // mueve unidades y el cupón es idempotente por orden.
+  try {
+    if (!order.stockCommittedAt) {
+      await confirmSoldStock(order.products, tenantId)
+      order.stockCommittedAt = new Date()
+    }
+
+    await consumeOrderCouponIfNeeded({
+      order,
+      tenantId,
+      userId: userId || order.orderby,
+      req,
+    })
+
+    order.stockReservedAt = null
+    await order.save({ tenantId })
+  } catch (error) {
+    await Order.updateOne(
+      { _id: order._id, tenantId },
+      { $set: { paymentEffectsCommittedAt: null } },
+    )
+      .setOptions({ tenantId })
+      .catch(releaseError => {
+        logger.error('❌ No se pudo soltar el reclamo de efectos de un pago aprobado', {
+          orderId: order._id?.toString?.(),
+          message: getSafeErrorMessage(releaseError),
+        })
+      })
+
+    order.paymentEffectsCommittedAt = null
+    throw error
   }
-
-  await consumeOrderCouponIfNeeded({
-    order,
-    tenantId,
-    userId: userId || order.orderby,
-    req,
-  })
-
-  order.stockReservedAt = null
-  await order.save({ tenantId })
 
   return queueApprovedPaymentSideEffects({
     order,
@@ -262,6 +344,155 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
     payer,
     req,
   })
+}
+
+// Una orden con el pago rechazado vuelve a pendiente para aceptar otro intento.
+//
+// El estado 'rejected' es final para los avisos de Mercado Pago (ver
+// canApplyPaymentTransition), así que sin esto un reintento aprobado no podía
+// cambiarlo: el comprador pagaba y la orden seguía rechazada. El camino es
+// explícito y solo lo abre el comprador intentando pagar.
+const reopenOrderForRetry = async ({ order, tenantId }) => {
+  const rejectedPaymentId = order.paymentIntent.providerPaymentId
+
+  if (rejectedPaymentId) {
+    order.paymentIntent.rejectedPaymentIds.push(String(rejectedPaymentId))
+  }
+
+  order.paymentStatus = PAYMENT_STATUS.PENDING
+  order.paymentIntent.providerPaymentId = null
+  order.paymentIntent.providerRawStatus = null
+  order.paymentIntent.statusDetail = null
+  order.paymentError = null
+  order.paymentErrorCode = null
+  order.syncDerivedState()
+
+  order.addAuditEntry({
+    action: 'payment_updated',
+    performedByRole: 'customer',
+    reason: 'Reintento de pago después de un rechazo',
+    metadata: { rejectedPaymentId: rejectedPaymentId || null },
+  })
+
+  await order.save({ tenantId })
+}
+
+/**
+ * Lo que hay que resolver antes de cobrar. Devuelve el rechazo a responder, o
+ * null si se puede cobrar.
+ *
+ * ACÁ VIVE LA GARANTÍA DE NO COBRAR DOS VECES.
+ *
+ * La clave de idempotencia es por intento: con otra tarjeta, Mercado Pago crea
+ * otro pago. Por eso no se puede llamarlo hasta saber que no hay uno en curso.
+ */
+const preparePaymentAttempt = async ({ order, tenantId, payment }) => {
+  const status = order.paymentStatus
+
+  if (
+    status === PAYMENT_STATUS.CANCELLED ||
+    status === PAYMENT_STATUS.REFUNDED ||
+    order.cancellation?.cancelled
+  ) {
+    return {
+      status: 409,
+      code: 'ORDER_NOT_PAYABLE',
+      message: 'Esta orden ya no se puede pagar.',
+    }
+  }
+
+  if (status === PAYMENT_STATUS.REJECTED) {
+    await reopenOrderForRetry({ order, tenantId })
+    return null
+  }
+
+  const pagoEnCurso = {
+    status: 409,
+    code: 'PAYMENT_PENDING',
+    message: 'Ya hay un pago en proceso para esta orden. Te avisamos cuando se confirme.',
+  }
+
+  const storedPaymentId = order.paymentIntent?.providerPaymentId
+
+  if (storedPaymentId) {
+    // Un id guardado no prueba que el pago siga vivo: si el proceso cayó después
+    // de guardarlo y se perdió el aviso, la orden figura pendiente con un pago ya
+    // rechazado, y sin mirar el comprador no podría volver a intentar nunca. Si
+    // Mercado Pago no contesta se asume en curso: es el lado que no cobra.
+    const stored = await payment.get({ id: storedPaymentId }).catch(error => {
+      logger.warn('⚠️ No se pudo consultar el pago guardado de la orden', {
+        orderId: order._id?.toString?.(),
+        message: getSafeErrorMessage(error),
+      })
+      return null
+    })
+
+    if (!NEGATIVE_PAYMENT_STATUSES.has(normalizeMpStatus(stored?.status))) return pagoEnCurso
+
+    await reopenOrderForRetry({ order, tenantId })
+    return null
+  }
+
+  // Un intento anterior sin id guardado: pudo fallar sin cobrar, o el proceso
+  // pudo morir después de cobrar. Solo Mercado Pago lo sabe. Se pregunta recién
+  // acá para no sumarle una llamada al primer intento, que es casi todos.
+  if (!order.lastPaymentAttemptAt) return null
+
+  let pagos
+
+  try {
+    const respuesta = await payment.search({
+      options: { external_reference: String(order._id) },
+    })
+    pagos = respuesta?.results || []
+  } catch (error) {
+    // Sin poder preguntar no se cobra: reintentar en un rato es mejor que cobrar
+    // dos veces.
+    logger.warn('⚠️ No se pudo verificar el intento anterior de pago', {
+      orderId: order._id?.toString?.(),
+      tenantId: String(tenantId),
+      message: getSafeErrorMessage(error),
+    })
+
+    return {
+      status: 503,
+      code: 'PAYMENT_ATTEMPT_UNVERIFIED',
+      message: 'No pudimos verificar tu pago anterior. Probá de nuevo en unos minutos.',
+    }
+  }
+
+  const huerfano = pagos.find(pago => {
+    const estado = normalizeMpStatus(pago?.status)
+    return estado && !NEGATIVE_PAYMENT_STATUSES.has(estado)
+  })
+
+  if (!huerfano) {
+    // Los rechazos que no llegaron a guardarse se anotan ANTES de cobrar. Si no,
+    // su aviso atrasado encuentra la orden sin id, se la toma por el pago actual
+    // y deja la orden rechazada mientras el pago nuevo se aprueba: comprador
+    // cobrado y orden rechazada.
+    const rechazados = pagos
+      .filter(pago => pago?.id && NEGATIVE_PAYMENT_STATUSES.has(normalizeMpStatus(pago?.status)))
+      .map(pago => String(pago.id))
+
+    if (rechazados.length) {
+      await Order.updateOne(
+        { _id: order._id, tenantId: toObjectId(tenantId) },
+        { $addToSet: { 'paymentIntent.rejectedPaymentIds': { $each: rechazados } } },
+      ).setOptions({ tenantId })
+    }
+
+    return null
+  }
+
+  // Queda vinculado y lo termina el webhook o la consulta de estado.
+  await persistProviderPaymentId({
+    orderId: order._id,
+    tenantId,
+    providerPaymentId: huerfano.id,
+  })
+
+  return pagoEnCurso
 }
 
 const releaseRejectedPaymentReservationIfNeeded = async ({ order, tenantId, previousStatus }) => {
@@ -465,6 +696,15 @@ export const processPayment = async (req, res) => {
       })
     }
 
+    const payment = createMercadoPagoPaymentClient(mpToken)
+
+    const attemptBlocked = await preparePaymentAttempt({ order, tenantId, payment })
+
+    if (attemptBlocked) {
+      const { status, ...body } = attemptBlocked
+      return res.status(status).json({ success: false, ...body })
+    }
+
     if (!order.stockReservedAt && !order.stockCommittedAt) {
       order.stockReservedAt = await reserveStockAtomic(order.products, tenantId, {
         orderId: order._id,
@@ -495,12 +735,22 @@ export const processPayment = async (req, res) => {
       hasNotificationUrl: Boolean(paymentData.notification_url),
     })
 
-    const payment = createMercadoPagoPaymentClient(mpToken)
     const idempotencyKey = buildPaymentIdempotencyKey({
       tenantId,
       order,
       token,
     })
+
+    // Antes de cobrar: si el proceso muere en la llamada, el próximo intento
+    // tiene que saber que hubo uno y preguntar antes de cobrar de nuevo.
+    const attemptAt = new Date()
+
+    await Order.updateOne(
+      { _id: order._id, tenantId: toObjectId(tenantId) },
+      { $set: { lastPaymentAttemptAt: attemptAt } },
+    ).setOptions({ tenantId })
+
+    order.lastPaymentAttemptAt = attemptAt
 
     const mpPayment = await payment.create({
       body: paymentData,
@@ -787,6 +1037,18 @@ export const mpWebhook = async (req, res) => {
       return
     }
 
+    // Un aviso atrasado de un intento que ya se rechazó y se reintentó. La orden
+    // no tiene id de pago en este momento, así que sin esto se tomaría por el
+    // pago actual y la volvería a rechazar.
+    if ((order.paymentIntent?.rejectedPaymentIds || []).includes(String(paymentId))) {
+      logger.info('Webhook de un intento rechazado anterior, ignorando', {
+        paymentId: String(paymentId),
+        orderId: order._id?.toString?.(),
+      })
+
+      return
+    }
+
     const knownPaymentId = String(order.paymentIntent?.providerPaymentId || '')
 
     if (knownPaymentId && knownPaymentId !== String(paymentId)) {
@@ -864,9 +1126,13 @@ export const mpWebhook = async (req, res) => {
       ...extractMercadoPagoFees(mpInfo),
     })
 
+    // Una orden que ya estaba aprobada pero sin stock confirmado es un intento
+    // anterior que falló a mitad de camino: el aviso repetido lo termina. Las
+    // órdenes viejas no pasan por acá: tienen el stock confirmado pero no la
+    // marca de efectos, y repetirlos les mandaría los correos de nuevo.
     if (
-      previousStatus !== PAYMENT_STATUS.APPROVED &&
-      order.paymentStatus === PAYMENT_STATUS.APPROVED
+      order.paymentStatus === PAYMENT_STATUS.APPROVED &&
+      (previousStatus !== PAYMENT_STATUS.APPROVED || !order.stockCommittedAt)
     ) {
       await commitApprovedPaymentIfNeeded({
         order,

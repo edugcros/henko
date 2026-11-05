@@ -580,6 +580,15 @@ const orderSchema = new Schema(
         trim: true,
       },
 
+      // Los pagos rechazados de intentos anteriores. Una orden rechazada se
+      // reabre al reintentar y pierde su providerPaymentId: sin esta lista, un
+      // aviso atrasado de aquel rechazo se tomaría por un pago de la orden y la
+      // volvería a rechazar en medio del reintento.
+      rejectedPaymentIds: {
+        type: [String],
+        default: [],
+      },
+
       status: {
         type: String,
         enum: Object.values(PAYMENT_STATUS),
