@@ -64,7 +64,9 @@ const {
 } = await import('../models/orderModel.js')
 const { default: Product } = await import('../models/productModel.js')
 const { default: User } = await import('../models/userModel.js')
-const { mpWebhook, processPayment } = await import('../controller/paymentController.js')
+const { getPaymentStatus, mpWebhook, processPayment, recoverInterruptedPayments } =
+  await import('../controller/paymentController.js')
+const { runOrderReconciliation } = await import('../services/paymentOrderService.js')
 const { runWithTenantContext } = await import('../utils/tenantRequestContext.js')
 
 const TENANT = new mongoose.Types.ObjectId()
@@ -190,6 +192,26 @@ const pagar = async (orden, token = 'token-de-tarjeta-1') => {
           installments: 1,
           payer: { email: 'comprador@test.com', identification: { type: 'DNI', number: '123' } },
         },
+        headers: {},
+        ip: '127.0.0.1',
+        tenantId: TENANT,
+        tenant: { _id: TENANT },
+        user: { _id: COMPRADOR, tenantId: TENANT, email: 'comprador@test.com' },
+      },
+      res,
+    ),
+  )
+
+  return res
+}
+
+const consultarEstado = async orden => {
+  const res = respuesta()
+
+  await runWithTenantContext({ tenantId: TENANT }, async () =>
+    getPaymentStatus(
+      {
+        params: { orderId: String(orden._id) },
         headers: {},
         ip: '127.0.0.1',
         tenantId: TENANT,
@@ -460,7 +482,7 @@ describe('un pago aprobado siempre queda guardado', () => {
 
     expect(aMedias.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
     expect(aMedias.paidAt).toBeTruthy()
-    expect(aMedias.paymentEffectsCommittedAt).toBeNull()
+    expect(aMedias.paymentEffectsCommittedAt.getTime()).toBe(0)
     expect(queuePaymentEmails).not.toHaveBeenCalled()
 
     mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
@@ -503,6 +525,161 @@ describe('un pago aprobado siempre queda guardado', () => {
     await avisoDeWebhook('pago-viejo')
 
     expect(queuePaymentEmails).not.toHaveBeenCalled()
+  })
+
+  // Órdenes tal como las deja un proceso que murió después de reclamar.
+  const hace = minutos => new Date(Date.now() - minutos * 60 * 1000)
+
+  const aprobadaAMedias = (reclamo, extra = {}, providerPaymentId = `pago-${unico()}`) =>
+    crearOrden(
+      {
+        paymentStatus: PAYMENT_STATUS.APPROVED,
+        paidAt: hace(30),
+        paymentEffectsCommittedAt: reclamo,
+        ...extra,
+      },
+      { providerPaymentId, status: PAYMENT_STATUS.APPROVED },
+    )
+
+  test('el reclamo de un proceso que murió vence y el webhook termina el pago', async () => {
+    const orden = await aprobadaAMedias(hace(11), {}, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await avisoDeWebhook('pago-1')
+
+    expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+    expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+  })
+
+  test('un reclamo reciente no se le pisa al proceso que lo tiene', async () => {
+    const orden = await aprobadaAMedias(hace(9), {}, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await avisoDeWebhook('pago-1')
+
+    expect((await releer(orden)).stockCommittedAt).toBeNull()
+    expect(queuePaymentEmails).not.toHaveBeenCalled()
+  })
+
+  test('consultar el estado termina un pago a medias', async () => {
+    const orden = await aprobadaAMedias(hace(11), {}, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await consultarEstado(orden)
+
+    expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+    expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+  })
+
+  // El proceso murió después de guardar: el reclamo viejo no es trabajo pendiente.
+  test('un reclamo vencido con el stock ya confirmado no se retoma', async () => {
+    const orden = await aprobadaAMedias(hace(60), { stockCommittedAt: hace(59) }, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await consultarEstado(orden)
+
+    expect(queuePaymentEmails).not.toHaveBeenCalled()
+  })
+
+  test('un proceso lento no suelta el reclamo que ya retomó otro', async () => {
+    const orden = await crearOrden()
+    const ajeno = new Date(Date.now() + 1000)
+
+    consumeOrderCouponIfNeeded.mockImplementationOnce(async () => {
+      await Order.updateOne(
+        { _id: orden._id, tenantId: TENANT },
+        { $set: { paymentEffectsCommittedAt: ajeno } },
+      ).setOptions({ tenantId: TENANT })
+
+      throw new Error('falló el cupón')
+    })
+    mp.create.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+
+    await pagar(orden)
+
+    expect((await releer(orden)).paymentEffectsCommittedAt).toEqual(ajeno)
+  })
+
+  describe('la pasada de recuperación', () => {
+    test('termina una orden con el reclamo vencido', async () => {
+      const orden = await aprobadaAMedias(hace(11))
+
+      await expect(recoverInterruptedPayments()).resolves.toEqual({
+        revisadas: 1,
+        recuperadas: 1,
+        fallidas: 0,
+      })
+
+      expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+      expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+
+      await recoverInterruptedPayments()
+
+      expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+    })
+
+    test('termina una orden cuyo reclamo se soltó tras un error', async () => {
+      const orden = await crearOrden()
+
+      consumeOrderCouponIfNeeded.mockRejectedValueOnce(new Error('falló el cupón'))
+      mp.create.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+      await pagar(orden)
+
+      await recoverInterruptedPayments()
+
+      expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+      expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+    })
+
+    test('no toca lo que no quedó a medias', async () => {
+      // Vieja o aprobada a mano: nunca tuvo reclamo.
+      await aprobadaAMedias(null)
+      // Con un proceso trabajando.
+      await aprobadaAMedias(hace(1))
+      // Ya terminada.
+      await aprobadaAMedias(hace(60), { stockCommittedAt: hace(59) })
+      // Cancelada después de aprobarse el reclamo.
+      await crearOrden({
+        paymentStatus: PAYMENT_STATUS.CANCELLED,
+        paymentEffectsCommittedAt: hace(60),
+      })
+
+      await expect(recoverInterruptedPayments()).resolves.toMatchObject({ revisadas: 0 })
+      expect(queuePaymentEmails).not.toHaveBeenCalled()
+    })
+
+    test('no retoma órdenes más viejas que la ventana', async () => {
+      await aprobadaAMedias(hace(11))
+
+      const resultado = await recoverInterruptedPayments({ since: new Date(Date.now() + 60000) })
+
+      expect(resultado.revisadas).toBe(0)
+    })
+
+    test('una orden que falla no frena a las demás y se reintenta', async () => {
+      await aprobadaAMedias(hace(12))
+      await aprobadaAMedias(hace(11))
+
+      consumeOrderCouponIfNeeded.mockRejectedValueOnce(new Error('falló el cupón'))
+
+      await expect(recoverInterruptedPayments()).resolves.toEqual({
+        revisadas: 2,
+        recuperadas: 1,
+        fallidas: 1,
+      })
+
+      await expect(recoverInterruptedPayments()).resolves.toMatchObject({ recuperadas: 1 })
+      expect(queuePaymentEmails).toHaveBeenCalledTimes(2)
+    })
+
+    test('corre con el trabajo periódico de órdenes', async () => {
+      const orden = await aprobadaAMedias(hace(11), {}, 'pago-1')
+
+      mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+      await runOrderReconciliation()
+
+      expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+    })
   })
 
   test('un pago que entra por webhook aprueba la orden', async () => {

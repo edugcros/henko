@@ -647,6 +647,21 @@ export const runOrderReconciliation = async ({ since = null } = {}) => {
     const dias = envEnteroPositivo('ORDER_RECONCILIATION_DAYS', 30)
     const desde = since || new Date(Date.now() - dias * 86400000)
 
+    // Antes de auditar, así la auditoría ve las órdenes ya terminadas. Import
+    // dinámico por lo mismo que el SDK: este módulo lo importan muchos.
+    try {
+      const { recoverInterruptedPayments } = await import('../controller/paymentController.js')
+      const recuperacion = await recoverInterruptedPayments({ since: desde })
+
+      if (recuperacion.revisadas) {
+        logger.warn('[ORDENES] Había pagos aprobados a medias', recuperacion)
+      }
+    } catch (error) {
+      logger.error('[ORDENES] No se pudieron recuperar los pagos a medias', {
+        error: error.message,
+      })
+    }
+
     const auditoria = await auditOrderFinancials({ since: desde })
 
     if (auditoria.balanced && !auditoria.unverifiable.length) {
