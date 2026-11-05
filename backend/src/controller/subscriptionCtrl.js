@@ -18,7 +18,9 @@ import {
   createAuthorizableSubscription,
   mapSubscriptionInvoice,
 } from '../services/subscriptionPaymentService.js'
+import { activateAuthorizedSubscription } from './subscriptionWebhookCtrl.js'
 import { getTenantMercadoPagoContext } from '../services/paymentTenantConfigService.js'
+import { acquirePaymentLock, releasePaymentLock } from '../services/paymentConcurrencyService.js'
 import {
   AI_PLANS,
   normalizePlan,
@@ -78,6 +80,39 @@ const loadTenantFromRequest = async req => {
     })
 
     return null
+  }
+}
+
+// Lo que dura una alta en curso. Mercado Pago contesta en segundos; esto solo
+// evita que el lock de un proceso caído trabe al comercio mucho tiempo.
+const SUBSCRIPTION_LOCK_TTL_SECONDS = 60
+
+const YA_SUSCRIPTO = {
+  code: 'ALREADY_SUBSCRIBED',
+  message: 'Ya tenés una suscripción activa. Para cambiar de plan usá Mi suscripción.',
+}
+
+/**
+ * Da de baja en Mercado Pago la suscripción que otra acaba de reemplazar.
+ *
+ * Cada comercio guarda un solo id, así que una suscripción reemplazada queda sin
+ * dueño: si es un enlace pendiente y alguien lo autoriza después, Mercado Pago
+ * cobra y el aviso no encuentra a ningún comercio.
+ *
+ * Un fallo acá no puede cambiar la respuesta: el alta ya salió bien. Va en error
+ * porque esa suscripción hay que darla de baja a mano.
+ */
+const cancelReplacedSubscription = async ({ client, previousId, newId, tenantId }) => {
+  if (!previousId || previousId === newId) return
+
+  try {
+    await client.update({ id: previousId, body: { status: 'cancelled' } })
+  } catch (error) {
+    logger.error('No se pudo cancelar la suscripción reemplazada', {
+      tenantId: String(tenantId),
+      subscriptionId: previousId,
+      error: error?.message,
+    })
   }
 }
 
@@ -221,6 +256,9 @@ export const processSubscriptionPayment = async (req, res) => {
     return sendResponse(res, 403, false, 'No autorizado')
   }
 
+  const lockId = `subscription:${tenant._id}`
+  let lockAcquired = false
+
   try {
     // paymentMethodId e issuerId los manda el Brick y NO se usan: /preapproval
     // no los acepta (ver PreApprovalRequest), la tarjeta ya los lleva dentro del
@@ -298,6 +336,51 @@ export const processSubscriptionPayment = async (req, res) => {
       return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
     }
 
+    // UNA SOLA SUSCRIPCIÓN POR COMERCIO
+    //
+    // Nada lo impedía: una segunda alta creaba otra suscripción en Mercado Pago, y
+    // las dos quedaban cobrando. Un doble clic alcanzaba, por eso el lock, y por
+    // eso el estado se vuelve a leer ya adentro.
+    lockAcquired = await acquirePaymentLock(lockId, tenant._id, SUBSCRIPTION_LOCK_TTL_SECONDS)
+
+    if (!lockAcquired) {
+      return sendResponse(res, 409, false, 'Ya hay un pago de suscripción en curso', {
+        code: 'SUBSCRIPTION_IN_PROGRESS',
+      })
+    }
+
+    const actual = await Tenant.findById(tenant._id)
+    const guardada = actual?.integrations?.subscriptionMercadoPago || {}
+
+    if (['active', 'past_due'].includes(actual?.subscriptionStatus) && guardada.subscriptionId) {
+      return sendResponse(res, 409, false, YA_SUSCRIPTO.message, { code: YA_SUSCRIPTO.code })
+    }
+
+    // Lo que queda es un enlace que todavía no se autorizó, o uno que se autorizó
+    // y cuyo aviso no llegó. Hay que preguntar: en el segundo caso, cobrar acá
+    // sería el segundo cobro.
+    const previousId =
+      guardada.subscriptionId && guardada.status !== 'cancelled' ? guardada.subscriptionId : null
+
+    if (previousId) {
+      let previa
+
+      try {
+        previa = await mpClient.get({ id: previousId })
+      } catch (mpError) {
+        logger.error('No se pudo consultar la suscripción anterior:', {
+          error: mpError?.message,
+          tenantId: String(tenant._id),
+        })
+        return sendResponse(res, 503, false, 'Mercado Pago no está disponible')
+      }
+
+      if (previa?.status === 'authorized') {
+        await activateAuthorizedSubscription(actual, previa)
+        return sendResponse(res, 409, false, YA_SUSCRIPTO.message, { code: YA_SUSCRIPTO.code })
+      }
+    }
+
     // Crear suscripción en Mercado Pago
     let mpSubscription
     try {
@@ -363,6 +446,16 @@ export const processSubscriptionPayment = async (req, res) => {
             'integrations.subscriptionMercadoPago.subscriptionId': alternativa.id,
             'integrations.subscriptionMercadoPago.status': alternativa.status,
             'integrations.subscriptionMercadoPago.planSelected': normalizedPlan,
+            // Al autorizar desde Mercado Pago no pasa por acá: este es el email
+            // al que le van a llegar los avisos de cobro.
+            'integrations.subscriptionMercadoPago.payerEmail': payer.email,
+          })
+
+          await cancelReplacedSubscription({
+            client: mpClient,
+            previousId,
+            newId: alternativa.id,
+            tenantId: tenant._id,
           })
         }
       } catch (alternativaError) {
@@ -445,6 +538,13 @@ export const processSubscriptionPayment = async (req, res) => {
         subscriptionId: mpSubscription.id,
       })
 
+      await cancelReplacedSubscription({
+        client: mpClient,
+        previousId,
+        newId: mpSubscription.id,
+        tenantId: tenant._id,
+      })
+
       // Enviar email de bienvenida
       try {
         await sendTemplateEmail({
@@ -488,6 +588,13 @@ export const processSubscriptionPayment = async (req, res) => {
         },
       })
 
+      await cancelReplacedSubscription({
+        client: mpClient,
+        previousId,
+        newId: mpSubscription.id,
+        tenantId: tenant._id,
+      })
+
       return sendResponse(res, 202, true, 'Pago en proceso', {
         subscriptionId: mpSubscription.id,
         status: 'pending',
@@ -513,6 +620,8 @@ export const processSubscriptionPayment = async (req, res) => {
     })
 
     sendResponse(res, 500, false, 'Error procesando pago')
+  } finally {
+    if (lockAcquired) await releasePaymentLock(lockId)
   }
 }
 

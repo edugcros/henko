@@ -34,7 +34,11 @@ jest.unstable_mockModule('../services/paymentWebhookService.js', () => ({
 }))
 
 jest.unstable_mockModule('../models/tenantModel.js', () => ({
-  default: { findOne: mockTenantFindOne, findByIdAndUpdate: mockTenantUpdate },
+  default: {
+    findOne: mockTenantFindOne,
+    findByIdAndUpdate: mockTenantUpdate,
+    findOneAndUpdate: mockTenantUpdate,
+  },
 }))
 
 jest.unstable_mockModule('../models/subscriptionWebhookEventModel.js', () => ({
@@ -65,6 +69,8 @@ const mockResolveTarget = jest.fn()
 // se prueba es qué hace el webhook con ella, no cómo se obtiene.
 jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
   resolveSubscriptionEventTarget: mockResolveTarget,
+  mapMercadoPagoSubscriptionStatus: estado =>
+    ({ authorized: 'active', cancelled: 'cancelled' })[estado] || 'pending',
   readProviderBillingDates: () => ({
     nextBillingAt: null,
     currentPeriodEnd: null,
@@ -305,6 +311,148 @@ describe('webhook de suscripción · idempotencia', () => {
 
     expect(primera).not.toBe(segunda)
     expect(primera).toContain('mp-sub-1')
+  })
+})
+
+describe('webhook de suscripción · un recurso que cambia de estado', () => {
+  const avisoDeCobro = {
+    headers: { 'x-signature': 'ts=1,v1=abc', 'x-request-id': 'req-cobro' },
+    originalUrl: '/api/webhooks/mercadopago/subscription',
+    body: { type: 'subscription_authorized_payment', data: { id: '7032067277' } },
+  }
+
+  const yaAplicado = appliedState => {
+    mockEventCreate.mockRejectedValue(duplicado())
+    mockEventFindOne.mockResolvedValue({ _id: 'evt-1', status: 'processed', appliedState })
+  }
+
+  const cobro = status =>
+    mockResolveTarget.mockResolvedValue({ preapprovalId: 'mp-sub-1', payment: { status } })
+
+  // El cobro nace 'scheduled': el aviso de su aprobación tiene la misma clave.
+  test('un cobro que se aprueba después de avisar que estaba programado se aplica', async () => {
+    yaAplicado('scheduled')
+    cobro('approved')
+    mockTenantUpdate.mockResolvedValue({
+      ...TENANT,
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+
+    await correr(avisoDeCobro)
+
+    expect(mockTenantUpdate).toHaveBeenCalledTimes(1)
+    expect(mockTenantUpdate.mock.calls[0][1].subscriptionStatus).toBe('active')
+    expect(mockSendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  test('un cobro rechazado que Mercado Pago reintenta y aprueba se aplica', async () => {
+    yaAplicado('rejected')
+    cobro('approved')
+
+    await correr(avisoDeCobro)
+
+    expect(mockTenantUpdate.mock.calls[0][1].subscriptionStatus).toBe('active')
+  })
+
+  test('el mismo estado repetido no vuelve a aplicar ni a mandar correos', async () => {
+    yaAplicado('approved')
+    cobro('approved')
+
+    const res = await correr(avisoDeCobro)
+
+    expect(res.statusCode).toBe(200)
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
+    expect(mockSendEmail).not.toHaveBeenCalled()
+    expect(mockEventUpdate.mock.calls.at(-1)[1].$set.status).toBe('processed')
+  })
+
+  test('queda anotado qué estado se aplicó', async () => {
+    cobro('approved')
+
+    await correr(avisoDeCobro)
+
+    expect(mockEventUpdate.mock.calls.at(-1)[1].$set.appliedState).toBe('approved')
+  })
+
+  test('de dos entregas simultáneas solo una toma el evento', async () => {
+    yaAplicado('scheduled')
+    cobro('approved')
+    mockEventUpdate.mockResolvedValueOnce({ matchedCount: 0 })
+
+    await correr(avisoDeCobro)
+
+    expect(mockEventUpdate.mock.calls[0][0].status).toBe('processed')
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+
+  test('un evento abandonado en curso por un proceso caído se retoma', async () => {
+    mockEventCreate.mockRejectedValue(duplicado())
+    mockEventFindOne.mockResolvedValue({
+      _id: 'evt-1',
+      status: 'processing',
+      updatedAt: new Date(Date.now() - 11 * 60 * 1000),
+    })
+
+    await correr()
+
+    expect(mockTenantUpdate).toHaveBeenCalled()
+  })
+
+  test('un evento en curso desde hace poco no se retoma', async () => {
+    mockEventCreate.mockRejectedValue(duplicado())
+    mockEventFindOne.mockResolvedValue({
+      _id: 'evt-1',
+      status: 'processing',
+      updatedAt: new Date(Date.now() - 9 * 60 * 1000),
+    })
+
+    await correr()
+
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+
+  test('activar desde Mercado Pago manda una sola bienvenida', async () => {
+    const avisoDeSuscripcion = {
+      headers: { 'x-signature': 'ts=1,v1=abc', 'x-request-id': 'req-sub' },
+      originalUrl: '/api/webhooks/mercadopago/subscription',
+      body: { type: 'subscription_preapproval', data: { id: 'mp-sub-1' } },
+    }
+
+    mockTenantFindOne.mockResolvedValue({
+      ...TENANT,
+      subscriptionStatus: 'trialing',
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: 'mp-sub-1',
+      preapproval: { id: 'mp-sub-1', status: 'authorized' },
+    })
+
+    await correr(avisoDeSuscripcion)
+
+    expect(mockSendEmail.mock.calls.map(([args]) => args.template)).toEqual([
+      'subscription-welcome',
+    ])
+
+    // Otro aviso ganó la activación.
+    mockSendEmail.mockClear()
+    mockTenantUpdate.mockResolvedValueOnce(null)
+
+    await correr(avisoDeSuscripcion)
+
+    expect(mockSendEmail).not.toHaveBeenCalled()
+  })
+
+  test('sin estado de la suscripción no se decide nada', async () => {
+    mockResolveTarget.mockResolvedValue({ preapprovalId: 'mp-sub-1', preapproval: {} })
+
+    const res = await correr({
+      ...avisoDeCobro,
+      body: { type: 'subscription_preapproval', data: { id: 'mp-sub-1' } },
+    })
+
+    expect(res.statusCode).toBe(500)
+    expect(mockTenantUpdate).not.toHaveBeenCalled()
   })
 })
 
