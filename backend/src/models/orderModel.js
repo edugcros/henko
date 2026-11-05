@@ -882,6 +882,10 @@ const orderSchema = new Schema(
     // campo, seteado con un findOneAndUpdate condicionado en
     // commitApprovedPaymentIfNeeded, es la única garantía real de que el
     // commit corra una sola vez. Ver paymentController.js.
+    //
+    // Es un reclamo con vencimiento mientras stockCommittedAt esté vacío: si
+    // el proceso muere a mitad de camino, otro lo retoma. La fecha 0 significa
+    // reclamo soltado tras un error: se puede retomar enseguida.
     paymentEffectsCommittedAt: {
       type: Date,
       default: null,

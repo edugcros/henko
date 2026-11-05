@@ -73,6 +73,19 @@ const DEFAULT_PAYMENT_LOCK_TTL_SECONDS = 30
 const DEFAULT_RECONCILIATION_LOCK_TTL_SECONDS = 20
 const DEFAULT_WEBHOOK_LOCK_TTL_SECONDS = 30
 
+// Cuánto puede tardar un proceso entre reclamar los efectos de un pago y dejarlos
+// guardados. Son segundos: pasado esto se da por muerto y otro puede retomarlos.
+const PAYMENT_EFFECTS_LEASE_MS = 10 * 60 * 1000
+// Un reclamo soltado queda con esta fecha y no en null: así se distingue de una
+// orden que nunca lo tuvo, y la pasada de recuperación también lo ve.
+const PAYMENT_EFFECTS_RELEASED_AT = new Date(0)
+// Hasta cuándo se intenta terminar un pago: mandar la confirmación de una compra
+// de hace meses confunde más de lo que arregla. Se mide desde el pago y no desde
+// la orden, porque una orden vieja se puede pagar hoy.
+const PAYMENT_RECOVERY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+// Tope por pasada: cada orden recuperada manda correos y llama a Meta.
+const PAYMENT_RECOVERY_BATCH_SIZE = 50
+
 // =====================================================
 // HELPERS GENERALES
 // =====================================================
@@ -236,6 +249,10 @@ const queueApprovedPaymentSideEffects = async ({ order, tenantId, userId, payer,
 // orderStatus va como expresión y no con el valor del documento en memoria: ese
 // se leyó antes de cobrar, y si en el medio el comercio despachó la orden lo
 // pisaría. Solo una orden todavía abierta pasa a procesando.
+//
+// La marca soltada viaja en la misma escritura que la aprobación: si el proceso
+// muere antes de reclamar, la orden ya queda a la vista de la recuperación. Con el
+// stock confirmado no hay nada que retomar, y una orden así sigue sin marca.
 const persistApprovedPayment = async ({ order, tenantId }) => {
   const result = await Order.updateOne(
     {
@@ -254,6 +271,18 @@ const persistApprovedPayment = async ({ order, tenantId }) => {
               '$orderStatus',
             ],
           },
+          paymentEffectsCommittedAt: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $ifNull: ['$paymentEffectsCommittedAt', null] }, null] },
+                  { $eq: [{ $ifNull: ['$stockCommittedAt', null] }, null] },
+                ],
+              },
+              PAYMENT_EFFECTS_RELEASED_AT,
+              '$paymentEffectsCommittedAt',
+            ],
+          },
           paidAt: order.paidAt,
           paymentError: null,
           paymentErrorCode: null,
@@ -268,7 +297,14 @@ const persistApprovedPayment = async ({ order, tenantId }) => {
   return Boolean(result?.matchedCount ?? result?.n)
 }
 
-const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, req }) => {
+const commitApprovedPaymentIfNeeded = async ({
+  order,
+  tenantId,
+  userId,
+  payer,
+  req,
+  releaseClaimAt = PAYMENT_EFFECTS_RELEASED_AT,
+}) => {
   if (order.paymentStatus !== PAYMENT_STATUS.APPROVED) return null
 
   if (!(await persistApprovedPayment({ order, tenantId }))) {
@@ -291,15 +327,35 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
   // influencia de IA, emails) — corra una sola vez. El que pierde la carrera
   // nunca toca order.save(): evita tanto el doble conteo como el
   // VersionError que antes se filtraba al comprador como un pago fallido.
+  //
+  // El reclamo vence: si el proceso muere acá adentro no llega a ningún catch, y
+  // sin vencimiento la orden quedaba cobrada y sin stock confirmado para siempre.
+  // Solo se retoma con stockCommittedAt vacío, porque ese es el dato que el save
+  // de abajo deja escrito: con él puesto, el trabajo ya terminó.
+  const claimedAt = new Date()
+
   const claimed = await Order.findOneAndUpdate(
-    { _id: order._id, tenantId, paymentEffectsCommittedAt: null },
-    { $set: { paymentEffectsCommittedAt: new Date() } },
+    {
+      _id: order._id,
+      tenantId,
+      paymentStatus: PAYMENT_STATUS.APPROVED,
+      $or: [
+        { paymentEffectsCommittedAt: null },
+        {
+          paymentEffectsCommittedAt: {
+            $lte: new Date(claimedAt.getTime() - PAYMENT_EFFECTS_LEASE_MS),
+          },
+          stockCommittedAt: null,
+        },
+      ],
+    },
+    { $set: { paymentEffectsCommittedAt: claimedAt } },
     { new: true },
   ).setOptions({ tenantId })
 
   if (!claimed) return null
 
-  order.paymentEffectsCommittedAt = claimed.paymentEffectsCommittedAt
+  order.paymentEffectsCommittedAt = claimedAt
 
   // Si esto falla se suelta el reclamo: el pago ya quedó guardado como aprobado y
   // el próximo webhook o consulta de estado termina lo que falta. Sin soltarlo,
@@ -321,9 +377,11 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
     order.stockReservedAt = null
     await order.save({ tenantId })
   } catch (error) {
+    // Solo el reclamo propio: si este proceso tardó tanto que otro retomó la orden,
+    // el reclamo ya es de ese otro y soltarlo repetiría los efectos.
     await Order.updateOne(
-      { _id: order._id, tenantId },
-      { $set: { paymentEffectsCommittedAt: null } },
+      { _id: order._id, tenantId, paymentEffectsCommittedAt: claimedAt },
+      { $set: { paymentEffectsCommittedAt: releaseClaimAt } },
     )
       .setOptions({ tenantId })
       .catch(releaseError => {
@@ -333,7 +391,7 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
         })
       })
 
-    order.paymentEffectsCommittedAt = null
+    order.paymentEffectsCommittedAt = releaseClaimAt
     throw error
   }
 
@@ -344,6 +402,61 @@ const commitApprovedPaymentIfNeeded = async ({ order, tenantId, userId, payer, r
     payer,
     req,
   })
+}
+
+/**
+ * Termina los pagos aprobados que quedaron a medias.
+ *
+ * Hace falta porque nadie más vuelve: el webhook responde 200 antes de procesar,
+ * así que Mercado Pago no reintenta aunque el proceso muera, y si el comprador
+ * cerró la página tampoco queda quien consulte el estado.
+ *
+ * Solo toma órdenes con un reclamo vencido o soltado, nunca aprobadas sin marca:
+ * esas son órdenes viejas o aprobadas a mano, y repetirles los efectos les
+ * mandaría los correos otra vez.
+ *
+ * Una orden que falla acá vuelve con la fecha actual y no con la de soltado: pasa
+ * al final de la fila, y las que fallan siempre no le ocupan el lote a las demás.
+ */
+export const recoverInterruptedPayments = async () => {
+  const ordenes = await Order.find({
+    isDeleted: false,
+    paymentStatus: PAYMENT_STATUS.APPROVED,
+    stockCommittedAt: null,
+    paymentEffectsCommittedAt: { $lte: new Date(Date.now() - PAYMENT_EFFECTS_LEASE_MS) },
+    paidAt: { $gte: new Date(Date.now() - PAYMENT_RECOVERY_WINDOW_MS) },
+  })
+    .sort({ paymentEffectsCommittedAt: 1 })
+    .limit(PAYMENT_RECOVERY_BATCH_SIZE)
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:recuperacion-de-pagos-a-medias' })
+
+  const resultado = { revisadas: ordenes.length, recuperadas: 0, fallidas: 0 }
+
+  for (const order of ordenes) {
+    try {
+      await commitApprovedPaymentIfNeeded({
+        order,
+        tenantId: order.tenantId,
+        userId: order.orderby,
+        payer: { email: order.paymentIntent?.payerEmail },
+        releaseClaimAt: new Date(),
+      })
+
+      // Sin stock confirmado es que otro ganó el reclamo o la orden cambió.
+      if (order.stockCommittedAt) resultado.recuperadas += 1
+    } catch (error) {
+      // Una orden que falla no frena a las demás, y la próxima pasada la reintenta.
+      resultado.fallidas += 1
+
+      logger.error('❌ No se pudo terminar un pago aprobado a medias', {
+        orderId: order._id?.toString?.(),
+        tenantId: String(order.tenantId),
+        message: getSafeErrorMessage(error),
+      })
+    }
+  }
+
+  return resultado
 }
 
 // Una orden con el pago rechazado vuelve a pendiente para aceptar otro intento.
