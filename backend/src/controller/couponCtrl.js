@@ -245,6 +245,7 @@ const getCouponUsageCountForUser = async ({ couponId, userId, tenantId }) => {
     tenantId,
     coupon: couponId,
     user: userId,
+    releasedAt: null,
   }).setOptions({ tenantId })
 }
 
@@ -591,6 +592,7 @@ export const getCouponsByProduct = async (req, res) => {
             tenantId: toObjectId(tenantId),
             user: toObjectId(userId),
             coupon: { $in: coupons.map(coupon => coupon._id) },
+            releasedAt: null,
           },
         },
         {

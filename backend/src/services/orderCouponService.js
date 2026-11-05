@@ -82,6 +82,7 @@ export const ensureCouponUsageAllowedForUser = async ({
     tenantId,
     coupon: coupon._id,
     user: userId,
+    releasedAt: null,
   })
     .setOptions({ tenantId })
     .session(session)
@@ -367,4 +368,74 @@ export const consumeOrderCouponIfNeeded = async ({ order, tenantId, userId, req 
 
   order.couponConsumedAt = new Date()
   return couponDoc
+}
+
+/**
+ * Devuelve el uso del cupón de una orden reembolsada o contracargada.
+ *
+ * El comprador no se quedó con el descuento, pero el uso seguía contando: perdía su
+ * único uso permitido, y un cupón con cupo se agotaba con ventas que no existieron.
+ *
+ * Solo hay algo que devolver si el pago se aprobó: recién ahí se consume, ver
+ * consumeOrderCouponIfNeeded. Por eso se decide con el CouponUsage de la orden y no
+ * con `couponConsumedAt`, que se escribe después de los contadores.
+ *
+ * El reembolso llega por el panel, por el webhook y por la consulta de estado, a
+ * veces los tres. El que marca `releasedAt` es el único que sigue.
+ *
+ * Con sesión, un error aborta la transacción y deshace todo. Sin ella, el reembolso
+ * ya ocurrió en el proveedor y un cupón no puede frenarlo: si no se pudo descontar,
+ * se suelta la marca para que el próximo aviso lo reintente. El contador por usuario
+ * va después y no se reintenta, porque repetir descontaría dos veces el total.
+ */
+export const releaseOrderCouponIfNeeded = async ({ order, tenantId, session = null }) => {
+  if (!order?.coupon?.couponId) return null
+
+  const usage = await CouponUsage.findOneAndUpdate(
+    { tenantId, order: order._id, releasedAt: null },
+    { $set: { releasedAt: new Date() } },
+    { new: true, session },
+  ).setOptions({ tenantId })
+
+  if (!usage) return null
+
+  const contexto = { orderId: String(order._id), couponId: String(usage.coupon) }
+
+  try {
+    await Coupon.updateOne(
+      { _id: usage.coupon, tenantId, usageCount: { $gt: 0 } },
+      { $inc: { usageCount: -1 } },
+      { session },
+    ).setOptions({ tenantId })
+  } catch (error) {
+    if (session) throw error
+
+    logger.error('❌ No se pudo devolver el uso del cupón', {
+      ...contexto,
+      message: error?.message,
+    })
+
+    await CouponUsage.updateOne({ _id: usage._id }, { $set: { releasedAt: null } })
+      .setOptions({ tenantId })
+      .catch(() => {})
+
+    return null
+  }
+
+  try {
+    await CouponUserUsageCounter.updateOne(
+      { tenantId, coupon: usage.coupon, user: usage.user, count: { $gt: 0 } },
+      { $inc: { count: -1 } },
+      { session },
+    ).setOptions({ tenantId })
+  } catch (error) {
+    if (session) throw error
+
+    logger.error('❌ No se pudo devolver el uso del cupón al comprador', {
+      ...contexto,
+      message: error?.message,
+    })
+  }
+
+  return usage
 }
