@@ -1026,10 +1026,15 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
       order.paymentStatus === PAYMENT_STATUS.PENDING &&
       !order.stockCommittedAt
     ) {
-      await decrementStockForLines({
-        lines: order.products,
-        tenantId,
-      })
+      // La reserva ya descontó las unidades al iniciar el pago: acá se vuelven venta.
+      // Descontarlas de nuevo bajaba el stock dos veces y frenaba la aprobación de una
+      // orden que tenía reservada la última unidad.
+      if (!order.stockReservedAt) {
+        await decrementStockForLines({
+          lines: order.products,
+          tenantId,
+        })
+      }
 
       order.stockCommittedAt = new Date()
       order.stockReservedAt = null

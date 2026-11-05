@@ -21,6 +21,7 @@ import {
   ensureCouponUsageAllowedForUser,
   releaseOrderCouponIfNeeded,
 } from '../services/orderCouponService.js'
+import { reserveStockAtomic } from '../services/paymentOrderOpsService.js'
 import { crearReplicaEnMemoria } from './testDB.js'
 
 describe('order admin mutation guards', () => {
@@ -598,6 +599,138 @@ describe('el cupón de una orden reembolsada vuelve', () => {
       expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(400)
       expect((await leerCupon()).usageCount).toBe(0)
       expect(await usoDe(o)).toBeNull()
+    })
+
+    describe('el stock de una orden aprobada a mano', () => {
+      let producto
+
+      const crearProducto = stock =>
+        Product.create({
+          tenantId: TENANT,
+          title: 'Zapatilla',
+          slug: `zapatilla-${unico()}`,
+          description: 'Producto de prueba',
+          marca: 'Marca',
+          categoria: 'Test',
+          subcategoria: 'General',
+          price: 1000,
+          stock,
+          currency: 'ARS',
+          sku: `SKU-${unico().slice(-10).toUpperCase()}`,
+          status: 'active',
+          visibility: 'visible',
+        })
+
+      const conProducto = () =>
+        crearOrden({
+          stockCommittedAt: null,
+          products: [
+            {
+              product: producto._id,
+              count: 1,
+              priceCents: 100000,
+              originalPriceCents: 100000,
+              subtotalCents: 100000,
+              originalSubtotalCents: 100000,
+              titleSnapshot: 'Zapatilla',
+              currency: 'ARS',
+            },
+          ],
+        })
+
+      // Como al iniciar un pago con Mercado Pago: la reserva ya descuenta las unidades.
+      const conReserva = async () => {
+        const o = await conProducto()
+
+        await reserveStockAtomic(o.products, TENANT, { orderId: o._id })
+
+        return o
+      }
+
+      const stock = async () =>
+        (await Product.findById(producto._id).setOptions(opciones).lean()).stock
+
+      beforeEach(async () => {
+        await Product.deleteMany({}).setOptions({ ignoreTenant: true })
+        producto = await crearProducto(10)
+      })
+
+      test('una orden con reserva no descuenta las unidades otra vez', async () => {
+        // ESTA ES LA PROPIEDAD. La reserva ya las descontó: quedaban 8 de 10.
+        const o = await conReserva()
+
+        expect(await stock()).toBe(9)
+
+        const res = await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+        const final = await leerOrden(o)
+
+        expect(res.statusCode).toBe(200)
+        expect(await stock()).toBe(9)
+        expect(final.stockCommittedAt).toBeInstanceOf(Date)
+        expect(final.stockReservedAt).toBeNull()
+      })
+
+      test('se puede aprobar la última unidad, que ya es de esta orden', async () => {
+        await Product.updateOne({ _id: producto._id }, { stock: 1 }).setOptions(opciones)
+
+        const o = await conReserva()
+
+        expect(await stock()).toBe(0)
+        expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(200)
+        expect(await stock()).toBe(0)
+      })
+
+      test('sin reserva la venta sí descuenta las unidades', async () => {
+        const o = await conProducto()
+
+        await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+
+        expect(await stock()).toBe(9)
+        expect((await leerOrden(o)).stockCommittedAt).toBeInstanceOf(Date)
+      })
+
+      test('sin stock y sin reserva no se puede aprobar', async () => {
+        await Product.updateOne({ _id: producto._id }, { stock: 0 }).setOptions(opciones)
+
+        const o = await conProducto()
+
+        expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(400)
+        expect((await leerOrden(o)).paymentStatus).toBe(PAYMENT_STATUS.PENDING)
+      })
+
+      test('reembolsarla después devuelve exactamente lo que se vendió', async () => {
+        const o = await conReserva()
+
+        await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+
+        const session = await mongoose.startSession()
+
+        await session.withTransaction(() =>
+          refundOrderWithInventoryRestore({
+            orderModel: Order,
+            orderId: String(o._id),
+            tenantObjectId: TENANT,
+            tenantId: TENANT,
+            session,
+            performedBy: ADMIN,
+            reason: 'Prueba',
+            req: { headers: {}, ip: '10.0.0.1', user: { role: 'admin' } },
+            normalizeObjectId: id => new mongoose.Types.ObjectId(id),
+            isValidId: () => true,
+          }),
+        )
+        await session.endSession()
+
+        expect(await stock()).toBe(10)
+      })
+
+      test('rechazarla libera la reserva una sola vez', async () => {
+        const o = await conReserva()
+
+        await cambiarPago(o, PAYMENT_STATUS.REJECTED)
+
+        expect(await stock()).toBe(10)
+      })
     })
 
     test('si el cupón falla no se toca el stock, para que el reintento no lo repita', async () => {
