@@ -9,6 +9,7 @@ import {
   resolveTextModel,
 } from './ai/geminiModels.js'
 import { removeBackgroundLocal, isLocalBackgroundRemovalEnabled } from './ai/backgroundRemoval.js'
+import { readUsage } from './ai/aiUsageMetadata.js'
 
 /**
  * Motores de imagen
@@ -105,10 +106,17 @@ const askGemini = async (key, model, prompt) => {
   }
 
   const json = await res.json()
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  return {
+    text: json?.candidates?.[0]?.content?.parts?.[0]?.text || '',
+    // Lo que Google cobró por esta llamada, sea cual sea el texto que devolvió.
+    usage: readUsage(json),
+  }
 }
 
-const optimizePrompt = async (userPrompt, apiKey = null) => {
+// `onUsage` recibe cada llamada que Gemini cobró. Esta era la única llamada a un
+// modelo que no se medía: el gasto no llegaba ni al disyuntor ni al libro.
+const optimizePrompt = async (userPrompt, apiKey = null, onUsage = null) => {
   // La key la manda el llamador cuando conoce el tenant (puede ser la propia
   // del comercio); el fallback a la de la plataforma queda para los usos
   // internos que no tienen tenant a mano.
@@ -136,7 +144,18 @@ User instruction (JSON string): ${JSON.stringify(userPrompt)}`
 
   for (const model of getModelChain(resolveTextModel())) {
     try {
-      const raw = await askGemini(geminiKey, model, instruction)
+      const { text: raw, usage } = await askGemini(geminiKey, model, instruction)
+
+      // Antes de mirar el texto: una respuesta inservible también se paga. Que no
+      // se pueda registrar no le corta la imagen al comercio.
+      try {
+        await onUsage?.({ model, usage })
+      } catch (error) {
+        logger.warn('No se pudo registrar el gasto de optimizar el prompt', {
+          model,
+          error: describe(error),
+        })
+      }
 
       const optimized = raw
         .trim()
@@ -902,12 +921,12 @@ export const generateVariation = async (
   imageBuffer,
   prompt,
   mimeType = 'image/png',
-  { apiKey = null, purpose = null } = {},
+  { apiKey = null, purpose = null, onPromptUsage = null } = {},
 ) => {
   // El plazo corre desde que entra el pedido: optimizar el prompt y recortar
   // también consumen del tiempo que espera el panel.
   const deadline = Date.now() + generationBudgetMs()
-  const optimizedPrompt = await optimizePrompt(prompt, apiKey)
+  const optimizedPrompt = await optimizePrompt(prompt, apiKey, onPromptUsage)
 
   logger.info('generateVariation', {
     bytes: imageBuffer.length,

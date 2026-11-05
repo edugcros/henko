@@ -6,6 +6,7 @@ const TENANT_ID = '64b7f0000000000000000001'
 const mockReserve = jest.fn()
 const mockRefund = jest.fn()
 const mockRecordImageCall = jest.fn()
+const mockRecordTokens = jest.fn()
 const mockGenerate = jest.fn()
 const mockStudio = jest.fn()
 const mockGenerativeStatus = jest.fn()
@@ -18,6 +19,7 @@ jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
   recordImageProviderCall: mockRecordImageCall,
+  recordTokenSpend: mockRecordTokens,
 }))
 
 jest.unstable_mockModule('../services/imageAiService.js', () => ({
@@ -78,6 +80,45 @@ beforeEach(() => {
     allowed: true,
     operationId: OPERATION_ID,
     metric: 'imageEdits',
+  })
+})
+
+describe('imageAiCtrl · los tokens de optimizar el prompt', () => {
+  const usage = { inputTokens: 100, outputTokens: 20, totalTokens: 120 }
+
+  const conPrompt = resultado =>
+    mockGenerate.mockImplementation(async (_buffer, _prompt, _mime, { onPromptUsage }) => {
+      await onPromptUsage({ model: 'gemini-texto', usage })
+      return resultado()
+    })
+
+  const esperado = expect.objectContaining({
+    tenantId: TENANT_ID,
+    metric: 'imageEdits',
+    operationId: OPERATION_ID,
+    callId: 'prompt:gemini-texto',
+    provider: 'gemini',
+    model: 'gemini-texto',
+    usage,
+  })
+
+  test('se registran en su propia llamada de la operación', async () => {
+    conPrompt(() => ({ buffer: Buffer.from('ok'), contentType: 'image/png', provider: 'gemini' }))
+
+    await correr()
+
+    expect(mockRecordTokens).toHaveBeenCalledWith(esperado)
+  })
+
+  test('quedan registrados aunque la imagen falle y se devuelva la cuota', async () => {
+    conPrompt(() => {
+      throw Object.assign(new Error('sin capacidad'), { expose: true, statusCode: 503 })
+    })
+
+    await correr()
+
+    expect(mockRecordTokens).toHaveBeenCalledWith(esperado)
+    expect(mockRefund).toHaveBeenCalled()
   })
 })
 

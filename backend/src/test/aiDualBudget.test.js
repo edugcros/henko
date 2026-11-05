@@ -115,6 +115,158 @@ const reservar = operationId =>
     operationId,
   })
 
+const usoDelComercio = () =>
+  AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL })
+    .setOptions({ tenantId: TENANT })
+    .lean()
+
+const operacion = operationId =>
+  AiOperation.findOne({ tenantId: TENANT, operationId }).setOptions({ tenantId: TENANT }).lean()
+
+describe('una operación reabierta retiene y libera su reserva', () => {
+  test('el reintento tras una devolución no deja plata retenida', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = '1'
+
+    const operationId = nuevaClave()
+
+    await reservar(operationId)
+    await refundAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId,
+      period: PERIODO_REAL,
+    })
+    await reservar(operationId)
+
+    const reabierta = await operacion(operationId)
+
+    expect(reabierta.status).toBe('running')
+    expect(reabierta.reservedCostUsd).toBeGreaterThan(0)
+    expect(reabierta.reservedTenantCostUsd).toBeGreaterThan(0)
+
+    await recordTokenSpend({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId,
+    })
+
+    const [comercio, plataforma] = await Promise.all([
+      usoDelComercio(),
+      AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
+    ])
+
+    expect(comercio.reservedCostUsd).toBe(0)
+    expect(plataforma.reservedCostUsd).toBe(0)
+  })
+
+  test('el reintento en otro mes libera la reserva de ese mes', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+
+    const operationId = nuevaClave()
+    const pedir = period =>
+      reserveAiBudget({
+        tenantId: TENANT,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        profile: PERFIL,
+        period,
+        operationId,
+      })
+
+    await pedir('2031-01')
+    await refundAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      operationId,
+      period: '2031-01',
+    })
+    await pedir('2031-02')
+
+    expect((await operacion(operationId)).period).toBe('2031-02')
+  })
+})
+
+describe('una imagen no deja plata retenida', () => {
+  const imagen = operationId =>
+    reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      amount: 1,
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId,
+      provider: 'cloudflare',
+      forcePlatformBilling: true,
+    })
+
+  test('devolver una imagen no deja reservas ni gasto', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
+    process.env.AI_PLATFORM_PER_TENANT_SHARE = '1'
+
+    const operationId = nuevaClave()
+
+    await imagen(operationId)
+    await refundAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      operationId,
+      period: PERIODO_REAL,
+      provider: 'cloudflare',
+    })
+
+    const [comercio, plataforma] = await Promise.all([
+      usoDelComercio(),
+      AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
+    ])
+
+    expect(comercio.reservedCostUsd).toBe(0)
+    expect(comercio.estimatedCostUsd).toBeCloseTo(0, 10)
+    expect(plataforma.reservedCostUsd).toBe(0)
+    expect(plataforma.estimatedCostUsd).toBeCloseTo(0, 10)
+  })
+
+  // Optimizar el prompt son tokens de Gemini: Google los cobra aunque la imagen
+  // después falle, y no son parte de la cuota de imágenes.
+  test('los tokens del prompt no tocan la cuota y sobreviven a la devolución', async () => {
+    const operationId = nuevaClave()
+
+    await imagen(operationId)
+    await recordTokenSpend({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      inputTokens: 1000,
+      outputTokens: 100,
+      totalTokens: 1100,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId,
+      callId: 'prompt:gemini-3.1-flash-lite',
+    })
+
+    expect((await usoDelComercio()).counters.imageEdits).toBe(1)
+
+    await refundAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.IMAGE_EDITS,
+      operationId,
+      period: PERIODO_REAL,
+      provider: 'cloudflare',
+    })
+
+    const devuelto = await usoDelComercio()
+
+    expect(devuelto.counters.imageEdits).toBe(0)
+    expect(devuelto.estimatedCostUsd).toBeCloseTo(0.0004, 8)
+  })
+})
+
 describe('imágenes facturadas a la plataforma aunque Gemini use BYOK', () => {
   test('clasifica el pagador como plataforma y libera la reserva al liquidar', async () => {
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '10'
@@ -136,11 +288,16 @@ describe('imágenes facturadas a la plataforma aunque Gemini use BYOK', () => {
 
     const costoEsperado = 0.0006336
     const operacion = await esperarA(
-      () => AiOperation.findOne({ tenantId: TENANT, operationId }).setOptions({ tenantId: TENANT }).lean(),
+      () =>
+        AiOperation.findOne({ tenantId: TENANT, operationId })
+          .setOptions({ tenantId: TENANT })
+          .lean(),
       row => row?.status === 'completed',
     )
     const [usoTenant, usoPlataforma] = await Promise.all([
-      AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL }).setOptions({ tenantId: TENANT }).lean(),
+      AiUsage.findOne({ tenantId: TENANT, period: PERIODO_REAL })
+        .setOptions({ tenantId: TENANT })
+        .lean(),
       AiPlatformUsage.findOne({ period: PERIODO_REAL }).lean(),
     ])
 

@@ -22,7 +22,6 @@ import {
 } from './ai/aiBudgetService.js'
 import { loadTenantAiProfile } from './ai/aiCredentialsService.js'
 import { readUsage } from './ai/aiUsageMetadata.js'
-import { getCurrentPeriod } from './ai/aiPeriod.js'
 import {
   extractErrorStatus,
   getModelChain,
@@ -1879,15 +1878,16 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
 
   const aiProfile = await loadTenantAiProfile(normalizedTenantId)
 
-  // Clave de idempotencia derivada, no generada: el hash de la imagen ya
-  // identifica de forma estable "analizar ESTA imagen para ESTE comercio en
-  // este mes". Si el mismo análisis se reintenta —el navegador reenvía, un job
-  // se vuelve a tomar— los movimientos que deja son los mismos y el índice
-  // único del ledger descarta el repetido sin que nadie tenga que acordarse.
+  // Una clave por ejecución, porque cada una es una llamada real a Gemini.
   //
-  // El período entra en la clave para que el mismo producto reanalizado el mes
-  // siguiente sea una operación distinta, que es lo que es.
-  const operationId = `vision:${normalizedTenantId}:${hash}:${getCurrentPeriod()}`
+  // Era fija por imagen y por mes, y eso servía para una entrega repetida que no
+  // llama al proveedor. Acá sí lo llama: la misma foto analizada de nuevo pasaba
+  // como reintento, Gemini cobraba y el gasto se descartaba como repetido. Y un
+  // reintento tras una respuesta inválida reabría la operación, su consumo se
+  // descartaba igual y quedaba corriendo con la plata retenida.
+  //
+  // El hash queda en la clave para poder rastrear qué imagen fue.
+  const operationId = `vision:${normalizedTenantId}:${hash}:${crypto.randomUUID()}`
 
   const usageReservation = await reserveAiBudget({
     tenantId: normalizedTenantId,
@@ -2166,7 +2166,10 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     // candidatesTokenCount sueltos dejan afuera thoughtsTokenCount, que Google
     // cobra a tarifa de salida. El modelo se sigue informando explícito porque
     // la respuesta del SDK no lo trae y activeModel sí lo sabe.
-    recordTokenSpend({
+    //
+    // Se espera: si el JSON viene roto, la devolución de abajo tiene que correr
+    // con el consumo ya asentado y la reserva ya liquidada.
+    await recordTokenSpend({
       tenantId: normalizedTenantId,
       metric: AI_METRICS.VISION,
       operationId,

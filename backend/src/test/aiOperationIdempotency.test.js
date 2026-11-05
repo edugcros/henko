@@ -885,6 +885,65 @@ describe('llamadas al proveedor · la unidad es la llamada, no la operación', (
   })
 })
 
+describe('visión · lo que se asienta', () => {
+  test('con key propia el libro guarda lo que le costó al comercio', async () => {
+    const period = '2030-11'
+    const operationId = 'byok-vision-1'
+
+    await recordTokenSpend({
+      tenantId: TENANT,
+      metric: AI_METRICS.VISION,
+      inputTokens: 1000,
+      outputTokens: 100,
+      totalTokens: 1100,
+      model: 'gemini-3.1-flash-lite',
+      profile: { ...PERFIL, keySource: 'tenant' },
+      period,
+      operationId,
+    })
+    await asentar()
+
+    const fila = await AiConsumptionLedger.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(fila.costUsd).toBe(0)
+    expect(fila.tenantProviderCostUsd).toBeCloseTo(0.0004, 8)
+  })
+
+  test('un consumo que llega después de devolver no reabre la operación', async () => {
+    const period = '2030-11'
+    const operationId = 'devuelta-y-consumida'
+
+    await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.VISION,
+      profile: PERFIL,
+      period,
+      operationId,
+    })
+    await refundAiBudget({ tenantId: TENANT, metric: AI_METRICS.VISION, period, operationId })
+    await recordTokenSpend({
+      tenantId: TENANT,
+      metric: AI_METRICS.VISION,
+      inputTokens: 100,
+      outputTokens: 10,
+      totalTokens: 110,
+      model: 'gemini-3.1-flash-lite',
+      profile: PERFIL,
+      period,
+      operationId,
+    })
+    await asentar()
+
+    const operacion = await AiOperation.findOne({ tenantId: TENANT, operationId })
+      .setOptions({ tenantId: TENANT })
+      .lean()
+
+    expect(operacion.status).toBe(AI_OPERATION_STATUS.REFUNDED)
+  })
+})
+
 describe('una fila repartida se audita sola', () => {
   test('la operacion guarda con que proporcion se repartio y de que nivel salio', async () => {
     // PUNTO 18, la pata de "operation": la feature y el modelo ELIGEN la

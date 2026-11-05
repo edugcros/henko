@@ -291,6 +291,12 @@ const openOperation = async ({
             startedAt: new Date(),
             failedAt: null,
             failureReason: null,
+            // Lo que reservó ESTE intento. Sin esto la operación quedaba con cero
+            // y la liquidación no encontraba nada que soltar: la plata seguía
+            // retenida hasta fin de mes a nombre de nadie.
+            period,
+            reservedCostUsd,
+            reservedTenantCostUsd,
             ...(requestedModel ? { requestedModel } : {}),
           },
         },
@@ -582,7 +588,15 @@ const closeOperation = ({
   const now = new Date()
 
   AiOperation.updateOne(
-    { tenantId, operationId },
+    {
+      tenantId,
+      operationId,
+      // Esta escritura no se espera, así que puede llegar después de la
+      // devolución. Una operación devuelta no vuelve a figurar completada.
+      ...(status === AI_OPERATION_STATUS.COMPLETED
+        ? { status: { $ne: AI_OPERATION_STATUS.REFUNDED } }
+        : {}),
+    },
     {
       $set: {
         status,
@@ -3186,6 +3200,9 @@ export const recordTokenSpend = async ({
     plan: aiProfile.plan,
     breakdown,
     costUsd,
+    // Con key propia costUsd es cero y esto no: sin pasarlo, el libro decía que
+    // el análisis no le había costado nada al comercio.
+    tenantProviderCostUsd,
   })
 }
 

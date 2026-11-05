@@ -207,6 +207,10 @@ describe('IA generativa · un 429 real la marca como no disponible', () => {
 
       // Ya recortada: no pasa por el recorte local, va directo a Gemini.
       const error = await generateVariation(await recorte(), 'fondo blanco', 'image/png', {
+        // Ninguna llamada llegó a responder: no hay nada que registrar.
+        onPromptUsage: () => {
+          throw new Error('no se debería registrar nada')
+        },
         apiKey: 'AIzaTEST',
       }).catch(e => e)
 
@@ -440,6 +444,98 @@ describe('IA generativa · revisión de la cadena', () => {
         expect(getGenerativeBackgroundStatus().available).toBe(false)
       },
     )
+  })
+
+  describe('optimizar el prompt se mide', () => {
+    // Un modelo que un caso anterior dejó en pausa no se volvería a llamar.
+    beforeEach(async () => {
+      const { resetDeadModels } = await import('../services/ai/geminiModels.js')
+
+      resetDeadModels()
+    })
+
+    const conGemini = async (respuesta, prueba) => {
+      const originalFetch = global.fetch
+      const originalKey = env.ai.geminiApiKey
+      env.ai.geminiApiKey = 'AIzaTEST'
+      global.fetch = respuesta
+
+      try {
+        await prueba()
+      } finally {
+        global.fetch = originalFetch
+        env.ai.geminiApiKey = originalKey
+      }
+    }
+
+    // Lo que importa es el prompt: la imagen falla enseguida con cualquier texto.
+    const responder = texto => {
+      let llamadas = 0
+
+      return async () => {
+        llamadas += 1
+
+        return llamadas === 1
+          ? {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                candidates: [{ content: { parts: [{ text: texto }] } }],
+                usageMetadata: {
+                  promptTokenCount: 100,
+                  candidatesTokenCount: 20,
+                  totalTokenCount: 120,
+                },
+              }),
+            }
+          : { ok: false, status: 503, text: async () => 'sin capacidad' }
+      }
+    }
+
+    const generar = async opciones =>
+      generateVariation(await recorte(), 'fondo blanco', 'image/png', {
+        apiKey: 'AIzaTEST',
+        ...opciones,
+      }).catch(error => error)
+
+    test('registra lo que cobró Gemini aunque la imagen falle', async () => {
+      const onPromptUsage = jest.fn()
+
+      await conGemini(responder('a clean white studio background'), () =>
+        generar({ onPromptUsage }),
+      )
+
+      expect(onPromptUsage).toHaveBeenCalledTimes(1)
+      expect(onPromptUsage.mock.calls[0][0]).toEqual({
+        model: expect.any(String),
+        usage: expect.objectContaining({ inputTokens: 100, outputTokens: 20 }),
+      })
+    })
+
+    test('una respuesta inservible también se registra', async () => {
+      const onPromptUsage = jest.fn()
+
+      await conGemini(responder('ok'), () => generar({ onPromptUsage }))
+
+      expect(onPromptUsage).toHaveBeenCalled()
+    })
+
+    // Sin el catch propio el error caía en el del modelo y se pagaba otra llamada.
+    test('si no se puede registrar, no se vuelve a llamar a Gemini', async () => {
+      const onPromptUsage = jest.fn().mockRejectedValue(new Error('sin base'))
+      const respuesta = responder('a clean white studio background')
+      const llamadas = []
+
+      await conGemini(
+        async (url, opciones) => {
+          llamadas.push(String(opciones?.body || ''))
+          return respuesta(url, opciones)
+        },
+        () => generar({ onPromptUsage }),
+      )
+
+      expect(llamadas.filter(body => body.includes('prompt engineer'))).toHaveLength(1)
+    })
   })
 
   test('sin tiempo dentro del plazo no se llama a ningún proveedor y el error es para el comercio', async () => {
