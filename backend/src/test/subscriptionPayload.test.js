@@ -317,6 +317,38 @@ describe('aviso de pago · resolver a que suscripcion pertenece', () => {
     expect(r.preapprovalId).toBeNull()
     expect(r.payment).toBeNull()
   })
+
+  // Con null, el aviso terminaba "sin tenant" y contestado con 200: perdido.
+  test.each([
+    ['un 500', async () => ({ ok: false, status: 500, json: async () => ({}) })],
+    ['un 429', async () => ({ ok: false, status: 429, json: async () => ({}) })],
+    [
+      'un timeout',
+      async () => {
+        throw new Error('The operation was aborted due to timeout')
+      },
+    ],
+  ])('%s lanza, para que el aviso se reintente', async (_nombre, respuesta) => {
+    global.fetch = jest.fn(respuesta)
+
+    await expect(resolveSubscriptionEventTarget({ type: 'payment', dataId: '9' })).rejects.toThrow()
+  })
+
+  test('un contracargo se resuelve por su cobro', async () => {
+    const pago = {
+      status: 'charged_back',
+      point_of_interaction: { transaction_data: { subscription_id: 'pre-1' } },
+    }
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => pago }))
+
+    const r = await resolveSubscriptionEventTarget({
+      type: 'topic_chargebacks_wh',
+      dataId: '81968653106',
+    })
+
+    expect(global.fetch.mock.calls[0][0]).toMatch(/\/v1\/payments\/81968653106$/)
+    expect(r).toEqual({ preapprovalId: 'pre-1', payment: pago, preapproval: null })
+  })
 })
 
 // EL COBRO RECURRENTE VIVE EN OTRO RECURSO

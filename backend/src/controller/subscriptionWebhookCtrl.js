@@ -8,7 +8,9 @@ import SubscriptionWebhookEvent, {
 import { sendTemplateEmail } from '../services/emailService.js'
 import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
 import { AI_PLANS } from '../services/ai/aiPlanPolicy.js'
+import { MP_CHARGEBACK_EVENT } from '../config/subscriptionConfig.js'
 import {
+  fetchPlatformPayment,
   fetchPreapproval,
   mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
@@ -25,6 +27,7 @@ const EVENTOS_CON_ESTADO = new Set([
   'payment',
   'subscription_authorized_payment',
   'subscription_preapproval',
+  MP_CHARGEBACK_EVENT,
 ])
 
 // Con estos estados el comercio tiene una suscripción cobrando.
@@ -36,6 +39,16 @@ const EVENTO_EN_CURSO_MS = 10 * 60 * 1000
 
 // Lo que se le dice al comercio. El código de Mercado Pago queda guardado tal cual
 // para diagnosticar, pero 'cc_rejected_high_risk' no le dice nada a quien lo lee.
+const MOTIVOS_DE_REVERSION = Object.freeze({
+  refunded: 'El cobro fue reembolsado',
+  charged_back: 'El cobro fue desconocido ante el emisor de la tarjeta (contracargo)',
+})
+
+// Un cobro aprobado más de esto antes que el último ya no paga el período actual.
+// Es la mitad de un ciclo mensual: lejos de los reintentos de un mismo cobro y lejos
+// del cobro siguiente.
+const COBRO_DE_OTRO_CICLO_MS = 15 * 24 * 60 * 60 * 1000
+
 const MOTIVOS_DE_RECHAZO = Object.freeze({
   cc_rejected_insufficient_amount: 'La tarjeta no tiene fondos suficientes',
   cc_rejected_high_risk: 'El cobro fue rechazado por prevención de fraude',
@@ -66,7 +79,45 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
  * caso que hay que deduplicar.
  */
 const buildEventId = ({ type, data }) =>
-  `${String(type || '').trim()}:${String(data?.id || '').trim()}`
+  `${String(type || '').trim()}:${String(idDelRecurso({ type, data })).trim()}`
+
+/**
+ * De qué recurso habla el aviso.
+ *
+ * En un contracargo no sirve `data.id`: es un número como 233000061680860000, más
+ * grande que lo que JavaScript representa exacto, y JSON.parse ya lo redondeó. El
+ * cobro viene aparte, en `data.payment_id`, y es todo lo que hace falta.
+ */
+const idDelRecurso = ({ type, data }) =>
+  (type === MP_CHARGEBACK_EVENT ? data?.payment_id : data?.id) || ''
+
+/**
+ * Qué pasó con un cobro que ya no está aprobado.
+ *
+ * `partially_refunded` no aparece porque el cobro sigue `approved`: quedó plata
+ * cobrada, y eso no deja el período sin pagar.
+ *
+ * Un contracargo `reimbursed` se resolvió a favor del vendedor. Cualquier otro
+ * detalle cuenta como perdido: la documentación se contradice sobre `settled`.
+ */
+const clasificarReversion = payment => {
+  const estado = String(payment?.status || '').toLowerCase()
+
+  if (estado === 'refunded') return 'refunded'
+  if (estado !== 'charged_back') return null
+
+  return String(payment?.status_detail || '').toLowerCase() === 'reimbursed'
+    ? 'reimbursed'
+    : 'charged_back'
+}
+
+// El estado de un cobro, a los fines de saber si un aviso trae algo nuevo. El
+// contracargo se resuelve sin cambiar de estado: solo cambia el detalle.
+const estadoDelCobro = payment => {
+  const estado = String(payment?.status || '').toLowerCase()
+
+  return estado === 'charged_back' ? `${estado}:${payment?.status_detail || ''}` : estado
+}
 
 /**
  * POST /api/webhooks/mercadopago/subscription
@@ -96,7 +147,10 @@ export const handleSubscriptionWebhook = async (req, res) => {
 
   const { type, data } = req.body || {}
 
-  if (!type || !data?.id) {
+  const recursoId = idDelRecurso({ type, data })
+
+  if (!type || !recursoId) {
+    logger.warn('Webhook de suscripción sin recurso', { type: type || null })
     return sendResponse(res, 400, false, 'Webhook inválido')
   }
 
@@ -112,7 +166,7 @@ export const handleSubscriptionWebhook = async (req, res) => {
       provider: 'mercadopago',
       eventId,
       eventType: type,
-      subscriptionId: String(data.id),
+      subscriptionId: String(recursoId),
     })
   } catch (error) {
     if (error?.code !== 11000) {
@@ -191,13 +245,14 @@ export const handleSubscriptionWebhook = async (req, res) => {
     // congelada en el estado del primer día.
     const { preapprovalId, payment, preapproval } = await resolveSubscriptionEventTarget({
       type,
-      dataId: data.id,
+      // Como texto: el id de pago de un contracargo llega como número.
+      dataId: String(recursoId),
     })
 
     // El estado que este aviso va a aplicar. Si es el que ya se aplicó, es una
     // entrega repetida y volver a aplicarlo mandaría los correos otra vez.
     const estadoDelRecurso = EVENTOS_CON_ESTADO.has(type)
-      ? String(preapproval?.status || payment?.status || '').toLowerCase() || null
+      ? String(preapproval?.status || estadoDelCobro(payment)).toLowerCase() || null
       : null
 
     if (estadoDelRecurso && event.appliedState === estadoDelRecurso) {
@@ -265,10 +320,25 @@ export const handleSubscriptionWebhook = async (req, res) => {
       // no hay una segunda llamada. Sin el pago no se decide nada: marcar un
       // cobro como aprobado o rechazado sin saberlo es peor que no hacer nada.
       case 'payment':
-      case 'subscription_authorized_payment': {
+      case 'subscription_authorized_payment':
+      case MP_CHARGEBACK_EVENT: {
         const estado = String(payment?.status || '').toLowerCase()
+        const reversion = clasificarReversion(payment)
 
-        if (estado === 'approved') {
+        if (reversion === 'reimbursed') {
+          await handleReversalReimbursed(tenant, payment)
+        } else if (reversion) {
+          await handlePaymentReversed(tenant, payment, reversion)
+        } else if (type === MP_CHARGEBACK_EVENT) {
+          // Un contracargo recién abierto puede encontrar el cobro todavía aprobado.
+          // No es un cobro nuevo: pasar por la rama de abajo mandaría otro "pago
+          // confirmado". Cuando el cobro cambie, llega otro aviso.
+          logger.info('Contracargo sobre un cobro que no se revirtió', {
+            tenantId: String(tenant._id),
+            paymentId: String(payment?.id || recursoId),
+            estado: estado || '(sin pago consultable)',
+          })
+        } else if (estado === 'approved') {
           if (await suscripcionVigente(tenant, preapprovalId)) {
             await handlePaymentAuthorized(tenant, data)
           }
@@ -566,8 +636,11 @@ const handlePaymentFailed = async (tenant, data) => {
     tenant._id,
     {
       subscriptionStatus: 'past_due',
-      subscriptionPastDueAt: new Date(),
+      // La mora corre desde el primer rechazo. Mercado Pago reintenta cada pocos días:
+      // con la fecha de hoy en cada uno, la gracia no se terminaba nunca.
+      subscriptionPastDueAt: tenant.subscriptionPastDueAt || new Date(),
       'integrations.subscriptionMercadoPago.status': data.status,
+      'integrations.subscriptionMercadoPago.reversalReason': null,
       'integrations.subscriptionMercadoPago.failureReason': data.reason,
       'integrations.subscriptionMercadoPago.lastFailureAt': new Date(),
     },
@@ -594,6 +667,114 @@ const handlePaymentFailed = async (tenant, data) => {
   } catch (emailError) {
     logger.warn('Error enviando email de pago fallido:', emailError)
   }
+}
+
+/**
+ * Un cobro aprobado se deshizo: reembolso o contracargo.
+ *
+ * Mercado Pago deja la suscripción autorizada, así que sin esto el comercio seguía
+ * activo con un período que nadie pagó. Queda en past_due, igual que con un rechazo:
+ * corre la gracia y el próximo cobro aprobado lo regulariza.
+ *
+ * Solo importa el cobro del período actual. Revertir uno de otro ciclo no deja nada
+ * sin pagar, porque el comercio ya pagó uno posterior: queda en el log para que
+ * alguien lo mire, sin tocarle el acceso.
+ *
+ * El filtro es lo que lo hace idempotente: el mismo cobro llega como `payment`, como
+ * `subscription_authorized_payment` y como contracargo. A quien no tiene un cobro en
+ * curso no se le hace nada: una baja no vuelve a past_due.
+ */
+const handlePaymentReversed = async (tenant, payment, motivo) => {
+  const paymentId = String(payment?.id || '')
+
+  if (!paymentId) throw new Error('Mercado Pago no informó el cobro revertido')
+
+  // El pago anidado de un cobro recurrente puede no traer la fecha.
+  const cobro = payment.date_approved ? payment : await fetchPlatformPayment(paymentId)
+  const aprobadoEl = new Date(cobro?.date_approved || NaN).getTime()
+  const guardada = tenant.integrations?.subscriptionMercadoPago || {}
+  const ultimoCobro = new Date(guardada.lastPaymentAt || NaN).getTime()
+  const deOtroCiclo = ultimoCobro - aprobadoEl > COBRO_DE_OTRO_CICLO_MS
+
+  logger.warn('Cobro de suscripción revertido', {
+    tenantId: String(tenant._id),
+    paymentId,
+    motivo,
+    statusDetail: payment.status_detail || null,
+    deOtroCiclo,
+  })
+
+  if (deOtroCiclo) return
+
+  const updated = await Tenant.findOneAndUpdate(
+    {
+      _id: tenant._id,
+      subscriptionStatus: { $in: ESTADOS_DE_COBRO },
+      'integrations.subscriptionMercadoPago.reversedPaymentId': { $ne: paymentId },
+    },
+    {
+      subscriptionStatus: 'past_due',
+      subscriptionPastDueAt: tenant.subscriptionPastDueAt || new Date(),
+      'integrations.subscriptionMercadoPago.reversedPaymentId': paymentId,
+      'integrations.subscriptionMercadoPago.reversalReason': motivo,
+      'integrations.subscriptionMercadoPago.reversedAt': new Date(),
+      'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+    },
+    { new: true },
+  )
+
+  if (!updated) return
+
+  try {
+    const payerEmail = updated.integrations?.subscriptionMercadoPago?.payerEmail
+
+    if (payerEmail) {
+      await sendTemplateEmail({
+        to: payerEmail,
+        template: 'subscription-payment-reversed',
+        data: {
+          tenantName: updated.name,
+          reversalReason: MOTIVOS_DE_REVERSION[motivo],
+          actionUrl: `${env.adminUrl}/admin/mi-suscripcion`,
+        },
+      })
+    }
+  } catch (emailError) {
+    logger.warn('Error enviando email de cobro revertido:', emailError)
+  }
+}
+
+/**
+ * El contracargo se resolvió a favor del vendedor: la plata volvió.
+ *
+ * Deshace lo que hizo ese contracargo y nada más. El filtro exige que la mora siga
+ * siendo por este cobro: si después hubo un rechazo, el motivo ya no está y el
+ * comercio sigue debiendo.
+ */
+const handleReversalReimbursed = async (tenant, payment) => {
+  const restaurado = await Tenant.findOneAndUpdate(
+    {
+      _id: tenant._id,
+      subscriptionStatus: 'past_due',
+      'integrations.subscriptionMercadoPago.reversedPaymentId': String(payment?.id || ''),
+      'integrations.subscriptionMercadoPago.reversalReason': { $ne: null },
+    },
+    {
+      subscriptionStatus: 'active',
+      subscriptionPastDueAt: null,
+      'integrations.subscriptionMercadoPago.reversedPaymentId': null,
+      'integrations.subscriptionMercadoPago.reversalReason': null,
+      'integrations.subscriptionMercadoPago.reversedAt': null,
+      'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+    },
+    { new: true },
+  )
+
+  logger.info('Contracargo resuelto a favor del vendedor', {
+    tenantId: String(tenant._id),
+    paymentId: String(payment?.id || ''),
+    restaurado: Boolean(restaurado),
+  })
 }
 
 /**

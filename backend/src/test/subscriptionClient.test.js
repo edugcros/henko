@@ -171,6 +171,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPlatformPayment: jest.fn(),
       fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
@@ -224,6 +225,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPlatformPayment: jest.fn(),
       fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
@@ -286,6 +288,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPlatformPayment: jest.fn(),
       fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
@@ -334,6 +337,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPlatformPayment: jest.fn(),
       fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
@@ -536,6 +540,7 @@ describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
       createAuthorizableSubscription: mockCrearAutorizable,
       createSubscriptionInvoiceClient: jest.fn(),
       resolveSubscriptionEventTarget: jest.fn(),
+      fetchPlatformPayment: jest.fn(),
       fetchPreapproval: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
     }))

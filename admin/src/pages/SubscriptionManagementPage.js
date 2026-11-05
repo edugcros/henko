@@ -95,6 +95,13 @@ export const invoiceStatus = status =>
 
 const INVOICES_VISIBLE = 6
 
+// Por qué un cobro aprobado dejó de contar. Mercado Pago no reintenta nada en este
+// caso, así que el aviso de un rechazo sería falso.
+const REVERSAL_NOTICES = {
+  refunded: 'Tu último cobro fue reembolsado',
+  charged_back: 'Tu último cobro fue desconocido ante el emisor de la tarjeta',
+}
+
 const BILLING_STATUSES = ['active', 'past_due']
 
 export const formatDate = value => {
@@ -743,7 +750,9 @@ const SubscriptionManagementPage = () => {
 
       {status === 'past_due' && (
         <Alert severity="warning">
-          {`Tu pago está pendiente${formatDate(subscription.subscriptionPastDueAt) ? ` desde el ${formatDate(subscription.subscriptionPastDueAt)}` : ''}. Mercado Pago va a reintentar el cobro. Si cambiaste de tarjeta, actualizala en tu cuenta de Mercado Pago, en Suscripciones.`}
+          {REVERSAL_NOTICES[mercadoPago?.reversalReason]
+            ? `${REVERSAL_NOTICES[mercadoPago.reversalReason]}, así que el período quedó pendiente de pago. Se regulariza con el próximo cobro aprobado.`
+            : `Tu pago está pendiente${formatDate(subscription.subscriptionPastDueAt) ? ` desde el ${formatDate(subscription.subscriptionPastDueAt)}` : ''}. Mercado Pago va a reintentar el cobro. Si cambiaste de tarjeta, actualizala en tu cuenta de Mercado Pago, en Suscripciones.`}
         </Alert>
       )}
 
