@@ -1,14 +1,14 @@
 import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
 
-import { ORDER_STATUS, PAYMENT_STATUS, FULFILLMENT_STATUS } from '../models/orderModel.js'
+import Order, { ORDER_STATUS, PAYMENT_STATUS, FULFILLMENT_STATUS } from '../models/orderModel.js'
 import { ensureAdminOrManager } from '../services/orderExecutionService.js'
 import {
   cancelOrderWithInventoryRestore,
   orderRequiresForceDeletion,
   refundOrderWithInventoryRestore,
 } from '../services/orderAdminMutationService.js'
-import { LEGACY_ORDER_STATUS } from '../controller/orderCtrl.js'
+import { LEGACY_ORDER_STATUS, updateOrderPaymentStatus } from '../controller/orderCtrl.js'
 import { getCouponsByProduct, validateCoupon } from '../controller/couponCtrl.js'
 import Cart from '../models/cartModel.js'
 import Coupon from '../models/couponModel.js'
@@ -417,25 +417,6 @@ describe('el cupón de una orden reembolsada vuelve', () => {
       expect((await leerCupon()).usageCount).toBe(0)
     })
 
-    test('cancelar una orden en disputa lo devuelve', async () => {
-      const o = await ordenPagada()
-      const session = await mongoose.startSession()
-
-      Object.assign(o, {
-        paymentStatus: PAYMENT_STATUS.PENDING,
-        orderStatus: ORDER_STATUS.OPEN,
-        stockRestoredAt: new Date(),
-        markCancelled: jest.fn(async () => undefined),
-      })
-
-      await session.withTransaction(() =>
-        cancelOrderWithInventoryRestore({ ...argumentos(o), session }),
-      )
-      await session.endSession()
-
-      expect((await leerCupon()).usageCount).toBe(0)
-    })
-
     test('cancelar una orden sin pagar no toca el cupón de nadie', async () => {
       await Coupon.updateOne({ _id: cupon._id }, { usageCount: 1 }).setOptions(opciones)
 
@@ -453,6 +434,181 @@ describe('el cupón de una orden reembolsada vuelve', () => {
       await session.endSession()
 
       expect((await leerCupon()).usageCount).toBe(1)
+    })
+  })
+
+  describe('aprobar el pago a mano', () => {
+    const ADMIN = new mongoose.Types.ObjectId()
+    const unico = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    const crearOrden = (extra = {}) =>
+      new Order({
+        tenantId: TENANT,
+        idempotencyKey: `orden-${unico()}`,
+        orderby: COMPRADOR,
+        products: [
+          {
+            product: new mongoose.Types.ObjectId(),
+            count: 1,
+            priceCents: 100000,
+            originalPriceCents: 100000,
+            subtotalCents: 100000,
+            originalSubtotalCents: 100000,
+            titleSnapshot: 'Zapatilla',
+            currency: 'ARS',
+          },
+        ],
+        paymentIntent: {
+          id: `pi-${unico()}`,
+          provider: 'mercadopago',
+          status: PAYMENT_STATUS.PENDING,
+          currency: 'ARS',
+          amountCents: 90000,
+          originalAmountCents: 100000,
+          discountAmountCents: 10000,
+        },
+        paymentStatus: PAYMENT_STATUS.PENDING,
+        // Sin esto el test necesitaría un producto real; el stock no es lo que se mira.
+        stockCommittedAt: new Date(),
+        coupon: { couponId: cupon._id, code: cupon.code },
+        customerSnapshot: { userId: COMPRADOR, email: 'comprador@test.com' },
+        shippingAddress: {
+          firstName: 'Ana',
+          lastName: 'Compradora',
+          email: 'comprador@test.com',
+          phone: '+541123456789',
+          address: 'Calle Test 123',
+          city: 'Buenos Aires',
+          zipCode: '1000',
+          country: 'AR',
+        },
+        ...extra,
+      }).save({ tenantId: TENANT })
+
+    const cambiarPago = async (o, paymentStatus) => {
+      const res = {
+        statusCode: null,
+        status(code) {
+          this.statusCode = code
+          return this
+        },
+        json(body) {
+          this.body = body
+          return this
+        },
+      }
+
+      await updateOrderPaymentStatus(
+        {
+          params: { id: String(o._id) },
+          body: { paymentStatus },
+          headers: {},
+          ip: '10.0.0.1',
+          tenantId: TENANT,
+          tenant: { _id: TENANT },
+          user: { _id: ADMIN, tenantId: TENANT, role: 'admin' },
+        },
+        res,
+        () => undefined,
+      )
+
+      return res
+    }
+
+    const leerOrden = o => Order.findById(o._id).setOptions(opciones).lean()
+
+    beforeAll(async () => {
+      await Order.init()
+    })
+
+    afterEach(async () => {
+      await Order.deleteMany({}).setOptions({ ignoreTenant: true })
+    })
+
+    test('consume el cupón, a nombre del comprador', async () => {
+      // ESTA ES LA PROPIEDAD. Aprobando acá el uso no contaba.
+      const o = await crearOrden()
+
+      const res = await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+      const uso = await usoDe(o)
+
+      expect(res.statusCode).toBe(200)
+      expect((await leerCupon()).usageCount).toBe(1)
+      expect((await usosDe(COMPRADOR)).count).toBe(1)
+      expect(await usosDe(ADMIN)).toBeNull()
+      expect(String(uso.user)).toBe(String(COMPRADOR))
+      expect(uso.ipAddress).toBeNull()
+      expect((await leerOrden(o)).couponConsumedAt).toBeInstanceOf(Date)
+    })
+
+    test('el comprador ya no puede repetir un cupón de un solo uso', async () => {
+      await crearOrden().then(o => cambiarPago(o, PAYMENT_STATUS.APPROVED))
+
+      await expect(
+        ensureCouponUsageAllowedForUser({ coupon: cupon, userId: COMPRADOR, tenantId: TENANT }),
+      ).rejects.toThrow('límite de uso')
+    })
+
+    test('si después llega el aviso de Mercado Pago no se cuenta dos veces', async () => {
+      const o = await crearOrden()
+
+      await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+
+      const guardada = await Order.findById(o._id).setOptions(opciones)
+      await consumeOrderCouponIfNeeded({
+        order: guardada,
+        tenantId: TENANT,
+        userId: guardada.orderby,
+      })
+
+      expect((await leerCupon()).usageCount).toBe(1)
+    })
+
+    test('y reembolsarla después lo devuelve', async () => {
+      const o = await crearOrden()
+
+      await cambiarPago(o, PAYMENT_STATUS.APPROVED)
+      await devolver(await leerOrden(o))
+
+      expect((await leerCupon()).usageCount).toBe(0)
+    })
+
+    test('sin cupón en la orden no registra nada', async () => {
+      const o = await crearOrden({ coupon: undefined })
+
+      expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(200)
+      expect(await usoDe(o)).toBeNull()
+    })
+
+    test.each([PAYMENT_STATUS.REJECTED, PAYMENT_STATUS.CANCELLED])(
+      'pasarla a %s no consume nada',
+      async paymentStatus => {
+        const o = await crearOrden({ stockCommittedAt: null })
+
+        await cambiarPago(o, paymentStatus)
+
+        expect((await leerCupon()).usageCount).toBe(0)
+        expect(await usoDe(o)).toBeNull()
+      },
+    )
+
+    test('una aprobación inválida no consume nada', async () => {
+      const o = await crearOrden({ paymentStatus: PAYMENT_STATUS.REJECTED })
+
+      expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(400)
+      expect((await leerCupon()).usageCount).toBe(0)
+      expect(await usoDe(o)).toBeNull()
+    })
+
+    test('si el cupón falla no se toca el stock, para que el reintento no lo repita', async () => {
+      const o = await crearOrden({ stockCommittedAt: null })
+      const stock = jest.spyOn(Product, 'findOne')
+
+      jest.spyOn(CouponUsage, 'create').mockRejectedValueOnce(new Error('sin conexión'))
+
+      expect((await cambiarPago(o, PAYMENT_STATUS.APPROVED)).statusCode).toBe(400)
+      expect(stock).not.toHaveBeenCalled()
+      expect((await leerOrden(o)).paymentStatus).toBe(PAYMENT_STATUS.PENDING)
     })
   })
 })

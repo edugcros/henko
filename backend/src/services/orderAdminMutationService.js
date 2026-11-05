@@ -154,10 +154,6 @@ export const cancelOrderWithInventoryRestore = async ({
     order.stockRestoredAt = new Date()
   }
 
-  // Sin pago aprobado casi nunca hay uso que devolver. Lo hay si se aprobó y después
-  // entró en disputa: Mercado Pago lo pasa a pendiente.
-  await releaseOrderCouponIfNeeded({ order, tenantId, session })
-
   await order.markCancelled({
     tenantId,
     cancelledBy: cancelledBy ? normalizeObjectId(cancelledBy) : null,
