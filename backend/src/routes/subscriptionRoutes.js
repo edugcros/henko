@@ -15,10 +15,29 @@ import {
   getSubscriptionInvoices,
 } from '../controller/subscriptionCtrl.js'
 
-import { authMiddleware } from '../middlewares/authMiddleware.js'
-import { resolveTenantByDomain, requireTenant } from '../middlewares/tenantMiddleware.js'
+import { authMiddleware, isAdmin } from '../middlewares/authMiddleware.js'
+import {
+  requireAdminDomain,
+  requireTenant,
+  resolveTenantByDomain,
+} from '../middlewares/tenantMiddleware.js'
 
 const router = express.Router()
+
+// La suscripción es del COMERCIO, no de quien compra en su tienda.
+//
+// Estas rutas pedían solo sesión, y resolveAuthorizedTenantFromRequest mira el
+// comercio, no el rol. Un cliente de la tienda —rol 'user', con su cuenta del
+// mismo comercio— podía cancelarle la suscripción, cambiarle el plan y leer
+// sus datos de facturación. Es el mismo contexto del resto de las rutas del
+// panel.
+const adminContext = [
+  resolveTenantByDomain,
+  requireTenant,
+  requireAdminDomain,
+  authMiddleware,
+  isAdmin,
+]
 
 // =====================================================
 // RATE LIMITERS
@@ -57,7 +76,7 @@ const subscriptionPaymentLimiter = rateLimit({
 /**
  * GET /api/subscriptions/config
  * Obtener configuración de pago (public key MP, plan actual, etc)
- * Acceso: Autenticado + Tenant resuelto
+ * Acceso: admin del comercio, desde su dominio de panel
  *
  * Devuelve el plan y el estado de suscripción del comercio, así que exige
  * sesión: son datos del tenant, no información pública de pricing (esa vive
@@ -68,7 +87,7 @@ const subscriptionPaymentLimiter = rateLimit({
 // son los precios de venta — información de vidriera.
 router.get('/plans', getSubscriptionPlans)
 
-router.get('/config', resolveTenantByDomain, requireTenant, authMiddleware, getSubscriptionConfig)
+router.get('/config', adminContext, getSubscriptionConfig)
 
 /**
  * POST /api/subscriptions/process-payment
@@ -104,9 +123,7 @@ router.get('/config', resolveTenantByDomain, requireTenant, authMiddleware, getS
 // arriba degradaba a IP por no tener req.user.
 router.post(
   '/process-payment',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
+  adminContext,
   subscriptionPaymentLimiter,
   processSubscriptionPayment,
 )
@@ -114,9 +131,9 @@ router.post(
 /**
  * GET /api/subscriptions/current
  * Obtener información actual de suscripción del tenant
- * Acceso: Autenticado + Tenant resuelto
+ * Acceso: admin del comercio, desde su dominio de panel
  */
-router.get('/current', resolveTenantByDomain, requireTenant, authMiddleware, getCurrentSubscription)
+router.get('/current', adminContext, getCurrentSubscription)
 
 /**
  * POST /api/subscriptions/change-plan
@@ -137,13 +154,7 @@ router.get('/current', resolveTenantByDomain, requireTenant, authMiddleware, get
  *   }
  * }
  */
-router.post(
-  '/change-plan',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  changeSubscriptionPlan,
-)
+router.post('/change-plan', adminContext, changeSubscriptionPlan)
 
 /**
  * POST /api/subscriptions/cancel
@@ -158,7 +169,7 @@ router.post(
  *   }
  * }
  */
-router.post('/cancel', resolveTenantByDomain, requireTenant, authMiddleware, cancelSubscription)
+router.post('/cancel', adminContext, cancelSubscription)
 
 /**
  * GET /api/subscriptions/invoices
@@ -184,12 +195,6 @@ router.post('/cancel', resolveTenantByDomain, requireTenant, authMiddleware, can
  *   }
  * }
  */
-router.get(
-  '/invoices',
-  resolveTenantByDomain,
-  requireTenant,
-  authMiddleware,
-  getSubscriptionInvoices,
-)
+router.get('/invoices', adminContext, getSubscriptionInvoices)
 
 export default router
