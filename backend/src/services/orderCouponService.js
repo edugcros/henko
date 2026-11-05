@@ -275,8 +275,8 @@ export const createCouponUsageRecord = async ({
 
 /**
  * Consume el cupón de una orden pagada con Mercado Pago recién al momento en
- * que el pago queda aprobado (no al crear la orden, a diferencia de COD),
- * para no agotar cupones con pagos rechazados/abandonados.
+ * que el pago queda aprobado (no al crear la orden), para no agotar cupones
+ * con pagos rechazados/abandonados.
  *
  * Idempotente ante reintentos/webhooks duplicados: primero intenta crear el
  * `CouponUsage` (protegido por el índice único `{tenantId, order}`) y solo si

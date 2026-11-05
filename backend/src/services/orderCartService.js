@@ -1,6 +1,5 @@
 import mongoose from 'mongoose'
 import Product from '../models/productModel.js'
-import Cart from '../models/cartModel.js'
 import { isValidObjectId, toObjectId } from '../utils/requestContext.js'
 import { resolveCartPricing } from './cartPricingService.js'
 
@@ -210,13 +209,4 @@ export const calculateCartLines = async ({ cart, tenantId, session = null, money
     subtotalCents,
     currency: currency || 'ARS',
   }
-}
-
-export const clearCart = async ({ cartId, tenantId, session = null }) => {
-  await Cart.deleteOne({
-    _id: cartId,
-    tenantId,
-  })
-    .setOptions({ tenantId })
-    .session(session)
 }

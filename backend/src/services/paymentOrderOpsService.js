@@ -14,7 +14,7 @@ const getSafeErrorMessage = error => {
 }
 
 // Reserva stock descontando `stock`/`variants[].stock` (el modelo canónico de
-// inventario, el mismo que usa orderInventoryService.js para el flujo COD).
+// inventario, el mismo que usa orderInventoryService.js).
 // El producto no distingue "disponible" de "reservado": reservar significa
 // descontar ya mismo, y liberar significa devolver esa cantidad si el pago
 // termina rechazado/cancelado. Se ejecuta dentro de una transacción (cuando

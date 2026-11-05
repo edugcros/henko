@@ -204,18 +204,6 @@ export const dispatchApprovedOrderEmails = async ({
   }
 }
 
-export const dispatchOrderCreationEmails = async ({
-  order,
-  buyerEmail = null,
-  tenantConfig = null,
-}) => {
-  return dispatchApprovedOrderEmails({
-    order,
-    buyerEmail,
-    tenantConfig,
-  })
-}
-
 export const resendOrderConfirmationEmail = async ({
   order,
   tenantId,

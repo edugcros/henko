@@ -7,24 +7,16 @@ import crypto from 'crypto'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 
 import {
-  dispatchOrderCreationEmails,
   dispatchOrderStatusEmail,
   resendOrderConfirmationEmail,
 } from '../services/orderEmailService.js'
 import {
-  consumeCouponAtomic,
-  consumeCouponForUserAtomic,
-  createCouponUsageRecord,
   ensureCouponUsageAllowedForUser,
   evaluateCouponDiscount,
   findUsableCouponByCode,
   findUsableCouponById,
 } from '../services/orderCouponService.js'
-import {
-  calculateCartLines,
-  clearCart,
-  validateCartOwnership,
-} from '../services/orderCartService.js'
+import { calculateCartLines, validateCartOwnership } from '../services/orderCartService.js'
 import { decrementStockForLines } from '../services/orderInventoryService.js'
 import { releaseReservedStock } from '../services/paymentOrderOpsService.js'
 import { registerMarketingConsent } from '../services/aiAgent/aiContactPolicyService.js'
@@ -393,7 +385,26 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       message: error.message,
     })
   }
-  const isCOD = Boolean(req.body?.COD)
+  // PAGO CONTRA ENTREGA: NO EXISTE.
+  //
+  // `COD: true` en el body creaba la orden aprobada, descontaba stock y mandaba
+  // los correos de compra, sin cobrar nada y sin que el comercio lo hubiera
+  // ofrecido: la tienda no tiene esa opción, pero la API la aceptaba de
+  // cualquier cliente con sesión. Una orden se aprueba cuando Mercado Pago lo
+  // confirma o cuando el comercio la marca a mano desde el panel.
+  //
+  // Se rechaza en vez de ignorarlo: tratarlo como un pago normal le mostraría a
+  // quien lo pidió una orden pendiente que no es lo que pidió.
+  //
+  // `cod` sigue en el enum del modelo por las órdenes que ya existen.
+  if (req.body?.COD) {
+    return res.status(400).json({
+      success: false,
+      code: 'COD_NOT_AVAILABLE',
+      message: 'El pago contra entrega no está disponible',
+    })
+  }
+
   // Opt-in explícito de marketing desde el checkout (checkbox). Estricto:
   // solo true booleano o 'true' string cuentan como consentimiento.
   const marketingConsentGiven =
@@ -488,48 +499,17 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
       }
 
       const finalCents = Math.max(0, subtotalCents - discountCents)
-      const paymentStatus = isCOD ? PAYMENT_STATUS.APPROVED : PAYMENT_STATUS.PENDING
+      const paymentStatus = PAYMENT_STATUS.PENDING
 
       const shippingAddress = buildShippingAddress({ req, body: req.body })
 
       /**
        * CRÍTICO:
-       * Para Mercado Pago NO descontamos stock ni borramos carrito acá.
-       * Eso lo debe hacer paymentController cuando el pago esté aprobado.
+       * Acá no se toca el stock, ni el carrito, ni el cupón. Lo hace
+       * paymentController: el stock se reserva al intentar pagar, y el carrito y
+       * el cupón se resuelven cuando el pago queda aprobado. Así una orden
+       * abandonada no agota nada.
        */
-      if (isCOD) {
-        await decrementStockForLines({
-          lines,
-          tenantId,
-          session,
-        })
-      }
-
-      /**
-       * Cupón:
-       * - COD: se consume al crear la orden porque nace aprobada.
-       * - Mercado Pago: NO se consume acá. Se consume al confirmar pago approved.
-       *   Esto evita agotar cupones por pagos rechazados/abandonados.
-       */
-      if (couponDoc && isCOD) {
-        // Orden importante: primero el límite por-usuario (atómico), después
-        // el global — ambos dentro de la misma transacción que crea la
-        // orden, así que si cualquiera de los dos falla, nada queda a medio
-        // consumir (runOrderTransaction aborta todo el bloque).
-        await consumeCouponForUserAtomic({
-          coupon: couponDoc,
-          userId: normalizeObjectId(userId),
-          tenantId,
-          session,
-        })
-
-        couponDoc = await consumeCouponAtomic({
-          coupon: couponDoc,
-          tenantId,
-          session,
-        })
-      }
-
       const attribution = parseAttributionHeader(req.headers['x-metric-attribution'])
 
       const order = new Order({
@@ -562,9 +542,9 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
         paymentIntent: {
           id: idempotencyKey,
-          provider: isCOD ? 'cod' : 'mercadopago',
+          provider: 'mercadopago',
           status: paymentStatus,
-          method: isCOD ? 'cash_on_delivery' : 'credit_card',
+          method: 'credit_card',
           currency,
           amountCents: finalCents,
           originalAmountCents: subtotalCents,
@@ -580,8 +560,8 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
           shippingAddress,
         }),
         shippingAddress,
-        paidAt: isCOD ? new Date() : null,
-        stockCommittedAt: isCOD ? new Date() : null,
+        paidAt: null,
+        stockCommittedAt: null,
 
         coupon: couponDoc
           ? {
@@ -595,10 +575,9 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
             }
           : undefined,
 
-        // COD consume el cupón al crear la orden (más abajo); Mercado Pago lo
-        // consume recién al confirmar el pago (ver commitApprovedPaymentIfNeeded
-        // en paymentController.js), así que acá solo se marca para COD.
-        couponConsumedAt: couponDoc && isCOD ? new Date() : null,
+        // Se consume al confirmar el pago: ver commitApprovedPaymentIfNeeded en
+        // paymentController.js.
+        couponConsumedAt: null,
       })
 
       order.addAuditEntry({
@@ -608,7 +587,6 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
         metadata: {
           provider: order.paymentIntent.provider,
           paymentStatus,
-          isCOD,
           hasCoupon: Boolean(couponDoc),
           discountCents,
         },
@@ -618,30 +596,6 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
 
       await order.save({ session, tenantId })
 
-      if (couponDoc && isCOD) {
-        await createCouponUsageRecord({
-          coupon: couponDoc,
-          order,
-          lines,
-          userId: normalizeObjectId(userId),
-          tenantId,
-          subtotalCents,
-          discountCents,
-          finalCents,
-          currency,
-          req,
-          session,
-        })
-      }
-
-      if (isCOD) {
-        await clearCart({
-          cartId: cart._id,
-          tenantId,
-          session,
-        })
-      }
-
       return order
     })
   } catch (error) {
@@ -650,13 +604,6 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
     return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message || 'Error procesando la orden',
-    })
-  }
-
-  if (isCOD) {
-    await dispatchOrderCreationEmails({
-      order: createdOrder,
-      buyerEmail: createdOrder.shippingAddress?.email || createdOrder.customerSnapshot?.email,
     })
   }
 
@@ -702,9 +649,7 @@ export const createOrder = expressAsyncHandler(async (req, res) => {
   return res.status(201).json({
     success: true,
     data: enrichOrderForResponse(createdOrder),
-    message: isCOD
-      ? 'Orden creada exitosamente. Recibirás un email de confirmación.'
-      : 'Orden creada. Procedé al pago para completar la compra.',
+    message: 'Orden creada. Procedé al pago para completar la compra.',
   })
 })
 
