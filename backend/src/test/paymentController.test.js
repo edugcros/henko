@@ -581,6 +581,60 @@ describe('un pago aprobado siempre queda guardado', () => {
     expect(queuePaymentEmails).not.toHaveBeenCalled()
   })
 
+  // El proceso muere entre guardar la aprobación y reclamar los efectos.
+  const sinLlegarAReclamar = async accion => {
+    const original = Order.findOneAndUpdate
+    const reclamo = jest.spyOn(Order, 'findOneAndUpdate').mockImplementation(function (
+      filtro,
+      ...resto
+    ) {
+      if (filtro?.$or) throw new Error('se cayó el proceso')
+      return original.call(this, filtro, ...resto)
+    })
+
+    try {
+      await accion()
+    } finally {
+      reclamo.mockRestore()
+    }
+  }
+
+  test('una caída antes de reclamar deja la orden a la vista de la recuperación', async () => {
+    const orden = await crearOrden()
+
+    mp.create.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await sinLlegarAReclamar(() => pagar(orden))
+
+    const aMedias = await releer(orden)
+
+    expect(aMedias.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    expect(aMedias.paymentEffectsCommittedAt.getTime()).toBe(0)
+
+    await recoverInterruptedPayments()
+
+    expect((await releer(orden)).stockCommittedAt).toBeTruthy()
+    expect(queuePaymentEmails).toHaveBeenCalledTimes(1)
+  })
+
+  test('aprobar no le pone marca a una orden con el stock ya confirmado', async () => {
+    const orden = await aprobadaAMedias(null, { stockCommittedAt: hace(60) }, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await sinLlegarAReclamar(() => consultarEstado(orden))
+
+    expect((await releer(orden)).paymentEffectsCommittedAt).toBeNull()
+  })
+
+  test('aprobar no pisa el reclamo que ya tiene otro proceso', async () => {
+    const reclamo = hace(1)
+    const orden = await aprobadaAMedias(reclamo, {}, 'pago-1')
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    await consultarEstado(orden)
+
+    expect((await releer(orden)).paymentEffectsCommittedAt).toEqual(reclamo)
+  })
+
   test('un proceso lento no suelta el reclamo que ya retomó otro', async () => {
     const orden = await crearOrden()
     const ajeno = new Date(Date.now() + 1000)
@@ -648,16 +702,25 @@ describe('un pago aprobado siempre queda guardado', () => {
       expect(queuePaymentEmails).not.toHaveBeenCalled()
     })
 
-    test('no retoma órdenes más viejas que la ventana', async () => {
-      await aprobadaAMedias(hace(11))
+    test('no retoma pagos más viejos que la ventana', async () => {
+      await aprobadaAMedias(hace(11), { paidAt: hace(31 * 24 * 60) })
 
-      const resultado = await recoverInterruptedPayments({ since: new Date(Date.now() + 60000) })
+      await expect(recoverInterruptedPayments()).resolves.toMatchObject({ revisadas: 0 })
+    })
 
-      expect(resultado.revisadas).toBe(0)
+    test('una orden vieja pagada hace poco se retoma', async () => {
+      const orden = await aprobadaAMedias(hace(11))
+
+      await Order.collection.updateOne(
+        { _id: orden._id },
+        { $set: { createdAt: hace(90 * 24 * 60) } },
+      )
+
+      await expect(recoverInterruptedPayments()).resolves.toMatchObject({ recuperadas: 1 })
     })
 
     test('una orden que falla no frena a las demás y se reintenta', async () => {
-      await aprobadaAMedias(hace(12))
+      const fallida = await aprobadaAMedias(hace(12))
       await aprobadaAMedias(hace(11))
 
       consumeOrderCouponIfNeeded.mockRejectedValueOnce(new Error('falló el cupón'))
@@ -667,6 +730,16 @@ describe('un pago aprobado siempre queda guardado', () => {
         recuperadas: 1,
         fallidas: 1,
       })
+
+      // Pasa al final de la fila: si no, 50 que fallan siempre taparían al resto.
+      const marca = (await releer(fallida)).paymentEffectsCommittedAt
+
+      expect(marca.getTime()).toBeGreaterThan(hace(1).getTime())
+
+      await Order.updateOne(
+        { _id: fallida._id, tenantId: TENANT },
+        { $set: { paymentEffectsCommittedAt: hace(11) } },
+      ).setOptions({ tenantId: TENANT })
 
       await expect(recoverInterruptedPayments()).resolves.toMatchObject({ recuperadas: 1 })
       expect(queuePaymentEmails).toHaveBeenCalledTimes(2)

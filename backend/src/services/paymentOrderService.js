@@ -651,7 +651,7 @@ export const runOrderReconciliation = async ({ since = null } = {}) => {
     // dinámico por lo mismo que el SDK: este módulo lo importan muchos.
     try {
       const { recoverInterruptedPayments } = await import('../controller/paymentController.js')
-      const recuperacion = await recoverInterruptedPayments({ since: desde })
+      const recuperacion = await recoverInterruptedPayments()
 
       if (recuperacion.revisadas) {
         logger.warn('[ORDENES] Había pagos aprobados a medias', recuperacion)
