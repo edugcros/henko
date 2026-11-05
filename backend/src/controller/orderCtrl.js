@@ -11,6 +11,7 @@ import {
   resendOrderConfirmationEmail,
 } from '../services/orderEmailService.js'
 import {
+  consumeOrderCouponIfNeeded,
   ensureCouponUsageAllowedForUser,
   evaluateCouponDiscount,
   findUsableCouponByCode,
@@ -1004,6 +1005,20 @@ export const updateOrderPaymentStatus = expressAsyncHandler(async (req, res) => 
         message:
           'El reembolso debe ejecutarse desde la acción de reembolso para preservar inventario y auditoría',
       })
+    }
+
+    // El cupón solo se consumía en el camino de Mercado Pago. Aprobando acá, el uso no
+    // contaba: el comprador podía repetirlo y el cupo no bajaba.
+    //
+    // Va antes que el stock porque es idempotente por orden y el stock no: si esto
+    // falla no se movió nada, y el reintento no descuenta dos veces. El uso es del
+    // comprador, no del admin, y por eso tampoco se pasa `req`: su IP no es la de la
+    // compra.
+    if (
+      nextPaymentStatus === PAYMENT_STATUS.APPROVED &&
+      order.paymentStatus === PAYMENT_STATUS.PENDING
+    ) {
+      await consumeOrderCouponIfNeeded({ order, tenantId, userId: order.orderby })
     }
 
     if (
