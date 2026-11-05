@@ -864,3 +864,302 @@ describe('la suscripción sigue a Mercado Pago', () => {
     })
   })
 })
+
+// Un cobro aprobado que se deshace.
+//
+// Contra base real porque lo que se prueba son los filtros: el mismo cobro llega por
+// tres avisos, y lo que evita aplicarlo tres veces es la escritura, no un `if`.
+describe('un cobro aprobado se revierte', () => {
+  const HOY = '2026-11-01T12:00:00.000Z'
+  const fetchOriginal = global.fetch
+  let cobro
+
+  const respuesta = () => ({
+    statusCode: 0,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json() {
+      return this
+    },
+  })
+
+  const aviso = async (type, data) => {
+    const res = respuesta()
+
+    await handleSubscriptionWebhook(
+      { headers: {}, originalUrl: '/webhook', query: {}, body: { type, data } },
+      res,
+    )
+
+    return res
+  }
+
+  const avisoDePago = id => aviso('payment', { id: String(id) })
+
+  // Las formas reales: el id del contracargo no entra en un entero exacto y el del
+  // cobro llega como número.
+  const avisoDeContracargo = paymentId =>
+    aviso('topic_chargebacks_wh', { id: 233000061680860000, payment_id: paymentId })
+
+  const comercio = (subscriptionStatus = 'active', datos = {}, extra = {}) =>
+    crearTenant(`Comercio${Math.random().toString(16).slice(2, 8)}`, {
+      subscriptionStatus,
+      plan: 'pro',
+      ...extra,
+      integrations: {
+        subscriptionMercadoPago: {
+          subscriptionId: 'pre-1',
+          status: 'authorized',
+          lastPaymentAt: new Date(HOY),
+          ...datos,
+        },
+      },
+    })
+
+  const pago = (status, status_detail = status, extra = {}) => ({
+    id: 555,
+    status,
+    status_detail,
+    date_approved: HOY,
+    point_of_interaction: { transaction_data: { subscription_id: 'pre-1' } },
+    ...extra,
+  })
+
+  const leer = tenant => Tenant.findById(tenant._id).lean()
+  const mercadoPago = async tenant => (await leer(tenant)).integrations.subscriptionMercadoPago
+
+  beforeEach(() => {
+    Object.values(mp).forEach(fn => fn.mockReset())
+    cobro = null
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => cobro }))
+  })
+
+  afterEach(async () => {
+    global.fetch = fetchOriginal
+    await mongoose.connection.collection('subscriptionwebhookevents').deleteMany({})
+  })
+
+  test('un reembolso del período actual deja al comercio con el pago pendiente', async () => {
+    // ESTA ES LA PROPIEDAD. Caía en "estado no terminal": seguía activo sin haber pagado.
+    const tenant = await comercio()
+    cobro = pago('refunded')
+
+    await avisoDePago(555)
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('past_due')
+    expect(final.subscriptionPastDueAt).toBeInstanceOf(Date)
+    expect(final.plan).toBe('pro')
+    expect(final.integrations.subscriptionMercadoPago).toMatchObject({
+      reversedPaymentId: '555',
+      reversalReason: 'refunded',
+    })
+  })
+
+  test('un contracargo también, y se busca por el cobro y no por su propio id', async () => {
+    const tenant = await comercio()
+    cobro = pago('charged_back', 'in_process')
+
+    const res = await avisoDeContracargo(81968653106)
+
+    expect(res.statusCode).toBe(200)
+    expect(global.fetch.mock.calls[0][0]).toMatch(/\/v1\/payments\/81968653106$/)
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+    expect((await mercadoPago(tenant)).reversalReason).toBe('charged_back')
+  })
+
+  test('el cobro llega por tres avisos y se aplica una sola vez', async () => {
+    const tenant = await comercio()
+    cobro = pago('charged_back', 'in_process')
+
+    await avisoDePago(555)
+    const primero = await mercadoPago(tenant)
+    const desde = (await leer(tenant)).subscriptionPastDueAt
+
+    await avisoDeContracargo(555)
+
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ preapproval_id: 'pre-1', payment: pago('charged_back', 'settled') }),
+    }))
+    await aviso('subscription_authorized_payment', { id: '7032067277' })
+
+    expect((await mercadoPago(tenant)).reversedAt).toEqual(primero.reversedAt)
+    expect((await leer(tenant)).subscriptionPastDueAt).toEqual(desde)
+  })
+
+  test('revertir un cobro de un ciclo ya pagado no le corta nada', async () => {
+    const tenant = await comercio()
+    cobro = pago('refunded', 'refunded', { date_approved: '2026-09-01T12:00:00.000Z' })
+
+    await avisoDePago(555)
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('active')
+    expect((await mercadoPago(tenant)).reversedPaymentId).toBeNull()
+  })
+
+  test('el pago anidado no trae fecha: se consulta antes de decidir', async () => {
+    const tenant = await comercio()
+
+    global.fetch = jest.fn(async url => ({
+      ok: true,
+      status: 200,
+      json: async () =>
+        String(url).includes('/authorized_payments/')
+          ? { preapproval_id: 'pre-1', payment: { id: 555, status: 'refunded' } }
+          : pago('refunded', 'refunded', { date_approved: '2026-09-01T12:00:00.000Z' }),
+    }))
+
+    await aviso('subscription_authorized_payment', { id: '7032067277' })
+
+    expect(global.fetch.mock.calls[1][0]).toMatch(/\/v1\/payments\/555$/)
+    expect((await leer(tenant)).subscriptionStatus).toBe('active')
+  })
+
+  test.each(['cancelled', 'trialing', 'expired'])(
+    'sin un cobro en curso no se hace nada: %s',
+    async subscriptionStatus => {
+      const tenant = await comercio(subscriptionStatus)
+      cobro = pago('refunded')
+
+      await avisoDePago(555)
+
+      expect((await leer(tenant)).subscriptionStatus).toBe(subscriptionStatus)
+      // Pasar por suscripcionVigente activaba a quien estuviera autorizado en MP.
+      expect(mp.get).not.toHaveBeenCalled()
+    },
+  )
+
+  test('un reembolso parcial no deja el período sin pagar', async () => {
+    const tenant = await comercio()
+    cobro = pago('approved', 'partially_refunded')
+
+    await avisoDePago(555)
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('active')
+    expect((await mercadoPago(tenant)).reversedPaymentId).toBeNull()
+  })
+
+  test('un contracargo sobre un cobro aún aprobado no cuenta como cobro nuevo', async () => {
+    const tenant = await comercio()
+    cobro = pago('approved', 'accredited')
+
+    await avisoDeContracargo(555)
+
+    expect((await mercadoPago(tenant)).lastPaymentAt).toEqual(new Date(HOY))
+    expect((await leer(tenant)).subscriptionStatus).toBe('active')
+  })
+
+  test('el contracargo resuelto a favor del vendedor deshace la mora', async () => {
+    const tenant = await comercio()
+
+    cobro = pago('charged_back', 'in_process')
+    await avisoDeContracargo(555)
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+
+    // Mismo estado y misma clave: lo único que cambia es el detalle.
+    cobro = pago('charged_back', 'reimbursed')
+    await avisoDeContracargo(555)
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('active')
+    expect(final.subscriptionPastDueAt).toBeNull()
+    expect(final.integrations.subscriptionMercadoPago.reversalReason).toBeNull()
+  })
+
+  test('la resolución de otro cobro no le borra la mora', async () => {
+    const tenant = await comercio()
+
+    cobro = pago('charged_back', 'in_process')
+    await avisoDeContracargo(555)
+
+    cobro = pago('charged_back', 'reimbursed', { id: 999 })
+    await avisoDeContracargo(999)
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+
+  test('esa resolución no le borra la mora a quien además tuvo un rechazo', async () => {
+    const tenant = await comercio()
+
+    cobro = pago('charged_back', 'in_process')
+    await avisoDeContracargo(555)
+
+    cobro = pago('rejected', 'cc_rejected_high_risk', { id: 556 })
+    await avisoDePago(556)
+
+    cobro = pago('charged_back', 'reimbursed')
+    await avisoDeContracargo(555)
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+
+  test('el próximo cobro aprobado regulariza al comercio', async () => {
+    const tenant = await comercio()
+
+    cobro = pago('refunded')
+    await avisoDePago(555)
+
+    cobro = pago('approved', 'accredited', { id: 556 })
+    await avisoDePago(556)
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('active')
+    expect(final.subscriptionPastDueAt).toBeNull()
+  })
+
+  test('si Mercado Pago no contesta se pide el reintento, no se pierde', async () => {
+    const tenant = await comercio()
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) }))
+    expect((await avisoDePago(555)).statusCode).toBe(500)
+    expect((await leer(tenant)).subscriptionStatus).toBe('active')
+
+    cobro = pago('refunded')
+    global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => cobro }))
+    expect((await avisoDePago(555)).statusCode).toBe(200)
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+
+  test('el reintento de un rechazo no estira la gracia', async () => {
+    const desde = new Date('2026-10-20T00:00:00.000Z')
+    const tenant = await comercio('past_due', {}, { subscriptionPastDueAt: desde })
+
+    cobro = pago('rejected', 'cc_rejected_high_risk')
+    await avisoDePago(555)
+
+    expect((await leer(tenant)).subscriptionPastDueAt).toEqual(desde)
+  })
+
+  test('una reversión tampoco la estira, y un rechazo posterior corrige el motivo', async () => {
+    const desde = new Date('2026-10-20T00:00:00.000Z')
+    const tenant = await comercio('past_due', {}, { subscriptionPastDueAt: desde })
+
+    cobro = pago('refunded')
+    await avisoDePago(555)
+    expect((await leer(tenant)).subscriptionPastDueAt).toEqual(desde)
+
+    cobro = pago('rejected', 'cc_rejected_high_risk', { id: 556 })
+    await avisoDePago(556)
+    expect((await mercadoPago(tenant)).reversalReason).toBeNull()
+  })
+
+  test('la auditoría no cuenta como deriva a un moroso con la suscripción vigente', async () => {
+    const tenant = await comercio('past_due')
+
+    const auditoria = await auditSubscriptions({
+      Tenant,
+      client: { get: async () => ({ status: 'authorized' }) },
+    })
+
+    expect(auditoria.checked).toBe(1)
+    expect(auditoria.findings).toEqual([])
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+})

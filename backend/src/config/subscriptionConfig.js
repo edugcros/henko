@@ -45,6 +45,10 @@ export const SUBSCRIPTION_WEBHOOK_MOUNT = '/webhooks'
 export const SUBSCRIPTION_WEBHOOK_ROUTE = '/mercadopago/subscription'
 export const SUBSCRIPTION_WEBHOOK_PATH = `${SUBSCRIPTION_WEBHOOK_MOUNT}${SUBSCRIPTION_WEBHOOK_ROUTE}`
 
+// El aviso de un contracargo. Se activa aparte, en "Contracargos" del panel de
+// Webhooks, y lo necesita tanto quien resuelve el aviso como quien lo procesa.
+export const MP_CHARGEBACK_EVENT = 'topic_chargebacks_wh'
+
 // Eventos de entrega de SendGrid. Vive acá por el mismo motivo que la de
 // Mercado Pago: la ruta la necesitan el router, la lista de exenciones de CSRF
 // y la URL que se configura en el proveedor. Escrita por separado en cada lado,

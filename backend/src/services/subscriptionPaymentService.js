@@ -5,6 +5,7 @@
 import { normalizePlan, getPlanMonthlyPriceArs } from './ai/aiPlanPolicy.js'
 import { Invoice, MercadoPagoConfig, PreApproval } from 'mercadopago'
 
+import { MP_CHARGEBACK_EVENT } from '../config/subscriptionConfig.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
 
@@ -428,18 +429,22 @@ const pedirAMercadoPago = async ruta => {
 
   if (!accessToken) return null
 
-  try {
-    const res = await fetch(`https://api.mercadopago.com${ruta}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(10000),
-    })
+  // Lo único que devuelve null es un 4xx: el recurso no existe o no es de esta
+  // cuenta. Un timeout o un 5xx tienen que lanzar. Antes también daban null, y el
+  // aviso terminaba en "sin tenant", contestado con 200: un reembolso se perdía para
+  // siempre por un segundo de caída de Mercado Pago.
+  const res = await fetch(`https://api.mercadopago.com${ruta}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(10000),
+  })
 
-    if (!res.ok) return null
-
-    return await res.json()
-  } catch {
-    return null
+  if (res.status >= 500 || res.status === 429) {
+    throw new Error(`Mercado Pago respondió ${res.status}`)
   }
+
+  if (!res.ok) return null
+
+  return res.json()
 }
 
 export const fetchPlatformPayment = async paymentId => {
@@ -533,7 +538,9 @@ export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
     }
   }
 
-  if (tipo !== 'payment') return { preapprovalId: id, payment: null, preapproval: null }
+  if (tipo !== 'payment' && tipo !== MP_CHARGEBACK_EVENT) {
+    return { preapprovalId: id, payment: null, preapproval: null }
+  }
 
   const payment = await fetchPlatformPayment(id)
 
@@ -700,6 +707,11 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
     const almacenado = sanitizeString(tenant.subscriptionStatus)
 
     if (esperado === almacenado) continue
+
+    // Una suscripción sigue autorizada mientras sus cobros fallan o se revierten.
+    // Eso no es deriva: ningún aviso la va a cerrar, y el comercio figuraría como
+    // descuadre hasta el próximo cobro.
+    if (almacenado === 'past_due' && esperado === 'active') continue
 
     findings.push({
       tenantId: String(tenant._id),

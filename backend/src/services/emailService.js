@@ -1775,6 +1775,15 @@ const SUBSCRIPTION_EMAIL_TEMPLATES = {
     ctaLabel: 'Revisar mi suscripción',
   }),
 
+  'subscription-payment-reversed': data => ({
+    subject: 'Se revirtió el último pago de tu suscripción',
+    headline: 'Tu último pago se revirtió',
+    intro: `El último cobro de la suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'} se revirtió, así que el período quedó pendiente de pago. Se regulariza con el próximo cobro aprobado.`,
+    rows: [['Motivo', sanitizeString(data.reversalReason)]],
+    ctaUrl: sanitizeString(data.actionUrl),
+    ctaLabel: 'Revisar mi suscripción',
+  }),
+
   'subscription-cancelled': data => ({
     subject: 'Tu suscripción fue cancelada',
     headline: 'Suscripción cancelada',

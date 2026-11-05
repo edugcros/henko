@@ -453,6 +453,24 @@ describe('Mi suscripción · estados', () => {
     )
   })
 
+  test.each([
+    ['refunded', /tu último cobro fue reembolsado/i],
+    ['charged_back', /desconocido ante el emisor de la tarjeta/i],
+  ])('con un cobro revertido (%s) no promete un reintento', async (reversalReason, texto) => {
+    await montar({
+      suscripcion: suscripcion(
+        { subscriptionId: 'mp-1', status: 'authorized', reversalReason },
+        { subscriptionStatus: 'past_due' },
+      ),
+    })
+
+    const alerta = screen.getByRole('alert')
+
+    expect(alerta).toHaveTextContent(texto)
+    expect(alerta).toHaveTextContent(/próximo cobro aprobado/i)
+    expect(alerta).not.toHaveTextContent(/va a reintentar/i)
+  })
+
   test('cancelada: lo dice, no ofrece cancelar, y vuelve a suscribirse desde acá', async () => {
     // Antes la mandaba a la pantalla pública de planes, un paso más antes del
     // mismo checkout.

@@ -69,6 +69,7 @@ jest.unstable_mockModule('../../config/logger.js', () => ({
 
 const mockResolveTarget = jest.fn()
 const mockFetchPreapproval = jest.fn()
+const mockFetchPayment = jest.fn()
 
 // resolveSubscriptionEventTarget sale a la API de Mercado Pago para traducir
 // un id de PAGO al id de la suscripcion. Acá se controla su respuesta: lo que
@@ -76,6 +77,7 @@ const mockFetchPreapproval = jest.fn()
 jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
   resolveSubscriptionEventTarget: mockResolveTarget,
   fetchPreapproval: mockFetchPreapproval,
+  fetchPlatformPayment: mockFetchPayment,
   mapMercadoPagoSubscriptionStatus: estado =>
     ({ authorized: 'active', cancelled: 'cancelled' })[estado] || 'pending',
   readProviderBillingDates: () => ({
@@ -750,5 +752,55 @@ describe('webhook de suscripción · los avisos de pago se aplican', () => {
     expect(res.statusCode).toBe(200)
     expect(mockTenantFindOne).not.toHaveBeenCalled()
     expect(mockTenantUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('webhook · el aviso al comercio cuando un cobro se revierte', () => {
+  const aviso = { ...pedido(), body: { type: 'payment', data: { id: '555' } } }
+  const reembolsado = {
+    id: 555,
+    status: 'refunded',
+    status_detail: 'refunded',
+    date_approved: '2026-11-01T00:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    mockTenantFindOne.mockResolvedValue({ ...TENANT, subscriptionStatus: 'active' })
+    mockResolveTarget.mockResolvedValue({ preapprovalId: 'mp-sub-1', payment: reembolsado })
+    mockTenantUpdate.mockResolvedValue({
+      ...TENANT,
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+  })
+
+  test('el comercio se entera, con el motivo en palabras', async () => {
+    await correr(aviso)
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1)
+    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+      to: 'duenio@comercio.com',
+      template: 'subscription-payment-reversed',
+      data: { reversalReason: 'El cobro fue reembolsado' },
+    })
+  })
+
+  test('si ya se había aplicado, no se manda otro correo', async () => {
+    mockTenantFindOne.mockResolvedValue({
+      ...TENANT,
+      subscriptionStatus: 'past_due',
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+    mockTenantUpdate.mockResolvedValue(null)
+
+    const res = await correr(aviso)
+
+    expect(res.statusCode).toBe(200)
+    expect(mockSendEmail).not.toHaveBeenCalled()
+  })
+
+  test('un correo caído no pide el reintento: la reversión ya quedó', async () => {
+    mockSendEmail.mockRejectedValue(new Error('sin proveedor'))
+
+    expect((await correr(aviso)).statusCode).toBe(200)
   })
 })

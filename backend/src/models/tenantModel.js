@@ -549,6 +549,13 @@ const tenantSchema = new Schema(
         lastFailureAt: { type: Date, default: null },
         failureReason: { type: String, default: null, trim: true },
 
+        // El último cobro que se deshizo después de aprobado. El id es lo que evita
+        // aplicarlo dos veces: el mismo cobro llega por varios avisos. El motivo solo
+        // vale con el comercio en past_due: es lo que el panel le explica.
+        reversedPaymentId: { type: String, default: null, trim: true },
+        reversalReason: { type: String, default: null, trim: true },
+        reversedAt: { type: Date, default: null },
+
         subscribedAt: { type: Date, default: null },
         updatedAt: { type: Date, default: null },
       },
