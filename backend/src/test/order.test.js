@@ -45,7 +45,7 @@ describe('orders - storefront user', () => {
     await disconnectTestDB()
   })
 
-  test('creates a cash-on-delivery order from the cart', async () => {
+  test('la orden nace pendiente: se aprueba al pagar', async () => {
     const cartRes = await request(app)
       .post('/api/user/cart')
       .set(
@@ -74,7 +74,6 @@ describe('orders - storefront user', () => {
         }),
       )
       .send({
-        COD: true,
         shippingAddress: {
           firstName: 'Pedro',
           lastName: 'Ordenado',
@@ -89,7 +88,7 @@ describe('orders - storefront user', () => {
 
     expect(orderRes.statusCode).toBe(201)
     expect(orderRes.body.success).toBe(true)
-    expect(orderRes.body.data.paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+    expect(orderRes.body.data.paymentStatus).toBe(PAYMENT_STATUS.PENDING)
     createdOrderId = orderRes.body.data._id
   })
 
@@ -108,13 +107,39 @@ describe('orders - storefront user', () => {
     expect(String(res.body.data[0]._id)).toBe(String(createdOrderId))
   })
 
-  test('decrements product stock for cash-on-delivery orders', async () => {
+  test('crear la orden no descuenta stock: eso pasa al pagar', async () => {
     const updatedProduct = await Product.findOne({
       _id: product._id,
       tenantId: tenantContext.tenant._id,
     }).setOptions({ tenantId: tenantContext.tenant._id })
 
-    expect(updatedProduct.stock).toBeLessThan(30)
+    expect(updatedProduct.stock).toBe(30)
+  })
+
+  // Con `COD: true` un cliente sacaba una orden aprobada sin pagar nada: la
+  // tienda no ofrece esa opción, pero la API la aceptaba.
+  test('el pago contra entrega se rechaza y no deja nada', async () => {
+    const tenantId = tenantContext.tenant._id
+    const ordenesAntes = await Order.countDocuments({ tenantId }).setOptions({ tenantId })
+
+    const res = await request(app)
+      .post('/api/order/create')
+      .set(
+        authHeaders({
+          token: session.token,
+          domain: tenantContext.shopDomain,
+          csrfToken: session.csrfToken,
+          csrfCookie: session.csrfCookie,
+        }),
+      )
+      .send({ COD: true })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.code).toBe('COD_NOT_AVAILABLE')
+    expect(await Order.countDocuments({ tenantId }).setOptions({ tenantId })).toBe(ordenesAntes)
+
+    const producto = await Product.findOne({ _id: product._id, tenantId }).setOptions({ tenantId })
+    expect(producto.stock).toBe(30)
   })
 
   // La atribución solo se puede leer del request que crea la orden: el
@@ -152,7 +177,6 @@ describe('orders - storefront user', () => {
       .set('x-fbc', 'fb.1.1700000000.AbCdEf')
       .set('x-fbp', 'fb.1.1700000000.987654321')
       .send({
-        COD: true,
         idempotencyKey: 'orden-con-atribucion',
         shippingAddress: {
           firstName: 'Pedro',
@@ -207,7 +231,6 @@ describe('orders - storefront user', () => {
       )
       .set('x-metric-attribution', '{no-es-json')
       .send({
-        COD: true,
         idempotencyKey: 'orden-con-header-roto',
         shippingAddress: {
           firstName: 'Pedro',

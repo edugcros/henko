@@ -91,7 +91,6 @@ describe('orders - admin routes', () => {
         }),
       )
       .send({
-        COD: true,
         shippingAddress: {
           firstName: 'Buyer',
           lastName: 'Admin',
@@ -162,6 +161,13 @@ describe('orders - admin routes', () => {
 
   test('updates fulfillment status from the admin domain', async () => {
     const { csrfToken, csrfCookie } = buyerSession
+    const tenantId = tenantContext.tenant._id
+
+    // Lo que deja Mercado Pago al aprobar: acá importa el envío, no el cobro.
+    await Order.updateOne(
+      { _id: orderId, tenantId },
+      { $set: { paymentStatus: PAYMENT_STATUS.APPROVED, paidAt: new Date() } },
+    ).setOptions({ tenantId })
 
     const res = await request(app)
       .put(`/api/order/${orderId}/fulfillment-status`)
