@@ -407,6 +407,9 @@ export const createAuthorizableSubscription = async ({ plan, tenantId, userId, e
   }
 }
 
+/** La suscripción tal como está ahora en Mercado Pago. */
+export const fetchPreapproval = id => createSubscriptionClient().get({ id })
+
 /**
  * El pago, consultado con la credencial de PLATAFORMA.
  *
