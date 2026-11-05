@@ -18,6 +18,7 @@ import {
   refundAiBudget,
   reserveAiBudget,
   recordImageProviderCall,
+  recordTokenSpend,
 } from '../services/ai/aiBudgetService.js'
 
 const IMAGE_PURPOSES = new Set(['ad', 'social', 'alternative'])
@@ -144,6 +145,20 @@ export const handleGenerateVariation = expressAsyncHandler(async (req, res) => {
     result = await generateVariation(req.file.buffer, prompt, req.file.mimetype, {
       apiKey: credentials.apiKey,
       purpose,
+      // Va aparte de la imagen, en su propia llamada de la operación: son tokens
+      // de Gemini y no descuentan cuota. Con key propia los paga el comercio, y
+      // recordTokenSpend ya lo distingue. Si después falla la imagen se devuelve
+      // la cuota, pero estos tokens quedan: Google los cobró igual.
+      onPromptUsage: ({ model, usage }) =>
+        recordTokenSpend({
+          tenantId,
+          metric: AI_METRICS.IMAGE_EDITS,
+          operationId: reservation.operationId,
+          callId: `prompt:${model}`,
+          provider: AI_PROVIDERS.GEMINI,
+          model,
+          usage,
+        }),
     })
   } catch (error) {
     // El proveedor falló: la generación no se entregó, así que no se cobra.
