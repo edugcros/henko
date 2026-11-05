@@ -17,6 +17,10 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
+// La suite corre sin .env: sin clave de plataforma la reserva se niega antes de
+// llegar a lo que se prueba acá.
+process.env.GEMINI_API_KEY = 'AIzaTEST'
+
 const generateContent = jest.fn()
 
 jest.unstable_mockModule('@google/generative-ai', () => ({
@@ -27,7 +31,6 @@ jest.unstable_mockModule('@google/generative-ai', () => ({
   },
 }))
 
-const { env } = await import('../../config/env.js')
 const { default: Tenant } = await import('../models/tenantModel.js')
 const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
@@ -48,7 +51,6 @@ const respuestaDeGemini = (texto, usageMetadata = USO) => ({
 let mongod
 let tenant
 let foto
-let claveOriginal
 
 const uso = () =>
   AiUsage.findOne({ tenantId: tenant._id, period: PERIODO })
@@ -71,9 +73,6 @@ beforeAll(async () => {
   await AiProviderCall.init()
   await AiConsumptionLedger.init()
 
-  claveOriginal = env.ai.geminiApiKey
-  env.ai.geminiApiKey = 'AIzaTEST'
-
   foto = await sharp({
     create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
   })
@@ -82,7 +81,6 @@ beforeAll(async () => {
 }, 180000)
 
 afterAll(async () => {
-  env.ai.geminiApiKey = claveOriginal
   await mongoose.disconnect()
   await mongod.stop()
 })
