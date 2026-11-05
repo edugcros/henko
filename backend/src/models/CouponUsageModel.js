@@ -136,6 +136,14 @@ const couponUsageSchema = new Schema(
       index: true,
     },
 
+    // La orden se reembolsó y el uso se devolvió. El registro queda como historial:
+    // lo que descuenta es esta fecha, y quien la escribe primero es el único que
+    // toca los contadores. Ver releaseOrderCouponIfNeeded.
+    releasedAt: {
+      type: Date,
+      default: null,
+    },
+
     ipAddress: {
       type: String,
       default: null,

@@ -24,6 +24,7 @@ const mp = {
 
 const queuePaymentEmails = jest.fn(async () => ({}))
 const consumeOrderCouponIfNeeded = jest.fn(async () => null)
+const releaseOrderCouponIfNeeded = jest.fn(async () => null)
 
 jest.unstable_mockModule('../services/paymentTenantConfigService.js', () => ({
   createMercadoPagoPaymentClient: () => mp,
@@ -41,6 +42,7 @@ jest.unstable_mockModule('../services/paymentEmailService.js', () => ({
 
 jest.unstable_mockModule('../services/orderCouponService.js', () => ({
   consumeOrderCouponIfNeeded,
+  releaseOrderCouponIfNeeded,
 }))
 
 jest.unstable_mockModule('../services/meta/metaCapiService.js', () => ({
@@ -919,5 +921,57 @@ describe('un pago aprobado siempre queda guardado', () => {
 
     expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.CANCELLED)
     expect(queuePaymentEmails).not.toHaveBeenCalled()
+  })
+})
+
+// Lo que hace la devolución se prueba contra la base en orderAdminMutation.test.js.
+// Acá, que los dos caminos del proveedor la pidan.
+describe('una venta que el proveedor revierte devuelve el cupón', () => {
+  const aprobada = () =>
+    crearOrden(
+      { paymentStatus: PAYMENT_STATUS.APPROVED, paidAt: new Date() },
+      { providerPaymentId: 'pago-1', status: PAYMENT_STATUS.APPROVED },
+    )
+
+  test.each(['refunded', 'charged_back'])('por webhook: %s', async estado => {
+    const orden = await aprobada()
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', estado, orden))
+
+    expect((await avisoDeWebhook('pago-1')).statusCode).toBe(200)
+    expect(releaseOrderCouponIfNeeded).toHaveBeenCalledTimes(1)
+    expect(String(releaseOrderCouponIfNeeded.mock.calls[0][0].order._id)).toBe(String(orden._id))
+  })
+
+  test('por la consulta de estado', async () => {
+    const orden = await aprobada()
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'refunded', orden))
+
+    await consultarEstado(orden)
+
+    expect(releaseOrderCouponIfNeeded).toHaveBeenCalledTimes(1)
+  })
+
+  test('un rechazo no devuelve nada: ese pago nunca consumió el cupón', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-1' })
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'rejected', orden))
+
+    await avisoDeWebhook('pago-1')
+
+    expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.REJECTED)
+    expect(releaseOrderCouponIfNeeded).not.toHaveBeenCalled()
+  })
+
+  // Una disputa abierta todavía no es un resultado.
+  test.each(['approved', 'in_mediation'])('%s no devuelve nada', async estado => {
+    const orden = await aprobada()
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', estado, orden))
+
+    await avisoDeWebhook('pago-1')
+
+    expect(releaseOrderCouponIfNeeded).not.toHaveBeenCalled()
   })
 })

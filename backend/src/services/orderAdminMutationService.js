@@ -1,4 +1,5 @@
 import { FULFILLMENT_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../models/orderModel.js'
+import { releaseOrderCouponIfNeeded } from './orderCouponService.js'
 import { restoreStockForLines } from './orderInventoryService.js'
 import { releaseReservedStock } from './paymentOrderOpsService.js'
 
@@ -153,6 +154,10 @@ export const cancelOrderWithInventoryRestore = async ({
     order.stockRestoredAt = new Date()
   }
 
+  // Sin pago aprobado casi nunca hay uso que devolver. Lo hay si se aprobó y después
+  // entró en disputa: Mercado Pago lo pasa a pendiente.
+  await releaseOrderCouponIfNeeded({ order, tenantId, session })
+
   await order.markCancelled({
     tenantId,
     cancelledBy: cancelledBy ? normalizeObjectId(cancelledBy) : null,
@@ -206,6 +211,8 @@ export const refundOrderWithInventoryRestore = async ({
     order.stockCommittedAt = null
     order.stockRestoredAt = new Date()
   }
+
+  await releaseOrderCouponIfNeeded({ order, tenantId, session })
 
   await order.markRefunded({
     tenantId,

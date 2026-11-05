@@ -32,7 +32,10 @@ import {
   markOrderAiInfluenced,
 } from '../services/commerceEvents/commerceEventService.js'
 import { markCartRecoveryConverted } from '../services/aiAgent/aiCartRecoveryService.js'
-import { consumeOrderCouponIfNeeded } from '../services/orderCouponService.js'
+import {
+  consumeOrderCouponIfNeeded,
+  releaseOrderCouponIfNeeded,
+} from '../services/orderCouponService.js'
 import {
   buildMercadoPagoPaymentData,
   getStatusMessage,
@@ -203,6 +206,16 @@ const safelyReleaseReservedStock = async ({ order, tenantId, reason }) => {
       tenantId: String(tenantId),
       message: getSafeErrorMessage(releaseError),
     })
+  }
+}
+
+// Devolución o contracargo informado por el proveedor. El contracargo llega como
+// 'refunded': ver paymentMercadoPagoService.
+const revertRefundedSaleIfNeeded = async ({ order, tenantId }) => {
+  await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
+
+  if (order.paymentStatus === PAYMENT_STATUS.REFUNDED) {
+    await releaseOrderCouponIfNeeded({ order, tenantId })
   }
 }
 
@@ -1289,7 +1302,7 @@ const processMercadoPagoWebhook = async req => {
       })
       // Devolución o contracargo informado por el proveedor: la reserva ya no
       // existe, lo que hay que devolver es el stock de la venta.
-      await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
+      await revertRefundedSaleIfNeeded({ order, tenantId })
       await order.save({ tenantId })
     }
 
@@ -1438,7 +1451,7 @@ export const getPaymentStatus = async (req, res) => {
             previousStatus,
           })
 
-          await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
+          await revertRefundedSaleIfNeeded({ order, tenantId })
 
           if (needsApprovedPaymentCommit({ order, previousStatus })) {
             await commitApprovedPaymentIfNeeded({
