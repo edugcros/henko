@@ -263,3 +263,68 @@ describe('panel propio · un dominio del comercio declarado solo como panel', ()
     expect(String(tenant._id)).toBeTruthy()
   })
 })
+
+// La suscripción es del comercio: un cliente de su tienda tiene sesión en ese
+// mismo comercio, y con eso alcanzaba para cancelarla, cambiarle el plan o leer
+// sus datos de facturación.
+describe('suscripción · solo el admin, desde el panel', () => {
+  const RUTAS = [
+    ['get', '/api/subscriptions/config'],
+    ['get', '/api/subscriptions/current'],
+    ['get', '/api/subscriptions/invoices'],
+    ['post', '/api/subscriptions/process-payment'],
+    ['post', '/api/subscriptions/change-plan'],
+    ['post', '/api/subscriptions/cancel'],
+  ]
+
+  const llamar = async ({ metodo, ruta, dominio, token }) => {
+    const { csrfToken, csrfCookie } = await getCSRFToken(dominio)
+
+    return request(app)
+      [metodo](ruta)
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-tenant-domain', dominio)
+      .set('Cookie', csrfCookie)
+      .set('X-CSRF-Token', csrfToken)
+      .send({})
+  }
+
+  test.each(RUTAS)('un cliente de la tienda no entra a %s %s', async (metodo, ruta) => {
+    const { tenant, shopDomain, adminDomain } = await createTestTenant()
+    const { token } = await createTestUser({ tenantId: tenant._id, role: 'user' })
+
+    for (const dominio of [shopDomain, adminDomain]) {
+      const res = await llamar({ metodo, ruta, dominio, token })
+      expect(res.status).toBe(403)
+    }
+  })
+
+  test.each(RUTAS)('el admin no entra a %s %s desde la tienda', async (metodo, ruta) => {
+    const { tenant, shopDomain } = await createTestTenant()
+    const { token } = await createTestUser({ tenantId: tenant._id, role: 'admin' })
+
+    const res = await llamar({ metodo, ruta, dominio: shopDomain, token })
+
+    expect(res.status).toBe(403)
+  })
+
+  test('el admin sí ve su suscripción desde el panel', async () => {
+    const { tenant, adminDomain } = await createTestTenant()
+    const { token } = await createTestUser({ tenantId: tenant._id, role: 'admin' })
+
+    const res = await llamar({
+      metodo: 'get',
+      ruta: '/api/subscriptions/current',
+      dominio: adminDomain,
+      token,
+    })
+
+    expect(res.status).toBe(200)
+  })
+
+  test('los precios siguen siendo públicos', async () => {
+    const res = await request(app).get('/api/subscriptions/plans')
+
+    expect(res.status).toBe(200)
+  })
+})
