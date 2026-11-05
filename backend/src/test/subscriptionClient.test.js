@@ -31,6 +31,8 @@ const mockSendEmail = jest.fn()
 const mockResolveTenant = jest.fn()
 
 const mockTenantFindById = jest.fn()
+const mockAdquirirLock = jest.fn(async () => true)
+const mockSoltarLock = jest.fn(async () => undefined)
 
 jest.unstable_mockModule('../models/tenantModel.js', () => ({
   default: {
@@ -38,6 +40,11 @@ jest.unstable_mockModule('../models/tenantModel.js', () => ({
     findById: mockTenantFindById,
     findOne: jest.fn(),
   },
+}))
+
+jest.unstable_mockModule('../services/paymentConcurrencyService.js', () => ({
+  acquirePaymentLock: mockAdquirirLock,
+  releasePaymentLock: mockSoltarLock,
 }))
 
 jest.unstable_mockModule('../services/emailService.js', () => ({
@@ -163,6 +170,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
+      resolveSubscriptionEventTarget: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -214,6 +222,7 @@ describe('subscriptionCtrl · el alta llega a Mercado Pago', () => {
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
+      resolveSubscriptionEventTarget: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -274,6 +283,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
+      resolveSubscriptionEventTarget: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -320,6 +330,7 @@ describe('subscriptionCtrl · acepta lo que manda el Brick', () => {
       mapMercadoPagoSubscriptionStatus: () => 'active',
       createAuthorizableSubscription: async () => ({ id: null, status: null, initPoint: null }),
       createSubscriptionInvoiceClient: jest.fn(),
+      resolveSubscriptionEventTarget: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
       readProviderBillingDates: () => ({
         currentPeriodStart: null,
@@ -520,6 +531,7 @@ describe('cobro rechazado · se ofrece autorizar desde Mercado Pago', () => {
       }),
       createAuthorizableSubscription: mockCrearAutorizable,
       createSubscriptionInvoiceClient: jest.fn(),
+      resolveSubscriptionEventTarget: jest.fn(),
       mapSubscriptionInvoice: jest.fn(),
     }))
 

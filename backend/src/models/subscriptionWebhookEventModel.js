@@ -58,6 +58,11 @@ const subscriptionWebhookEventSchema = new Schema(
       index: true,
     },
 
+    // El estado del recurso la última vez que se aplicó este evento. La clave no
+    // alcanza: un mismo cobro o suscripción cambia de estado con el mismo id, y
+    // cada cambio llega como un aviso con la misma clave.
+    appliedState: { type: String, default: null, trim: true },
+
     receivedAt: { type: Date, default: Date.now },
     processedAt: { type: Date, default: null },
     error: { type: String, default: null },

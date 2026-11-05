@@ -7,12 +7,31 @@ import SubscriptionWebhookEvent, {
 } from '../models/subscriptionWebhookEventModel.js'
 import { sendTemplateEmail } from '../services/emailService.js'
 import { verifyMercadoPagoWebhookSignature } from '../services/paymentWebhookService.js'
+import { AI_PLANS } from '../services/ai/aiPlanPolicy.js'
 import {
+  mapMercadoPagoSubscriptionStatus,
   readProviderBillingDates,
   resolveSubscriptionEventTarget,
 } from '../services/subscriptionPaymentService.js'
 import { env } from '../../config/env.js'
 import logger from '../../config/logger.js'
+
+// Los avisos cuyo recurso cambia de estado sin cambiar de id. Un cobro nace
+// 'scheduled' y después se aprueba o se rechaza; una suscripción se autoriza y un
+// día se cancela. Cada cambio llega con la misma clave, así que acá "ya procesado"
+// no significa "no hay nada nuevo".
+const EVENTOS_CON_ESTADO = new Set([
+  'payment',
+  'subscription_authorized_payment',
+  'subscription_preapproval',
+])
+
+// Con estos estados el comercio tiene una suscripción cobrando.
+const ESTADOS_DE_COBRO = ['active', 'past_due']
+
+// Si el proceso murió con el evento en la mano, nadie más lo iba a retomar: el
+// reintento de Mercado Pago lo encontraba "en curso" y contestaba 200 para siempre.
+const EVENTO_EN_CURSO_MS = 10 * 60 * 1000
 
 const sendResponse = (res, statusCode, success, message, data = null) => {
   res.status(statusCode).json({
@@ -27,8 +46,8 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
  *
  * Mercado Pago no manda un id de evento propio en el body de suscripciones, así
  * que se compone con lo que sí identifica al hecho: el tipo y el recurso. Dos
- * entregas del mismo evento producen la misma clave; un cobro aprobado y una
- * cancelación de la misma suscripción producen claves distintas.
+ * entregas del mismo evento producen la misma clave. Dos cambios de estado del
+ * mismo recurso también: eso lo resuelve appliedState, ver EVENTOS_CON_ESTADO.
  *
  * `x-request-id` NO sirve: cambia en cada reintento, que es precisamente el
  * caso que hay que deduplicar.
@@ -41,6 +60,8 @@ const buildEventId = ({ type, data }) =>
  * Webhook para eventos de suscripción recurrente en Mercado Pago
  *
  * Tipos de eventos:
+ * - subscription_preapproval: la suscripción cambió, el estado hay que consultarlo
+ * - subscription_authorized_payment y payment: un cobro de la suscripción
  * - subscription_update: cambio en la suscripción
  * - subscription_preapproval_create: suscripción creada
  * - subscription_authorized: pago aprobado
@@ -96,12 +117,15 @@ export const handleSubscriptionWebhook = async (req, res) => {
       eventId,
     })
 
-    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSED) {
+    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSED && !EVENTOS_CON_ESTADO.has(type)) {
       logger.info('Evento de suscripción duplicado, ya procesado', { eventId })
       return sendResponse(res, 200, true, 'Evento ya procesado')
     }
 
-    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSING) {
+    const abandonado =
+      previo?.updatedAt && Date.now() - new Date(previo.updatedAt).getTime() > EVENTO_EN_CURSO_MS
+
+    if (previo?.status === WEBHOOK_EVENT_STATUS.PROCESSING && !abandonado) {
       // Otra instancia lo tiene en la mano. No se reprocesa —el objetivo es no
       // aplicar dos veces la misma transición— y se contesta 200 para no
       // provocar una tormenta de reintentos sobre algo que ya está en curso.
@@ -109,12 +133,19 @@ export const handleSubscriptionWebhook = async (req, res) => {
       return sendResponse(res, 200, true, 'Evento en proceso')
     }
 
-    // Quedó en 'failed': este ES el reintento que se pidió devolviendo 500.
+    // Este ES el reintento: quedó en 'failed', se abandonó en curso, o llegó otro
+    // aviso de un recurso que puede haber cambiado. El filtro por estado deja
+    // pasar a una sola de dos entregas simultáneas.
     event = previo
-    await SubscriptionWebhookEvent.updateOne(
-      { _id: previo._id },
+
+    const tomado = await SubscriptionWebhookEvent.updateOne(
+      { _id: previo._id, status: previo.status },
       { $set: { status: WEBHOOK_EVENT_STATUS.PROCESSING, error: null } },
     )
+
+    if (tomado?.matchedCount === 0) {
+      return sendResponse(res, 200, true, 'Evento en proceso')
+    }
   }
 
   try {
@@ -137,10 +168,22 @@ export const handleSubscriptionWebhook = async (req, res) => {
     // Los avisos de pago son las RENOVACIONES y los PAGOS RECHAZADOS: todo el
     // ciclo de vida posterior al alta. Descartarlos deja la suscripción
     // congelada en el estado del primer día.
-    const { preapprovalId, payment } = await resolveSubscriptionEventTarget({
+    const { preapprovalId, payment, preapproval } = await resolveSubscriptionEventTarget({
       type,
       dataId: data.id,
     })
+
+    // El estado que este aviso va a aplicar. Si es el que ya se aplicó, es una
+    // entrega repetida y volver a aplicarlo mandaría los correos otra vez.
+    const estadoDelRecurso = EVENTOS_CON_ESTADO.has(type)
+      ? String(preapproval?.status || payment?.status || '').toLowerCase() || null
+      : null
+
+    if (estadoDelRecurso && event.appliedState === estadoDelRecurso) {
+      logger.info('Evento de suscripción duplicado, ya procesado', { eventId })
+      await marcarProcesado(event._id)
+      return sendResponse(res, 200, true, 'Evento ya procesado')
+    }
 
     const tenant = preapprovalId
       ? await Tenant.findOne({
@@ -167,6 +210,10 @@ export const handleSubscriptionWebhook = async (req, res) => {
     }
 
     switch (type) {
+      case 'subscription_preapproval':
+        await handlePreapprovalChange(tenant, preapproval)
+        break
+
       case 'subscription_update':
         await handleSubscriptionUpdate(tenant, data)
         break
@@ -221,7 +268,7 @@ export const handleSubscriptionWebhook = async (req, res) => {
         logger.info('Tipo de evento no procesado', { type })
     }
 
-    await marcarProcesado(event._id, tenant._id)
+    await marcarProcesado(event._id, tenant._id, estadoDelRecurso)
 
     return sendResponse(res, 200, true, 'Webhook procesado exitosamente')
   } catch (error) {
@@ -245,7 +292,7 @@ export const handleSubscriptionWebhook = async (req, res) => {
   }
 }
 
-const marcarProcesado = (id, tenantId = null) =>
+const marcarProcesado = (id, tenantId = null, appliedState = null) =>
   SubscriptionWebhookEvent.updateOne(
     { _id: id },
     {
@@ -253,9 +300,112 @@ const marcarProcesado = (id, tenantId = null) =>
         status: WEBHOOK_EVENT_STATUS.PROCESSED,
         processedAt: new Date(),
         ...(tenantId ? { tenantId } : {}),
+        ...(appliedState ? { appliedState } : {}),
       },
     },
   )
+
+/**
+ * Activa al comercio con una suscripción que Mercado Pago ya autorizó.
+ *
+ * Es lo que le faltaba al camino del init_point: cuando el comercio autoriza desde
+ * Mercado Pago, el plan elegido quedaba guardado y nada lo aplicaba. Seguía con el
+ * plan anterior y pagando el nuevo.
+ *
+ * El filtro hace dos cosas: que dos avisos simultáneos no manden dos bienvenidas, y
+ * que no se active con una suscripción que ya no es la del comercio.
+ */
+export const activateAuthorizedSubscription = async (tenant, preapproval) => {
+  const guardada = tenant.integrations?.subscriptionMercadoPago || {}
+  const payerEmail = guardada.payerEmail || preapproval?.payer_email || null
+  const fechas = readProviderBillingDates(preapproval)
+
+  const activado = await Tenant.findOneAndUpdate(
+    {
+      _id: tenant._id,
+      subscriptionStatus: { $nin: ESTADOS_DE_COBRO },
+      'integrations.subscriptionMercadoPago.subscriptionId': preapproval.id,
+    },
+    {
+      ...(AI_PLANS.includes(guardada.planSelected) ? { plan: guardada.planSelected } : {}),
+      subscriptionStatus: 'active',
+      subscriptionPastDueAt: null,
+      // Mismo motivo que en subscriptionCtrl: quien paga ya no está en prueba.
+      trialEndsAt: null,
+      'integrations.subscriptionMercadoPago.status': preapproval.status,
+      'integrations.subscriptionMercadoPago.payerEmail': payerEmail,
+      'integrations.subscriptionMercadoPago.subscribedAt': new Date(),
+      'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+      'integrations.subscriptionMercadoPago.nextBillingAt': fechas.nextBillingAt,
+      'integrations.subscriptionMercadoPago.currentPeriodEnd': fechas.currentPeriodEnd,
+      'integrations.subscriptionMercadoPago.currentPeriodStart': fechas.currentPeriodStart,
+    },
+    { new: true },
+  )
+
+  if (!activado) return null
+
+  if (payerEmail) {
+    try {
+      await sendTemplateEmail({
+        to: payerEmail,
+        template: 'subscription-welcome',
+        data: {
+          tenantName: activado.name,
+          plan: activado.plan,
+          subscriptionId: preapproval.id,
+          nextPaymentDate: fechas.nextBillingAt,
+        },
+      })
+    } catch (emailError) {
+      logger.warn('Error enviando email de bienvenida:', emailError)
+    }
+  }
+
+  return activado
+}
+
+/**
+ * La suscripción cambió de estado en Mercado Pago.
+ *
+ * Se decide con lo que dice la suscripción consultada, nunca con el aviso.
+ *
+ * Con 'authorized' no se toca a quien ya está cobrando: una suscripción sigue
+ * autorizada mientras sus cobros fallan, y activarla le borraría el past_due. Una
+ * baja solo aplica a quien tenía un cobro en curso: si lo que se canceló es un
+ * enlace que nunca se autorizó, cortarlo le terminaría la prueba al comercio.
+ */
+const handlePreapprovalChange = async (tenant, preapproval) => {
+  if (!preapproval?.status) {
+    throw new Error('Mercado Pago no informó el estado de la suscripción')
+  }
+
+  const estado = mapMercadoPagoSubscriptionStatus(preapproval.status, preapproval.reason || '')
+  const cobrando = ESTADOS_DE_COBRO.includes(tenant.subscriptionStatus)
+
+  if (estado === 'cancelled' && cobrando) {
+    await handleSubscriptionCanceled(tenant, preapproval)
+    return
+  }
+
+  if (estado === 'active' && !cobrando) {
+    await activateAuthorizedSubscription(tenant, preapproval)
+    return
+  }
+
+  const fechas = readProviderBillingDates(preapproval)
+
+  await Tenant.findByIdAndUpdate(tenant._id, {
+    'integrations.subscriptionMercadoPago.status': preapproval.status,
+    'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+    ...(fechas.nextBillingAt
+      ? {
+          'integrations.subscriptionMercadoPago.nextBillingAt': fechas.nextBillingAt,
+          'integrations.subscriptionMercadoPago.currentPeriodEnd': fechas.currentPeriodEnd,
+        }
+      : {}),
+  })
+}
 
 /**
  * Manejar actualización de suscripción (cambio de plan, etc)

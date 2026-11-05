@@ -166,7 +166,7 @@ const crearOrden = (extra = {}, paymentIntent = {}) =>
   }).save({ tenantId: TENANT })
 
 const respuesta = () => {
-  const res = { statusCode: null, body: null }
+  const res = { statusCode: null, body: null, respondido: 0 }
   res.status = code => {
     res.statusCode = code
     return res
@@ -175,7 +175,10 @@ const respuesta = () => {
     res.body = body
     return res
   }
-  res.end = () => res
+  res.end = () => {
+    res.respondido += 1
+    return res
+  }
   return res
 }
 
@@ -227,16 +230,21 @@ const consultarEstado = async orden => {
 
 // Con `orden`, el aviso trae las pistas que el backend deja en la notification_url
 // de cada pago: es la única forma de encontrar una orden que hoy no tiene id.
-const avisoDeWebhook = (paymentId, orden = null) =>
-  mpWebhook(
+const avisoDeWebhook = async (paymentId, orden = null) => {
+  const res = respuesta()
+
+  await mpWebhook(
     {
       body: { data: { id: paymentId } },
       headers: { 'x-request-id': unico() },
       query: orden ? { order_id: String(orden._id), tenant_id: String(TENANT) } : {},
       ip: '127.0.0.1',
     },
-    respuesta(),
+    res,
   )
+
+  return res
+}
 
 const pagoEnMp = (id, status, orden, extra = {}) => ({
   id,
@@ -463,6 +471,87 @@ describe('no se cobra de más', () => {
     await pagar(orden)
 
     expect(await stock()).toBe(10)
+  })
+})
+
+describe('el aviso de Mercado Pago no se pierde', () => {
+  test('si procesar falla se pide el reintento, y el reintento termina el pago', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-1' })
+
+    mp.get.mockRejectedValueOnce(new Error('sin conexión'))
+    const fallido = await avisoDeWebhook('pago-1')
+
+    expect(fallido.statusCode).toBe(500)
+    expect(fallido.respondido).toBe(1)
+    expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.PENDING)
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+    const reintento = await avisoDeWebhook('pago-1')
+
+    expect(reintento.statusCode).toBe(200)
+    expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
+  })
+
+  test('si falla un efecto del pago aprobado también se pide el reintento', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-1' })
+
+    consumeOrderCouponIfNeeded.mockRejectedValueOnce(new Error('falló el cupón'))
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-1', 'approved', orden))
+
+    expect((await avisoDeWebhook('pago-1')).statusCode).toBe(500)
+  })
+
+  test('un aviso que no se puede aplicar no pide reintentos', async () => {
+    expect((await avisoDeWebhook('pago-desconocido')).statusCode).toBe(200)
+  })
+
+  test('con el pago tomado por otro proceso se pide el reintento', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-1' })
+    const { acquirePaymentLock, releasePaymentLock } =
+      await import('../services/paymentConcurrencyService.js')
+    const recurso = `webhook:${TENANT}:${orden._id}:pago-1`
+
+    await acquirePaymentLock(recurso, TENANT, 30)
+
+    try {
+      expect((await avisoDeWebhook('pago-1')).statusCode).toBe(500)
+    } finally {
+      await releasePaymentLock(recurso)
+    }
+  })
+
+  // Mercado Pago corta a los 22 segundos y lo cuenta como fallido.
+  test('si procesar tarda de más se le contesta igual, una sola vez', async () => {
+    const orden = await crearOrden({}, { providerPaymentId: 'pago-1' })
+    const timeout = jest.spyOn(global, 'setTimeout')
+    let seguir
+
+    mp.get.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          seguir = () => resolve(pagoEnMp('pago-1', 'approved', orden))
+        }),
+    )
+
+    const res = respuesta()
+    const aviso = mpWebhook(
+      { body: { data: { id: 'pago-1' } }, headers: {}, query: {}, ip: '127.0.0.1' },
+      res,
+    )
+
+    const plazo = timeout.mock.calls.find(([, ms]) => ms === 15000)
+    timeout.mockRestore()
+
+    plazo[0]()
+
+    expect(res.statusCode).toBe(200)
+
+    while (!seguir) await new Promise(resolve => setImmediate(resolve))
+    seguir()
+    await aviso
+
+    expect(res.respondido).toBe(1)
+    expect((await releer(orden)).paymentStatus).toBe(PAYMENT_STATUS.APPROVED)
   })
 })
 
@@ -753,6 +842,22 @@ describe('un pago aprobado siempre queda guardado', () => {
 
       expect((await releer(orden)).stockCommittedAt).toBeTruthy()
     })
+  })
+
+  test('consultar el estado de una orden vieja no repite los correos', async () => {
+    const orden = await crearOrden(
+      {
+        paymentStatus: PAYMENT_STATUS.APPROVED,
+        paidAt: new Date(),
+        stockCommittedAt: new Date(),
+      },
+      { providerPaymentId: 'pago-viejo', status: PAYMENT_STATUS.APPROVED },
+    )
+
+    mp.get.mockResolvedValueOnce(pagoEnMp('pago-viejo', 'approved', orden))
+    await consultarEstado(orden)
+
+    expect(queuePaymentEmails).not.toHaveBeenCalled()
   })
 
   test('un pago que entra por webhook aprueba la orden', async () => {

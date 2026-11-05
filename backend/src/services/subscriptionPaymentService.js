@@ -494,13 +494,22 @@ export const fetchAuthorizedPayment = async authorizedPaymentId => {
  * Devuelve también el PAGO cuando lo hubo, para no consultarlo dos veces: el
  * mismo objeto dice de qué suscripción se trata Y si el cobro salió o no.
  *
- * @returns {Promise<{preapprovalId: string|null, payment: Object|null}>}
+ * @returns {Promise<{preapprovalId: string|null, payment: Object|null, preapproval: Object|null}>}
  */
 export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
   const id = sanitizeString(dataId)
-  if (!id) return { preapprovalId: null, payment: null }
+  if (!id) return { preapprovalId: null, payment: null, preapproval: null }
 
   const tipo = sanitizeString(type).toLowerCase()
+
+  // `subscription_preapproval` avisa que la suscripción cambió, sin decir cómo: el
+  // estado hay que leerlo. Es el único aviso de una autorización hecha en Mercado
+  // Pago o de una baja pedida desde allá.
+  if (tipo === 'subscription_preapproval') {
+    const preapproval = await createSubscriptionClient().get({ id })
+
+    return { preapprovalId: id, payment: null, preapproval }
+  }
 
   // DOS RECURSOS DISTINTOS, Y EL MISMO ERROR DOS VECES SI SE CONFUNDEN
   //
@@ -517,10 +526,11 @@ export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
       // mira `payment.status`, y el del envoltorio ('processed') dice que el
       // aviso se proceso, no que el cobro haya salido.
       payment: autorizado?.payment || null,
+      preapproval: null,
     }
   }
 
-  if (tipo !== 'payment') return { preapprovalId: id, payment: null }
+  if (tipo !== 'payment') return { preapprovalId: id, payment: null, preapproval: null }
 
   const payment = await fetchPlatformPayment(id)
 
@@ -545,7 +555,7 @@ export const resolveSubscriptionEventTarget = async ({ type, dataId }) => {
     sanitizeString(payment?.metadata?.preapprovalId) ||
     null
 
-  return { preapprovalId, payment }
+  return { preapprovalId, payment, preapproval: null }
 }
 
 // ─── AUDITORÍA CONTRA EL PROVEEDOR ─────────────────────────────────────────

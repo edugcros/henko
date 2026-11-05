@@ -73,6 +73,10 @@ const DEFAULT_PAYMENT_LOCK_TTL_SECONDS = 30
 const DEFAULT_RECONCILIATION_LOCK_TTL_SECONDS = 20
 const DEFAULT_WEBHOOK_LOCK_TTL_SECONDS = 30
 
+// Mercado Pago corta a los 22 segundos y lo cuenta como fallido. Si procesar tarda
+// más que esto se le contesta igual, y la orden queda para la reconciliación.
+const WEBHOOK_RESPONSE_BUDGET_MS = 15 * 1000
+
 // Cuánto puede tardar un proceso entre reclamar los efectos de un pago y dejarlos
 // guardados. Son segundos: pasado esto se da por muerto y otro puede retomarlos.
 const PAYMENT_EFFECTS_LEASE_MS = 10 * 60 * 1000
@@ -296,6 +300,15 @@ const persistApprovedPayment = async ({ order, tenantId }) => {
 
   return Boolean(result?.matchedCount ?? result?.n)
 }
+
+// Una orden que ya estaba aprobada pero sin stock confirmado es un intento
+// anterior que falló a mitad de camino: el aviso repetido o la consulta de estado
+// la terminan. Las órdenes viejas o aprobadas a mano no pasan por acá: tienen el
+// stock confirmado pero no la marca de efectos, y repetirlos les mandaría los
+// correos de nuevo.
+const needsApprovedPaymentCommit = ({ order, previousStatus }) =>
+  order.paymentStatus === PAYMENT_STATUS.APPROVED &&
+  (previousStatus !== PAYMENT_STATUS.APPROVED || !order.stockCommittedAt)
 
 const commitApprovedPaymentIfNeeded = async ({
   order,
@@ -1036,9 +1049,33 @@ export const processPayment = async (req, res) => {
 // CONTROLLER: WEBHOOK
 // =====================================================
 
+// Lo procesa antes de contestar. Contestaba 200 de entrada para no pasarse del
+// plazo de Mercado Pago, pero eso le decía que el aviso estaba resuelto antes de
+// saberlo: cualquier fallo perdía el aviso, porque ya nadie lo iba a reenviar.
 export const mpWebhook = async (req, res) => {
-  res.status(200).end()
+  let answered = false
 
+  const answer = status => {
+    if (answered) return
+    answered = true
+    res.status(status).end()
+  }
+
+  const budget = setTimeout(() => answer(200), WEBHOOK_RESPONSE_BUDGET_MS)
+
+  try {
+    await processMercadoPagoWebhook(req)
+    answer(200)
+  } catch {
+    // Ya quedó registrado adentro. El 500 es lo que pide el reintento, y repetir
+    // no duplica nada: los efectos del pago se reclaman una sola vez.
+    answer(500)
+  } finally {
+    clearTimeout(budget)
+  }
+}
+
+const processMercadoPagoWebhook = async req => {
   let webhookLockAcquired = false
   let webhookLockResourceId = null
   let webhookTenantId = null
@@ -1127,12 +1164,9 @@ export const mpWebhook = async (req, res) => {
     )
 
     if (!webhookLockAcquired) {
-      logger.info('Webhook en proceso por otro worker, ignorando temporalmente', {
-        webhookId,
-        paymentId: String(paymentId),
-        tenantId,
-      })
-      return
+      // Mercado Pago suele mandar dos avisos juntos por el mismo pago, y el que
+      // llega después puede traer el estado final. Se pide el reintento.
+      throw new Error('Webhook en proceso por otro worker')
     }
 
     const order = await Order.findOne({
@@ -1239,14 +1273,7 @@ export const mpWebhook = async (req, res) => {
       ...extractMercadoPagoFees(mpInfo),
     })
 
-    // Una orden que ya estaba aprobada pero sin stock confirmado es un intento
-    // anterior que falló a mitad de camino: el aviso repetido lo termina. Las
-    // órdenes viejas no pasan por acá: tienen el stock confirmado pero no la
-    // marca de efectos, y repetirlos les mandaría los correos de nuevo.
-    if (
-      order.paymentStatus === PAYMENT_STATUS.APPROVED &&
-      (previousStatus !== PAYMENT_STATUS.APPROVED || !order.stockCommittedAt)
-    ) {
+    if (needsApprovedPaymentCommit({ order, previousStatus })) {
       await commitApprovedPaymentIfNeeded({
         order,
         tenantId,
@@ -1283,6 +1310,8 @@ export const mpWebhook = async (req, res) => {
         orderId: webhookLockResourceId,
       }),
     )
+
+    throw error
   } finally {
     if (webhookLockAcquired && webhookTenantId && webhookLockResourceId) {
       await releasePaymentLock(webhookLockResourceId, webhookTenantId)
@@ -1411,7 +1440,7 @@ export const getPaymentStatus = async (req, res) => {
 
           await restoreCommittedStockOnRefundIfNeeded({ order, tenantId })
 
-          if (order.paymentStatus === PAYMENT_STATUS.APPROVED) {
+          if (needsApprovedPaymentCommit({ order, previousStatus })) {
             await commitApprovedPaymentIfNeeded({
               order,
               tenantId,

@@ -23,11 +23,27 @@ import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
+const mp = { create: jest.fn(), get: jest.fn(), update: jest.fn() }
+
+jest.unstable_mockModule('mercadopago', () => ({
+  MercadoPagoConfig: class {},
+  Payment: class {},
+  Invoice: class {},
+  PreApproval: class {
+    create = mp.create
+    get = mp.get
+    update = mp.update
+  },
+}))
+
 let mongod
 let Tenant
 let readProviderBillingDates
 let getSubscriptionSummary
 let auditSubscriptions
+let activateAuthorizedSubscription
+let handleSubscriptionWebhook
+let processSubscriptionPayment
 
 const crearTenant = (nombre, extra = {}) =>
   Tenant.create({ name: nombre, slug: `${nombre.toLowerCase()}-${Date.now()}`, ...extra })
@@ -40,6 +56,13 @@ beforeAll(async () => {
   ;({ readProviderBillingDates, auditSubscriptions } =
     await import('../services/subscriptionPaymentService.js'))
   ;({ getSubscriptionSummary } = await import('../services/subscriptionMetricsService.js'))
+  ;({ activateAuthorizedSubscription, handleSubscriptionWebhook } =
+    await import('../controller/subscriptionWebhookCtrl.js'))
+  ;({ processSubscriptionPayment } = await import('../controller/subscriptionCtrl.js'))
+
+  // Después de los imports: cargar la configuración los vuelve a poner.
+  delete process.env.MP_WEBHOOK_SECRET
+  delete process.env.MERCADOPAGO_WEBHOOK_SECRET
 }, 60_000)
 
 afterAll(async () => {
@@ -516,5 +539,306 @@ describe('auditoría de suscripciones · los activos sin proveedor se ven', () =
     const auditoria = await auditSubscriptions({ Tenant, client: null })
 
     expect(auditoria.withoutProvider).toHaveLength(0)
+  })
+})
+
+describe('la suscripción sigue a Mercado Pago', () => {
+  const USUARIO = new mongoose.Types.ObjectId()
+
+  beforeAll(() => {
+    process.env.PLAN_PRICE_ARS_STARTER = '20000'
+    process.env.PLAN_PRICE_ARS_PRO = '40000'
+  })
+
+  afterAll(() => {
+    delete process.env.PLAN_PRICE_ARS_STARTER
+    delete process.env.PLAN_PRICE_ARS_PRO
+  })
+
+  const respuesta = () => {
+    const res = { statusCode: null, body: null }
+    res.status = code => {
+      res.statusCode = code
+      return res
+    }
+    res.json = body => {
+      res.body = body
+      return res
+    }
+    return res
+  }
+
+  const pagar = async (tenant, plan = 'pro') => {
+    const res = respuesta()
+
+    await processSubscriptionPayment(
+      {
+        user: { _id: USUARIO, tenantId: tenant._id },
+        tenantId: tenant._id,
+        tenant: { _id: tenant._id },
+        headers: {},
+        body: { plan, token: 'token-tarjeta', payer: { email: 'duenio@comercio.com' } },
+      },
+      res,
+    )
+
+    return res
+  }
+
+  const aviso = async (id, type = 'subscription_preapproval') => {
+    const res = respuesta()
+
+    await handleSubscriptionWebhook(
+      { headers: {}, originalUrl: '/webhook', query: {}, body: { type, data: { id } } },
+      res,
+    )
+
+    return res
+  }
+
+  const conSuscripcion = (subscriptionStatus, datos = {}) =>
+    crearTenant(`Comercio${Math.random().toString(16).slice(2, 8)}`, {
+      subscriptionStatus,
+      integrations: {
+        subscriptionMercadoPago: { subscriptionId: 'pre-1', status: 'pending', ...datos },
+      },
+    })
+
+  const estado = async tenant => Tenant.findById(tenant._id).lean()
+
+  beforeEach(() => {
+    Object.values(mp).forEach(fn => fn.mockReset())
+  })
+
+  afterEach(async () => {
+    await mongoose.connection.collection('subscriptionwebhookevents').deleteMany({})
+  })
+
+  test('autorizar desde Mercado Pago aplica el plan y el email elegidos', async () => {
+    const tenant = await crearTenant('Rodeo', { plan: 'starter', trialEndsAt: new Date() })
+
+    mp.create
+      .mockRejectedValueOnce(Object.assign(new Error('CC_VAL_433'), { status: 400 }))
+      .mockResolvedValueOnce({ id: 'pre-1', status: 'pending', init_point: 'https://mp/pre-1' })
+
+    const pago = await pagar(tenant)
+
+    expect(pago.body.data.initPoint).toBe('https://mp/pre-1')
+    expect((await estado(tenant)).plan).toBe('starter')
+
+    mp.get.mockResolvedValueOnce({
+      id: 'pre-1',
+      status: 'authorized',
+      next_payment_date: '2026-12-05T00:00:00.000Z',
+    })
+    await aviso('pre-1')
+
+    const final = await estado(tenant)
+    const guardada = final.integrations.subscriptionMercadoPago
+
+    expect(final.plan).toBe('pro')
+    expect(final.subscriptionStatus).toBe('active')
+    expect(final.trialEndsAt).toBeNull()
+    expect(guardada.status).toBe('authorized')
+    expect(guardada.payerEmail).toBe('duenio@comercio.com')
+    expect(guardada.nextBillingAt).toEqual(new Date('2026-12-05T00:00:00.000Z'))
+  })
+
+  // Es el segundo aviso con la misma clave: antes se descartaba como repetido.
+  test('la baja de una suscripción ya autorizada se aplica', async () => {
+    const tenant = await conSuscripcion('trialing', { planSelected: 'pro' })
+
+    mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'authorized' })
+    await aviso('pre-1')
+    expect((await estado(tenant)).subscriptionStatus).toBe('active')
+
+    mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'cancelled' })
+    await aviso('pre-1')
+    expect((await estado(tenant)).subscriptionStatus).toBe('cancelled')
+  })
+
+  test('una suscripción autorizada no le borra el pago pendiente al comercio', async () => {
+    const pendienteDesde = new Date('2026-11-01T00:00:00.000Z')
+    const tenant = await conSuscripcion('past_due', { status: 'authorized' })
+
+    await Tenant.findByIdAndUpdate(tenant._id, { subscriptionPastDueAt: pendienteDesde })
+
+    mp.get.mockResolvedValueOnce({
+      id: 'pre-1',
+      status: 'authorized',
+      next_payment_date: '2026-12-05T00:00:00.000Z',
+    })
+    await aviso('pre-1')
+
+    const final = await estado(tenant)
+
+    expect(final.subscriptionStatus).toBe('past_due')
+    expect(final.subscriptionPastDueAt).toEqual(pendienteDesde)
+    expect(final.integrations.subscriptionMercadoPago.nextBillingAt).toEqual(
+      new Date('2026-12-05T00:00:00.000Z'),
+    )
+  })
+
+  test('cancelar un enlace que nunca se autorizó no le corta la prueba', async () => {
+    const tenant = await conSuscripcion('trialing')
+
+    mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'cancelled' })
+    await aviso('pre-1')
+
+    const final = await estado(tenant)
+
+    expect(final.subscriptionStatus).toBe('trialing')
+    expect(final.integrations.subscriptionMercadoPago.status).toBe('cancelled')
+  })
+
+  test('sin poder consultar la suscripción se pide el reintento', async () => {
+    const tenant = await conSuscripcion('trialing', { planSelected: 'pro' })
+
+    mp.get.mockRejectedValueOnce(new Error('sin conexión'))
+    expect((await aviso('pre-1')).statusCode).toBe(500)
+
+    mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'authorized' })
+    expect((await aviso('pre-1')).statusCode).toBe(200)
+    expect((await estado(tenant)).subscriptionStatus).toBe('active')
+  })
+
+  test('el aviso de otra suscripción no activa al comercio', async () => {
+    const tenant = await conSuscripcion('trialing')
+
+    mp.get.mockResolvedValueOnce({ id: 'pre-vieja', status: 'authorized' })
+    await aviso('pre-vieja')
+
+    expect((await estado(tenant)).subscriptionStatus).toBe('trialing')
+  })
+
+  // Entre leer al comercio y activarlo, otro proceso pudo haberlo cambiado.
+  test('no se activa con una suscripción que dejó de ser la del comercio', async () => {
+    const leido = await conSuscripcion('trialing', { planSelected: 'pro' })
+
+    await Tenant.findByIdAndUpdate(leido._id, {
+      'integrations.subscriptionMercadoPago.subscriptionId': 'pre-2',
+    })
+
+    await activateAuthorizedSubscription(leido, { id: 'pre-1', status: 'authorized' })
+
+    expect((await estado(leido)).subscriptionStatus).toBe('trialing')
+  })
+
+  test('activar a un comercio que ya se activó no le cambia nada', async () => {
+    const leido = await conSuscripcion('trialing', { planSelected: 'pro' })
+
+    await Tenant.findByIdAndUpdate(leido._id, { subscriptionStatus: 'past_due' })
+
+    await activateAuthorizedSubscription(leido, { id: 'pre-1', status: 'authorized' })
+
+    expect((await estado(leido)).subscriptionStatus).toBe('past_due')
+  })
+
+  describe('el alta', () => {
+    test.each(['active', 'past_due'])(
+      'con una suscripción %s no se crea otra en Mercado Pago',
+      async estadoActual => {
+        const tenant = await conSuscripcion(estadoActual, { status: 'authorized' })
+
+        const res = await pagar(tenant)
+
+        expect(res.statusCode).toBe(409)
+        expect(res.body.data.code).toBe('ALREADY_SUBSCRIBED')
+        expect(mp.create).not.toHaveBeenCalled()
+      },
+    )
+
+    test('un doble clic crea una sola suscripción', async () => {
+      const tenant = await crearTenant('DobleClic')
+
+      mp.create.mockImplementation(async () => {
+        await new Promise(resolve => setTimeout(resolve, 50))
+        return { id: 'pre-nueva', status: 'authorized' }
+      })
+
+      const respuestas = await Promise.all([pagar(tenant), pagar(tenant)])
+
+      expect(respuestas.map(r => r.statusCode).sort()).toEqual([200, 409])
+      expect(mp.create).toHaveBeenCalledTimes(1)
+    })
+
+    test('se puede volver a intentar después de un alta terminada', async () => {
+      const tenant = await crearTenant('Reintento')
+
+      mp.create.mockResolvedValueOnce({ id: 'pre-1', status: 'cancelled' })
+      await pagar(tenant)
+
+      mp.create.mockResolvedValueOnce({ id: 'pre-2', status: 'authorized' })
+      expect((await pagar(tenant)).statusCode).toBe(200)
+    })
+
+    test('una baja permite volver a suscribirse', async () => {
+      const tenant = await conSuscripcion('cancelled', { status: 'cancelled' })
+
+      mp.create.mockResolvedValueOnce({ id: 'pre-2', status: 'authorized' })
+
+      expect((await pagar(tenant)).statusCode).toBe(200)
+      expect(mp.get).not.toHaveBeenCalled()
+      expect(mp.update).not.toHaveBeenCalled()
+    })
+
+    test('el enlace pendiente anterior se da de baja al pagar', async () => {
+      const tenant = await conSuscripcion('trialing')
+
+      mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'pending' })
+      mp.create.mockResolvedValueOnce({ id: 'pre-2', status: 'authorized' })
+
+      await pagar(tenant)
+
+      expect(mp.update).toHaveBeenCalledWith({ id: 'pre-1', body: { status: 'cancelled' } })
+      expect((await estado(tenant)).integrations.subscriptionMercadoPago.subscriptionId).toBe(
+        'pre-2',
+      )
+    })
+
+    test('otro rechazo reemplaza el enlace pendiente en vez de acumularlo', async () => {
+      const tenant = await conSuscripcion('trialing')
+
+      mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'pending' })
+      mp.create
+        .mockRejectedValueOnce(Object.assign(new Error('CC_VAL_433'), { status: 400 }))
+        .mockResolvedValueOnce({ id: 'pre-2', status: 'pending', init_point: 'https://mp/pre-2' })
+
+      await pagar(tenant)
+
+      expect(mp.update).toHaveBeenCalledWith({ id: 'pre-1', body: { status: 'cancelled' } })
+    })
+
+    test('si no se puede dar de baja el enlace anterior, el alta igual sale bien', async () => {
+      const tenant = await conSuscripcion('trialing')
+
+      mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'pending' })
+      mp.create.mockResolvedValueOnce({ id: 'pre-2', status: 'authorized' })
+      mp.update.mockRejectedValueOnce(new Error('sin conexión'))
+
+      expect((await pagar(tenant)).statusCode).toBe(200)
+    })
+
+    // Autorizó el enlace, el aviso todavía no llegó y volvió a pagar con tarjeta.
+    test('un enlace ya autorizado activa al comercio y no cobra de nuevo', async () => {
+      const tenant = await conSuscripcion('trialing', { planSelected: 'pro' })
+
+      mp.get.mockResolvedValueOnce({ id: 'pre-1', status: 'authorized' })
+
+      const res = await pagar(tenant)
+
+      expect(res.statusCode).toBe(409)
+      expect(mp.create).not.toHaveBeenCalled()
+      expect((await estado(tenant)).subscriptionStatus).toBe('active')
+    })
+
+    test('sin saber cómo quedó el enlace anterior no se cobra', async () => {
+      const tenant = await conSuscripcion('trialing')
+
+      mp.get.mockRejectedValueOnce(new Error('sin conexión'))
+
+      expect((await pagar(tenant)).statusCode).toBe(503)
+      expect(mp.create).not.toHaveBeenCalled()
+    })
   })
 })
