@@ -315,10 +315,10 @@ describe('el snapshot del panel de gasto', () => {
       expect((await getPlatformCommitment()).tenants).toBe(0)
     })
 
-    test('no cuenta a quien usa su propia clave', async () => {
+    test('cuenta a quien tiene su propia clave: primero gasta la bolsa de HENKO', async () => {
       await insertar({ plan: 'pro', ai: { byokEnabled: true, geminiApiKey: 'cifrada' } })
 
-      expect((await getPlatformCommitment()).tenants).toBe(0)
+      expect((await getPlatformCommitment()).tenants).toBe(1)
     })
 
     test('un comercio acotado compromete lo que se le dejo', async () => {

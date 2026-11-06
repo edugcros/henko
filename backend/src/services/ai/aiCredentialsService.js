@@ -19,7 +19,21 @@
 import Tenant from '../../models/tenantModel.js'
 import logger from '../../../config/logger.js'
 import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
-import { AI_PLANS, isByokAllowedForPlan, normalizePlan } from './aiPlanPolicy.js'
+import AiUsage from '../../models/aiUsageModel.js'
+import {
+  AI_METRICS,
+  AI_PLANS,
+  UNLIMITED,
+  computeCreditsUsed,
+  getCreditCost,
+  getPlanCredits,
+  getSharedKeyTenantUsdCap,
+  getTenantPlanFraction,
+  isByokAllowedForPlan,
+  normalizePlan,
+} from './aiPlanPolicy.js'
+import { getCurrentPeriod } from './aiPeriod.js'
+import { getTenantAiPolicy } from './platformAiSettingService.js'
 
 const clean = value => String(value || '').trim()
 
@@ -56,13 +70,52 @@ export const findInvalidHeaderChar = value => {
 
 const getPlatformApiKey = () => clean(process.env.GEMINI_API_KEY)
 
-const buildProfile = ({ tenant, tenantId }) => {
+/**
+ * ¿Se terminó lo que trae el plan de este comercio?
+ *
+ * Lo que queda ya no alcanza para lo que una clave de Google puede pagar, o llegó a su
+ * tope en plata. Si no se puede saber, se responde que no: seguir con la clave de
+ * HENKO, que tiene sus topes, es mejor que facturarle al comercio por un error nuestro.
+ */
+const isPlanExhausted = async ({ tenantId, plan }) => {
+  try {
+    const [usage, policy] = await Promise.all([
+      AiUsage.findOne({ tenantId, period: getCurrentPeriod() })
+        .setOptions({ tenantId })
+        .select('counters estimatedCostUsd reservedCostUsd')
+        .lean(),
+      getTenantAiPolicy(tenantId),
+    ])
+
+    const limite = Math.floor(getPlanCredits(plan) * getTenantPlanFraction(policy.share))
+    const usados = computeCreditsUsed(metric => Number(usage?.counters?.[metric] || 0))
+
+    if (limite - usados < getCreditCost(AI_METRICS.VISION)) return true
+
+    const tope = getSharedKeyTenantUsdCap({ plan, share: policy.share, usdCap: policy.usdCap })
+    const gastado = Number(usage?.estimatedCostUsd || 0) + Number(usage?.reservedCostUsd || 0)
+
+    return tope !== UNLIMITED && gastado >= tope
+  } catch (error) {
+    logger.warn('[AI CREDENCIALES] No se pudo saber si el plan se agotó', {
+      tenantId,
+      error: error.message,
+    })
+
+    return false
+  }
+}
+
+const buildProfile = ({ tenant, tenantId, planExhausted = false }) => {
   const plan = normalizePlan(tenant?.plan)
   const byokEnabled = Boolean(tenant?.ai?.byokEnabled)
   const tenantKey = clean(tenant?.ai?.geminiApiKey)
   const platformKey = getPlatformApiKey()
 
-  const useTenantKey = byokEnabled && Boolean(tenantKey) && isByokAllowedForPlan(plan)
+  // Primero lo que el comercio ya pagó con su plan, después su clave. Si la clave
+  // mandara desde el primer mensaje, estaría pagando dos veces lo mismo.
+  const useTenantKey =
+    planExhausted && byokEnabled && Boolean(tenantKey) && isByokAllowedForPlan(plan)
 
   const apiKey = useTenantKey ? tenantKey : platformKey
   const keySource = useTenantKey
@@ -125,7 +178,16 @@ export const loadTenantAiProfile = async tenantId => {
 
   if (!tenant) return emptyProfile(id)
 
-  const profile = buildProfile({ tenant, tenantId: id })
+  const tieneClave =
+    Boolean(tenant.ai?.byokEnabled) &&
+    Boolean(clean(tenant.ai?.geminiApiKey)) &&
+    isByokAllowedForPlan(tenant.plan)
+
+  const profile = buildProfile({
+    tenant,
+    tenantId: id,
+    planExhausted: tieneClave && (await isPlanExhausted({ tenantId: id, plan: tenant.plan })),
+  })
   await cacheSet(cacheKey, profile, PROFILE_CACHE_TTL_SEC)
 
   return profile
@@ -235,7 +297,7 @@ export const setTenantAiKey = async ({ tenantId, apiKey }) => {
 
   if (!isByokAllowedForPlan(tenant.plan)) {
     const error = new Error(
-      'Tu plan actual no permite usar una API key propia. Está disponible desde el plan Pro.',
+      'Tu plan actual no permite usar una API key propia.',
     )
     error.statusCode = 403
     throw error

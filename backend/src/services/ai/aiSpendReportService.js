@@ -24,16 +24,16 @@ import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
 import AiUsage from '../../models/aiUsageModel.js'
 import logger from '../../../config/logger.js'
 import {
-  AI_CREDIT_COSTS,
   AI_METRIC_LABELS,
   computeCreditsUsed,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
   getPlanCommitment,
+  getPlatformBrakeOverrides,
   getSharedKeyTenantUsdCap,
   getSubscriptionState,
   getTenantPlanFraction,
-  isByokAllowedForPlan,
+  setPlatformCommitmentSnapshot,
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
   UNLIMITED,
@@ -567,8 +567,7 @@ const getCreditsUsedByTenant = async (period, tenantIds) => {
   return new Map(
     filas.map(fila => [
       String(fila.tenantId),
-      metrics =>
-        computeCreditsUsed(metric => Number(fila.counters?.[metric] || 0), metrics),
+      computeCreditsUsed(metric => Number(fila.counters?.[metric] || 0)),
     ]),
   )
 }
@@ -695,12 +694,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
 
     const { planCredits, creditCap, usdCapEfectivo } = topesDelComercio(tenant, politica)
     const claves = (fila.keySources || []).filter(Boolean)
-
-    // Con clave propia solo descuenta lo que factura HENKO: ver resolveCredits.
-    const creditsUsed =
-      creditosPorComercio.get(tenantId)?.(
-        claves.includes('tenant') ? ['imageEdits'] : Object.keys(AI_CREDIT_COSTS),
-      ) ?? 0
+    const creditsUsed = creditosPorComercio.get(tenantId) ?? 0
 
     return {
       tenantId,
@@ -1407,8 +1401,9 @@ export const getTenantSpendDetail = async (tenantId, period, { now = new Date() 
  * pagar. Contra ella se mide el freno manual, que sí corta para todos: por debajo de
  * este número, el freno puede dejar sin IA a comercios dentro de lo que compraron.
  *
- * Cuentan los que hoy tienen derecho a la IA, incluidas las pruebas vigentes. No
- * cuentan los que usan su propia clave ni los pausados: a HENKO no le cuestan.
+ * Cuentan los que hoy tienen derecho a la IA, incluidas las pruebas vigentes. Quien
+ * tiene su propia clave cuenta igual: la clave entra recién con la bolsa agotada, y la
+ * bolsa la paga HENKO. No cuentan los pausados.
  */
 export const getPlatformCommitment = async () => {
   const [tenants, politicas] = await Promise.all([
@@ -1416,9 +1411,7 @@ export const getPlatformCommitment = async () => {
       status: 'active',
       subscriptionStatus: { $in: ['trialing', 'active', 'past_due'] },
     })
-      .select(
-        'plan subscriptionStatus trialEndsAt subscriptionPastDueAt updatedAt ai.byokEnabled +ai.geminiApiKey',
-      )
+      .select('plan subscriptionStatus trialEndsAt subscriptionPastDueAt updatedAt')
       .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
       .lean(),
     getAllTenantAiPolicies(),
@@ -1428,12 +1421,8 @@ export const getPlatformCommitment = async () => {
 
   for (const tenant of tenants) {
     const politica = politicas[String(tenant._id)] || null
-    const usaSuClave =
-      Boolean(tenant.ai?.byokEnabled) &&
-      Boolean(tenant.ai?.geminiApiKey) &&
-      isByokAllowedForPlan(tenant.plan)
 
-    if (politica?.suspended || usaSuClave || !getSubscriptionState(tenant).entitled) continue
+    if (politica?.suspended || !getSubscriptionState(tenant).entitled) continue
 
     const delPlan = getPlanCommitment(tenant.plan)
     const fraccion = getTenantPlanFraction(politica?.share ?? null)
@@ -1448,6 +1437,43 @@ export const getPlatformCommitment = async () => {
   }
 
   return { ...compromiso, usd: round(compromiso.usd, 2) }
+}
+
+// Cada cuánto se vuelve a sumar lo comprometido. El freno tiene margen para que un
+// comercio nuevo entre sin problema hasta la próxima pasada.
+const COMMITMENT_REFRESH_MS = 5 * 60 * 1000
+
+let commitmentTimer = null
+
+/**
+ * Suma lo comprometido y lo deja en memoria para el freno.
+ *
+ * Si falla, se sigue con lo último que se supo: un error de lectura no puede mover el
+ * freno de todos los comercios.
+ */
+export const refreshPlatformCommitment = async () => {
+  try {
+    setPlatformCommitmentSnapshot(await getPlatformCommitment())
+  } catch (error) {
+    logger.warn('[AI COMPROMISO] No se pudo actualizar el freno automático', {
+      error: error.message,
+    })
+  }
+}
+
+export const startPlatformCommitmentRefresher = () => {
+  if (commitmentTimer) return
+
+  refreshPlatformCommitment().catch(() => undefined)
+  commitmentTimer = setInterval(() => {
+    refreshPlatformCommitment().catch(() => undefined)
+  }, COMMITMENT_REFRESH_MS)
+  commitmentTimer.unref?.()
+}
+
+export const stopPlatformCommitmentRefresher = () => {
+  if (commitmentTimer) clearInterval(commitmentTimer)
+  commitmentTimer = null
 }
 
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
@@ -1564,6 +1590,8 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       usd: usdBudget === UNLIMITED ? null : usdBudget,
       usdConfigured: usdBudget !== UNLIMITED,
       usdSource: getPlatformUsdBudgetSource(),
+      // Los máximos a mano, para editarlos: `tokens` y `usd` son los que rigen.
+      overrides: getPlatformBrakeOverrides(),
     },
     // Lo vendido por plan, y si el freno manual quedó por debajo. El freno corta
     // para todos: si es menor a lo vendido, puede dejar sin IA a quien pagó.

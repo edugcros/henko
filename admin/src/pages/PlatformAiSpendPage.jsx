@@ -201,7 +201,8 @@ const usageColor = percent => {
 // silencio a la variable de entorno convierte "ya lo cambié en Render y no pasa
 // nada" en un misterio que cuesta media hora.
 const BUDGET_SOURCE_LABEL = {
-  panel: 'freno fijado desde el panel',
+  auto: 'freno automático: lo comprometido por planes más un margen',
+  panel: 'freno limitado desde el panel',
   env: 'freno tomado de la variable de entorno',
   none: 'sin freno configurado',
 }
@@ -216,6 +217,8 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   // Sin cerrar ese viaje de ida y vuelta, se escribe «100» y más tarde se lee
   // «ARS 153.000» en otra parte sin forma de relacionar los dos números.
   const { rate } = useDinero()
+  // Lo que se edita es el máximo a mano, no el freno que rige: ese se calcula solo.
+  const manual = budget.overrides || budget
   const [tokens, setTokens] = useState('')
   const [usd, setUsd] = useState('')
   const [reason, setReason] = useState('')
@@ -227,11 +230,11 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   // con el mismo motivo, ensuciando el historial con cambios que no ocurrieron.
   useEffect(() => {
     if (!open) return
-    setTokens(budget.tokens === null ? '' : String(budget.tokens))
-    setUsd(budget.usd === null || budget.usd === undefined ? '' : String(budget.usd))
+    setTokens(manual.tokens === null ? '' : String(manual.tokens))
+    setUsd(manual.usd === null || manual.usd === undefined ? '' : String(manual.usd))
     setReason('')
     setError('')
-  }, [open, budget.tokens, budget.usd])
+  }, [open, manual.tokens, manual.usd])
 
   /**
    * Un campo vacío significa "volver a la variable de entorno", no cero.
@@ -253,10 +256,10 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           : {
               // Solo lo que se movió. Un campo que no cambió no viaja, así que
               // el historial registra el cambio que ocurrió y no tres.
-              ...(String(tokens) !== String(budget.tokens ?? '')
+              ...(String(tokens) !== String(manual.tokens ?? '')
                 ? { tokens: valorDe(tokens) }
                 : {}),
-              ...(String(usd) !== String(budget.usd ?? '') ? { usd: valorDe(usd) } : {}),
+              ...(String(usd) !== String(manual.usd ?? '') ? { usd: valorDe(usd) } : {}),
               reason,
             },
       )
@@ -283,8 +286,8 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
       <DialogTitle>Cambiar el freno de emergencia</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          El valor rige de inmediato y no necesita reiniciar el servicio. Queda registrado con tu
-          email y el motivo.
+          El freno se calcula solo con lo comprometido por planes. Acá podés ponerle un máximo: solo
+          lo baja. Rige de inmediato y queda registrado con tu email y el motivo.
         </Typography>
 
         <TextField
@@ -294,7 +297,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           value={tokens}
           onChange={event => setTokens(event.target.value)}
           sx={{ mb: 2 }}
-          helperText="Vacío = lo decide la variable de entorno. A tarifa de 2026, 200.000.000 de tokens son unos USD 270."
+          helperText="Vacío = sin máximo: manda el freno automático."
         />
 
         {/* El techo en PLATA, que es el que importa de verdad: el mismo tope de
@@ -315,7 +318,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
             // conversión sería peor que no mostrarla.
             Number(usd) > 0 && rate
               ? `Equivale a ${formatArs(Number(usd) * rate)} al cambio de hoy. Corta cuando el gasto del mes llega acá, aunque sobren tokens.`
-              : 'Vacío = lo decide la variable de entorno. Corta cuando el gasto del mes llega acá, aunque sobren tokens.'
+              : 'Vacío = sin máximo: manda el freno automático.'
           }
         />
 

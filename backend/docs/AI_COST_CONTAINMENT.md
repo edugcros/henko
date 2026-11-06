@@ -84,20 +84,35 @@ gasto no toca la factura de la plataforma.
 
 Desde el 06/11/2026 las tres piezas se relacionan así:
 
-- **Cada comercio tiene el 100% de su plan.** Es su bolsa de créditos, y también
-  su tope en dólares: lo máximo que puede costar esa bolsa, gastada entera en la
-  acción más cara y con cada token a la tarifa de salida del modelo más caro.
+- **Cada comercio tiene el 100% de su plan.** Es su bolsa de créditos, con un tope
+  duro en dólares que lo mantiene por debajo de lo que deja el plan.
 - **Gobernar solo baja.** `AiTenantPolicy.share` es la parte de SU PLAN que
   recibe (1% a 100%): achica la bolsa y los cupos. `usdCap` es un tope en dólares
   que no puede superar el del plan. Lo extra se vende con un plan superior.
-- **Lo comprometido se calcula solo:** la suma de los planes con derecho a la IA
-  sobre la key compartida. Crece con cada comercio y no corta nada.
-- **El techo manual es un freno de emergencia.** Corta para todos, así que tiene
-  que estar por encima de lo comprometido. El panel avisa si queda por debajo.
+- **Lo comprometido se calcula solo:** la suma de los planes con derecho a la IA.
+  Crece con cada comercio.
+- **El freno sale de lo comprometido.** Corta para todos. El valor manual es un
+  máximo, y el panel avisa si queda por debajo de lo vendido.
 
 La fracción global `AI_PLATFORM_PER_TENANT_SHARE` solo se usa si un plan se
 fuerza a ilimitado por variable de entorno, que es el caso de la sección
 siguiente. Ningún plan que se vende hoy es ilimitado.
+
+### Freno automático y clave propia
+
+El freno de la plataforma es lo comprometido por planes más un 25%
+(`AI_BRAKE_MARGIN`), recalculado cada cinco minutos. El valor del panel es un máximo y
+solo puede bajarlo. `AI_PLATFORM_MONTHLY_TOKEN_BUDGET` y `AI_PLATFORM_MONTHLY_USD_BUDGET`
+quedan como respaldo para cuando la suma no se pudo hacer.
+
+Cada comercio tiene un tope duro en dólares: dos veces lo que cuesta su bolsa con el
+modelo por defecto (USD 16 en Starter y 26 en Pro). Queda por debajo del neto de cada
+plan, así que ninguno puede costar más de lo que deja.
+
+Con la bolsa agotada, o el tope alcanzado, un comercio puede seguir con su propia clave
+de Google hasta que se renueve el plan. Cubre mensajes, análisis de imagen y precios.
+Fondos y análisis de mercado esperan a la renovación: esos los factura HENKO a otros
+proveedores.
 
 ### Presupuesto de IA por plan
 

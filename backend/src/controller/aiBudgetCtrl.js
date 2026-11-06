@@ -51,7 +51,7 @@ export const updateAiCredentials = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message:
-      'API key propia activada. A partir de ahora el consumo de IA de tu comercio se factura en tu propia cuenta de Google.',
+      'API key guardada. Se va a usar cuando se terminen los créditos de tu plan, hasta que se renueve.',
     data: budget,
   })
 })
@@ -68,7 +68,7 @@ export const deleteAiCredentials = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message:
-      'API key propia desactivada. El consumo vuelve a contar contra los límites de tu plan.',
+      'API key propia desactivada. Cuando se terminen los créditos, la IA va a esperar a que se renueve tu plan.',
     data: budget,
   })
 })

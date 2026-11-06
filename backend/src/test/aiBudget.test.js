@@ -161,9 +161,15 @@ describe('aiPlanPolicy · topes por plan', () => {
     expect(getPlanLimit('starter', AI_METRICS.VISION)).toBe(42)
   })
 
-  test('BYOK no está disponible en los planes bajos por defecto', () => {
-    expect(isByokAllowedForPlan('starter')).toBe(false)
+  test('todos los planes pueden usar su clave cuando se terminan los créditos', () => {
+    expect(isByokAllowedForPlan('starter')).toBe(true)
     expect(isByokAllowedForPlan('pro')).toBe(true)
+  })
+
+  test('el entorno todavía puede acotar quién usa clave propia', () => {
+    setEnv('AI_BYOK_ALLOWED_PLANS', 'pro')
+
+    expect(isByokAllowedForPlan('starter')).toBe(false)
   })
 })
 
@@ -391,6 +397,7 @@ jest.unstable_mockModule('../models/aiProviderCallModel.js', () => ({
 }))
 
 jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
+  invalidateTenantAiProfile: async () => undefined,
   KEY_SOURCE: { TENANT: 'tenant', PLATFORM: 'platform', NONE: 'none' },
   loadTenantAiProfile: mockProfile,
 }))

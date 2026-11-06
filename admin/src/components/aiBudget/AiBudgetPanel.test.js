@@ -117,16 +117,47 @@ describe('AiBudgetPanel · tope mostrado', () => {
     expect(screen.getByText(/Descuenta 3 créditos de tu bolsa/)).toBeInTheDocument()
   })
 
-  test('con clave propia no muestra una bolsa que no aplica', async () => {
+  test('con los créditos agotados y su clave, explica qué sigue andando', async () => {
     mockGetAiBudget.mockResolvedValue({
-      ...conBolsa({ used: 0, limit: 6500, remaining: 6500, contracted: 6500 }),
+      ...conBolsa({ used: 4000, limit: 4000, remaining: 0, contracted: 4000 }),
       credentials: { source: 'tenant', byokEnabled: true, byokAllowed: true, hasTenantKey: true },
     })
 
     render(<AiBudgetPanel />)
 
-    await screen.findByText(/corre por tu propia cuenta/)
-    expect(screen.queryByText('Créditos de IA')).not.toBeInTheDocument()
+    expect(await screen.findByText(/Se terminaron los créditos de tu plan/)).toBeInTheDocument()
+    expect(screen.getByText('4.000 / 4.000')).toBeInTheDocument()
+    expect(screen.getByText(/Estás usando tu propia API key/)).toBeInTheDocument()
+  })
+
+  test('con créditos disponibles, dice que la clave queda lista', async () => {
+    mockGetAiBudget.mockResolvedValue({
+      ...conBolsa({ used: 10, limit: 4000, remaining: 3990, contracted: 4000 }),
+      credentials: { source: 'platform', byokEnabled: true, byokAllowed: true, hasTenantKey: true },
+    })
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText(/Tu API key está lista/)).toBeInTheDocument()
+    expect(screen.queryByText(/Se terminaron los créditos/)).not.toBeInTheDocument()
+  })
+
+  test('sin clave, avisa qué cubre y el riesgo de una cuenta gratuita', async () => {
+    mockGetAiBudget.mockResolvedValue({
+      ...conBolsa({ used: 10, limit: 4000, remaining: 3990, contracted: 4000 }),
+      credentials: {
+        source: 'platform',
+        byokEnabled: false,
+        byokAllowed: true,
+        hasTenantKey: false,
+      },
+    })
+
+    render(<AiBudgetPanel />)
+
+    const texto = await screen.findByText(/hasta que se\s+renueve tu plan/)
+
+    expect(texto).toHaveTextContent(/Con una cuenta gratuita, Google puede usar el contenido/)
   })
 
   test('con autolímite muestra el tope real, no el del plan', async () => {

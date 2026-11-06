@@ -1,4 +1,8 @@
 // 📁 server.js
+import {
+  startPlatformCommitmentRefresher,
+  stopPlatformCommitmentRefresher,
+} from './src/services/ai/aiSpendReportService.js'
 import process from 'process'
 
 import { env } from './config/env.js'
@@ -138,6 +142,8 @@ const startServer = async () => {
       // siempre: un deploy a mitad de una llamada deja al comercio pagando un
       // mensaje que nunca se envió, y nada lo devolvía hasta cambiar el mes.
       startStaleOperationSweeper({ logger })
+      // El freno automático necesita saber qué hay comprometido por planes.
+      startPlatformCommitmentRefresher()
       // Detecta, registra y avisa si el libro, los comercios y la plataforma
       // dejan de coincidir. Nunca corrige sola.
       startAccountingAudit({ logger })
@@ -203,6 +209,7 @@ const shutdown = async signal => {
     stopAiCartRecoveryWorker()
     stopAiInsightWorker()
     stopStaleOperationSweeper()
+    stopPlatformCommitmentRefresher()
     stopAccountingAudit()
     stopCertificateWatcher()
     stopSubscriptionAudit()

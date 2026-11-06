@@ -29,7 +29,6 @@ import {
   PLATFORM_AI_SETTINGS,
 } from './platformAiSettingService.js'
 import { getBcraUsdArsQuote } from './aiExchangeRateService.js'
-import { computeMaxTokenCostUsd, getImagePrice, getToolPrice } from './aiModelPricing.js'
 
 const clean = value => String(value || '').trim()
 
@@ -102,6 +101,9 @@ const PLAN_CREDITS = Object.freeze({ starter: 4_000, pro: 6_500 })
 // Lo medido en producción: ver las notas de DEFAULT_PLAN_LIMITS y getPlanCommitment.
 const TOKENS_PER_MESSAGE = 7_500
 const TOKENS_PER_MARKET_ANALYSIS = 25_000
+
+const USD_PER_CREDIT = 0.002
+const PLAN_USD_CAP_MULTIPLE = 2
 
 /** Lo que descuenta una unidad de esta métrica. Cero si no sale de la bolsa. */
 export const getCreditCost = metric => AI_CREDIT_COSTS[metric] ?? 0
@@ -350,12 +352,15 @@ export const getPlanLimits = plan => {
  * dejan de tener sentido: el gasto lo paga él directamente contra Google.
  * Igual seguimos contando el consumo, porque sin ese número no hay forma de
  * responder "¿por qué está lento?" ni de dimensionar un plan.
+ *
+ * Todos los planes pueden: es la salida cuando se terminan los créditos. La clave se
+ * usa recién ahí, ver loadTenantAiProfile. AI_BYOK_ALLOWED_PLANS sigue pudiendo acotarlo.
  */
 export const isByokAllowedForPlan = plan => {
   const normalizedPlan = normalizePlan(plan)
   const raw = clean(process.env.AI_BYOK_ALLOWED_PLANS)
 
-  if (!raw) return normalizedPlan === 'pro'
+  if (!raw) return AI_PLANS.includes(normalizedPlan)
 
   return raw
     .split(',')
@@ -809,6 +814,45 @@ export const getWhatsappCostPerSendUsd = () =>
  *
  * 0 = sin disyuntor (no recomendado en producción).
  */
+/**
+ * Lo comprometido por planes, tal como lo sumó la última pasada.
+ *
+ * El freno se pregunta en cada operación y esa suma recorre todos los comercios, así
+ * que se calcula aparte y se lee de memoria: ver refreshPlatformCommitment.
+ */
+let commitmentSnapshot = null
+
+export const setPlatformCommitmentSnapshot = snapshot => {
+  commitmentSnapshot = snapshot || null
+}
+
+const getBrakeMargin = () => Math.max(1, readEnvNumber('AI_BRAKE_MARGIN') ?? 1.25)
+
+/**
+ * EL FRENO SE CALCULA SOLO.
+ *
+ * Un número fijo no escala: con 111 comercios, 200 millones de tokens cortaban a todos
+ * con un 5% de uso, y subirlo dependía de que alguien se acordara con cada venta. Ahora
+ * es lo comprometido por planes más un margen, para que un comercio nuevo no quede
+ * afuera hasta la próxima pasada.
+ *
+ * El valor del panel es un máximo y solo puede bajarlo. La variable de entorno queda
+ * como respaldo para cuando la suma no se pudo hacer: sin esto, el freno viejo de
+ * Render seguiría cortando aunque el automático haya subido.
+ *
+ * Sin comercios no hay nada comprometido, y un freno en cero apagaría la IA del primero
+ * que se suscriba: en ese caso se sigue con el valor manual.
+ */
+const resolveBrake = (field, override, fallback) => {
+  const comprometido = Number(commitmentSnapshot?.[field]) || 0
+
+  if (comprometido <= 0) return override ?? fallback
+
+  const automatico = comprometido * getBrakeMargin()
+
+  return override !== null ? Math.min(override, automatico) : automatico
+}
+
 export const getPlatformMonthlyTokenBudget = () => {
   // El override del panel gana sobre la variable de entorno. La variable no
   // deja de ser la configuración base —es lo que vale mientras nadie tocó
@@ -819,13 +863,15 @@ export const getPlatformMonthlyTokenBudget = () => {
   // Para que esto no se vuelva un misterio, la pantalla muestra las dos cosas:
   // el valor vigente y de dónde salió.
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET)
-
-  if (override !== null && Number.isFinite(override)) {
-    return Math.floor(override)
-  }
-
   const budget = readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET')
-  return budget === null ? UNLIMITED : Math.floor(budget)
+
+  return Math.floor(
+    resolveBrake(
+      'tokens',
+      override !== null && Number.isFinite(override) ? override : null,
+      budget === null ? UNLIMITED : budget,
+    ),
+  )
 }
 
 /**
@@ -855,11 +901,13 @@ export const getPlatformMonthlyTokenBudget = () => {
  */
 export const getPlatformMonthlyUsdBudget = () => {
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)
-
-  if (override !== null && Number.isFinite(override)) return override
-
   const budget = readEnvNumber('AI_PLATFORM_MONTHLY_USD_BUDGET')
-  return budget === null ? UNLIMITED : budget
+
+  return resolveBrake(
+    'usd',
+    override !== null && Number.isFinite(override) ? override : null,
+    budget === null ? UNLIMITED : budget,
+  )
 }
 
 /**
@@ -906,10 +954,21 @@ export const getEstimatedCostUsd = metric => {
   return ESTIMATED_COST_USD[metric] ?? 0.01
 }
 
+// Cuando hay automático, el panel solo figura si es el que está mandando.
+const brakeSource = (field, override) => {
+  const comprometido = Number(commitmentSnapshot?.[field]) || 0
+  const manual = override !== null && Number.isFinite(override) ? override : null
+
+  if (comprometido <= 0) return null
+  return manual !== null && manual < comprometido * getBrakeMargin() ? 'panel' : 'auto'
+}
+
 /** De dónde sale el techo en dólares. Solo para mostrarlo, no para decidir. */
 export const getPlatformUsdBudgetSource = () => {
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)
+  const calculado = brakeSource('usd', override)
 
+  if (calculado) return calculado
   if (override !== null && Number.isFinite(override)) return 'panel'
   return readEnvNumber('AI_PLATFORM_MONTHLY_USD_BUDGET') === null ? 'none' : 'env'
 }
@@ -917,7 +976,9 @@ export const getPlatformUsdBudgetSource = () => {
 /** De dónde sale el techo vigente. Solo para mostrarlo, no para decidir. */
 export const getPlatformBudgetSource = () => {
   const override = getPlatformAiOverride(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET)
+  const calculado = brakeSource('tokens', override)
 
+  if (calculado) return calculado
   if (override !== null && Number.isFinite(override)) return 'panel'
   return readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET') === null ? 'none' : 'env'
 }
@@ -939,6 +1000,19 @@ export const getPlatformBudgetSource = () => {
  * 2.000 caracteres es holgado para un mensaje de chat — nadie legítimo se
  * acerca — así que el tope es invisible en el uso real.
  */
+/** Los máximos cargados a mano, para mostrarlos al editarlos. Null = sin máximo. */
+export const getPlatformBrakeOverrides = () => {
+  const leer = setting => {
+    const valor = getPlatformAiOverride(setting)
+    return valor !== null && Number.isFinite(valor) ? valor : null
+  }
+
+  return {
+    tokens: leer(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET),
+    usd: leer(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET),
+  }
+}
+
 export const getMaxInboundMessageChars = () =>
   Math.min(Math.max(readEnvNumber('AI_AGENT_MAX_INBOUND_CHARS') ?? 2000, 200), 20000)
 
@@ -984,62 +1058,30 @@ const getVisionTokensPerCall = () => Math.max(1, readEnvNumber('AI_VISION_TOKENS
  * cuotas por plan.
  */
 /**
- * Con qué se calcula lo máximo que puede costar un plan.
+ * Lo que HENKO se comprometió a entregar con un plan: créditos, tokens y plata del mes.
  *
- * Son los más caros de lo que puede responder: el último escalón de la cadena de
- * respaldo y el modelo de imagen de mayor tarifa. Un test comprueba que ningún
- * modelo de la cadena cueste más que el de referencia.
+ * LA PLATA ES EL TOPE DURO DE UN COMERCIO, Y SALE DEL PLAN.
  *
- * Los cuatro créditos por análisis de mercado son el consumo medido en producción:
- * ver la nota de Tavily en aiModelPricing.js.
- */
-const PLAN_COST_REFERENCE_MODEL = 'gemini-3.8-flash'
-const PLAN_COST_REFERENCE_IMAGE_MODEL = 'gemini-3.1-flash-image'
-const MARKET_CREDITS_PER_ANALYSIS = 4
-
-/**
- * Lo que HENKO se comprometió a entregar con un plan: tokens y plata del mes.
+ * Dos veces lo que cuesta un crédito con el modelo por defecto: USD 16 en Starter y 26
+ * en Pro, por debajo de los USD 25 y 32 que deja cada plan después de IVA y comisiones.
+ * Es lo que garantiza que HENKO no quiebre con mil comercios o con cien mil: ninguno
+ * puede costar más de lo que deja, aunque todo le responda el modelo más caro.
  *
- * POR QUÉ LA PLATA ES UN MÁXIMO Y NO UN PROMEDIO
- *
- * Es el tope en dólares de cada comercio, y tiene una sola condición: nadie puede
- * quedarse sin IA por plata estando dentro de lo que compró. Por eso cada token se
- * cuenta a la tarifa de SALIDA del modelo más caro, que es un techo sin supuestos: un
- * promedio dependería de la proporción entre entrada y salida, y con esa proporción
- * mal medida se le cortaría el servicio a un comercio al día.
- *
- * Con la bolsa, el peor caso ya no es agotar todo: es gastar TODOS los créditos en la
- * acción que más cuesta por crédito. Por eso se toma ese máximo y no una suma.
- *
- * Se apoya en el catálogo con la fecha pedida, así que el aumento del 1/1/2027 entra
- * solo. Los precios siguen sin estar escritos acá.
+ * El margen sobre el presupuesto existe para absorber los días en que responde un modelo
+ * de respaldo más caro. Si aun así un comercio llega al tope, puede seguir con su propia
+ * clave hasta que se renueve el plan.
  *
  * `unbounded` avisa que el plan tiene alguna métrica de costo sin tope, algo que solo
  * pasa si se fuerza por variable de entorno: ahí no hay máximo que calcular.
  */
-export const getPlanCommitment = (plan, at = new Date()) => {
-  const unbounded = AI_METRIC_LIST.some(metric => getPlanLimit(plan, metric) === UNLIMITED)
+export const getPlanCommitment = plan => {
   const credits = getPlanCredits(plan)
-  const creditosDe = metric => getCreditCost(metric)
-
-  // Lo máximo que puede costar UN crédito, según en qué se gaste.
-  const usdPorCredito = Math.max(
-    computeMaxTokenCostUsd(TOKENS_PER_MESSAGE, PLAN_COST_REFERENCE_MODEL, at) /
-      creditosDe(AI_METRICS.AGENT_MESSAGES),
-    computeMaxTokenCostUsd(getVisionTokensPerCall(), PLAN_COST_REFERENCE_MODEL, at) /
-      creditosDe(AI_METRICS.VISION),
-    getImagePrice(at, 'gemini', PLAN_COST_REFERENCE_IMAGE_MODEL).perImage /
-      creditosDe(AI_METRICS.IMAGE_EDITS),
-    (computeMaxTokenCostUsd(TOKENS_PER_MARKET_ANALYSIS, PLAN_COST_REFERENCE_MODEL, at) +
-      MARKET_CREDITS_PER_ANALYSIS * getToolPrice('tavily_search', at).unitCostUsd) /
-      creditosDe(AI_METRICS.MARKET_ANALYSES),
-  )
 
   return {
     credits,
     tokens: credits * TOKENS_PER_MESSAGE,
-    usd: credits * usdPorCredito,
-    unbounded,
+    usd: credits * USD_PER_CREDIT * PLAN_USD_CAP_MULTIPLE,
+    unbounded: AI_METRIC_LIST.some(metric => getPlanLimit(plan, metric) === UNLIMITED),
   }
 }
 

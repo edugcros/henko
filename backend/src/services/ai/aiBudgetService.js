@@ -49,7 +49,9 @@ import {
   DEFERRABLE_METRICS,
   degradationLevelFor,
 } from './aiPlanPolicy.js'
-import { KEY_SOURCE, loadTenantAiProfile } from './aiCredentialsService.js'
+import { KEY_SOURCE, loadTenantAiProfile,
+  invalidateTenantAiProfile,
+} from './aiCredentialsService.js'
 import {
   computeCostUsd,
   computeToolCostUsd,
@@ -1535,13 +1537,13 @@ const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) 
 /**
  * La bolsa de un comercio: cuántos créditos tiene y qué consumo cuenta contra ella.
  *
- * Con clave propia, lo que corre con esa clave lo paga él y no descuenta. Solo cuenta
- * lo que factura HENKO igual, como los fondos con IA.
+ * Cuenta todo, también lo que corrió con su clave: la clave entra recién con la bolsa
+ * agotada, así que lo que factura HENKO igual, como los fondos, tiene que seguir
+ * negándose hasta que se renueve el plan.
  */
-const resolveCredits = ({ plan, keySource, tenantShare = null }) => ({
+const resolveCredits = ({ plan, tenantShare = null }) => ({
   limit: Math.max(1, Math.floor(getPlanCredits(plan) * getTenantPlanFraction(tenantShare))),
-  metrics:
-    keySource === KEY_SOURCE.TENANT ? [AI_METRICS.IMAGE_EDITS] : Object.keys(AI_CREDIT_COSTS),
+  metrics: Object.keys(AI_CREDIT_COSTS),
 })
 
 const creditsUsedBy = (usage, credits) =>
@@ -2275,11 +2277,7 @@ export const reserveAiBudget = async ({
     })
   }
 
-  const credits = resolveCredits({
-    plan: aiProfile.plan,
-    keySource: aiProfile.keySource,
-    tenantShare: tenantPolicy.share,
-  })
+  const credits = resolveCredits({ plan: aiProfile.plan, tenantShare: tenantPolicy.share })
 
   const updated = await applyReservation({
     tenantId: id,
@@ -2335,6 +2333,10 @@ export const reserveAiBudget = async ({
     const creditsUsed = creditsUsedBy(usage, credits)
 
     if (creditCost > 0 && creditsUsed + creditCost > credits.limit) {
+      // El perfil se cachea: sin esto, quien tiene clave propia seguiría rebotando hasta
+      // un minuto más, con una clave lista para usar.
+      if (aiProfile.hasTenantKey) await invalidateTenantAiProfile(id)
+
       closeOperation({
         tenantId: id,
         operationId,
@@ -3611,11 +3613,7 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
 
   // La misma bolsa que la reserva: sin esto, este chequeo dejaría pasar una operación
   // que la reserva va a rechazar, y el rechazo llegaría tarde y con otro mensaje.
-  const credits = resolveCredits({
-    plan: aiProfile.plan,
-    keySource: aiProfile.keySource,
-    tenantShare: tenantPolicy.share,
-  })
+  const credits = resolveCredits({ plan: aiProfile.plan, tenantShare: tenantPolicy.share })
   const creditCost = getCreditCost(normalizedMetric)
   const creditsUsed = creditsUsedBy(usage, credits)
 
@@ -3701,11 +3699,7 @@ export const getAiBudgetSnapshot = async tenantId => {
     return acc
   }, {})
   const subscription = getSubscriptionState(profile)
-  const credits = resolveCredits({
-    plan: profile.plan,
-    keySource: profile.keySource,
-    tenantShare: tenantPolicy.share,
-  })
+  const credits = resolveCredits({ plan: profile.plan, tenantShare: tenantPolicy.share })
   const creditsUsed = creditsUsedBy(usage, credits)
   const creditsRemaining = Math.max(0, credits.limit - creditsUsed)
 
