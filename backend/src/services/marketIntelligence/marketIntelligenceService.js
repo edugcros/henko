@@ -130,6 +130,9 @@ export async function analyzeMarketDemand({
     // créditos propios que no pasan por este presupuesto.
     provider: AI_PROVIDERS.GEMINI,
     profile,
+    // Las búsquedas de Tavily las paga HENKO aunque el comercio tenga su clave de
+    // Google: con los créditos agotados, un análisis saldría gratis para él.
+    forcePlatformBilling: true,
   })
 
   if (!budget.allowed) {

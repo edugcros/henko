@@ -309,7 +309,9 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   // La respuesta del PUT ya trae el reporte nuevo: la pantalla no vuelve a
   // pedirlo, así que no puede quedar mostrando lo viejo si esa segunda vuelta
   // fallara.
-  await waitFor(() => expect(screen.getByText(/freno fijado desde el panel/i)).toBeInTheDocument())
+  await waitFor(() =>
+    expect(screen.getByText(/freno limitado desde el panel/i)).toBeInTheDocument(),
+  )
   expect(mockGetAiSpend).toHaveBeenCalledTimes(1)
 })
 
@@ -1392,6 +1394,28 @@ describe('evolución del comercio', () => {
 })
 
 describe('el plan, lo comprometido y el freno', () => {
+  test('el diálogo edita el máximo a mano, no el freno que se calcula solo', async () => {
+    const user = userEvent.setup()
+    load({
+      budget: {
+        ...REPORT.budget,
+        tokens: 125_000_000,
+        source: 'auto',
+        overrides: { tokens: null, usd: null },
+      },
+    })
+
+    await user.click(await screen.findByRole('button', { name: /cambiar freno/i }))
+
+    expect(screen.getByLabelText(/freno en tokens/i).value).toBe('')
+  })
+
+  test('dice que el freno es automático', async () => {
+    load({ budget: { ...REPORT.budget, source: 'auto' } })
+
+    expect(await screen.findByText(/freno automático/i)).toBeInTheDocument()
+  })
+
   const COMPROMISO = {
     tenants: 2,
     credits: 8000,

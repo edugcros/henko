@@ -18,6 +18,7 @@ jest.unstable_mockModule('../utils/cache.js', () => ({
 }))
 
 jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
+  invalidateTenantAiProfile: async () => undefined,
   KEY_SOURCE: { TENANT: 'tenant', PLATFORM: 'platform', NONE: 'none' },
   loadTenantAiProfile: mockProfile,
 }))

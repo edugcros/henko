@@ -906,13 +906,6 @@ export const computeCostUsd = ({
 }
 
 /** Todo el catálogo, para el panel y para diagnóstico. */
-/**
- * Lo máximo que pueden costar estos tokens: todos a la tarifa de salida del modelo.
- * No supone ninguna proporción entre entrada y salida. Ver getPlanCommitment.
- */
-export const computeMaxTokenCostUsd = (tokens, model, at = new Date()) =>
-  (Number(tokens) * getModelPrice(model, at).output) / M
-
 export const listModelPricing = (at = new Date()) =>
   CATALOG.filter(e => inWindow(e, at)).flatMap(e =>
     e.models.map(model => ({

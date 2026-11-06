@@ -39,6 +39,7 @@ jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
 }))
 
 jest.unstable_mockModule('../services/ai/aiCredentialsService.js', () => ({
+  invalidateTenantAiProfile: async () => undefined,
   resolveTenantAiCredentials: async () => ({ apiKey: 'AIzaTEST' }),
 }))
 

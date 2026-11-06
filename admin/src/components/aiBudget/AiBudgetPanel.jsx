@@ -430,8 +430,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
   if (!credentials?.byokAllowed) {
     return (
       <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
-        Con el plan Pro podés conectar tu propia cuenta de Google: el consumo de IA deja de contar
-        contra estos límites y se factura directamente en tu cuenta.
+        Tu plan no permite conectar una cuenta propia de Google.
       </Alert>
     )
   }
@@ -442,8 +441,9 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <CheckCircleOutlineIcon color="success" fontSize="small" />
           <Typography variant="body2" color="text.primary">
-            Estás usando tu propia API key. El consumo de IA se factura en tu cuenta de Google y no
-            consume los límites del plan.
+            {credentials.source === 'tenant'
+              ? 'Estás usando tu propia API key. Los mensajes y análisis se facturan en tu cuenta de Google hasta que se renueve tu plan.'
+              : 'Tu API key está lista. Se va a usar solo cuando se terminen los créditos de tu plan.'}
           </Typography>
         </Stack>
 
@@ -462,7 +462,7 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
             disabled={busy}
             sx={{ borderRadius: 2, textTransform: 'none' }}
           >
-            {busy ? 'Desactivando...' : 'Volver a los límites del plan'}
+            {busy ? 'Quitando...' : 'Quitar mi API key'}
           </Button>
         </Box>
       </Stack>
@@ -472,8 +472,10 @@ const ByokSection = ({ credentials, onSaved, onCleared }) => {
   return (
     <Stack spacing={1.5}>
       <Typography variant="body2" color="text.secondary">
-        Conectá tu propia cuenta de Google para que el consumo de IA se facture ahí y deje de contar
-        contra los límites del plan. La key se guarda cifrada y no se vuelve a mostrar.{' '}
+        Cuando se terminen tus créditos podés seguir con tu propia cuenta de Google hasta que se
+        renueve tu plan: mensajes y análisis se facturan ahí. Los fondos y los análisis de mercado
+        esperan a la renovación. Con una cuenta gratuita, Google puede usar el contenido para
+        mejorar sus productos. La key se guarda cifrada y no se vuelve a mostrar.{' '}
         <Link href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
           Obtener una API key
         </Link>
@@ -612,12 +614,12 @@ const AiBudgetPanel = () => {
 
       {usingOwnKey ? (
         <Alert severity="success" variant="outlined" sx={{ borderRadius: 2 }}>
-          El consumo de este mes corre por tu propia cuenta de Google. Se sigue registrando abajo
-          para que puedas dimensionarlo, pero no tiene tope.
+          Se terminaron los créditos de tu plan. Los mensajes y análisis corren por tu cuenta de
+          Google hasta que se renueve. Los fondos y los análisis de mercado esperan a la renovación.
         </Alert>
       ) : null}
 
-      {!usingOwnKey && budget.credits && <CreditMeter credits={budget.credits} />}
+      {budget.credits && <CreditMeter credits={budget.credits} />}
 
       <Stack spacing={2.25}>
         {metrics.map(({ metric, data }) => (

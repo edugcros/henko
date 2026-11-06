@@ -17,6 +17,8 @@
 // Contra base real: lo que se prueba es el disyuntor que corta la IA de TODOS
 // los comercios, y con mocks se probaría el mock.
 
+import { readFileSync } from 'node:fs'
+
 import mongoose from 'mongoose'
 import { crearMongoEnMemoria, esperarA } from './testDB.js'
 
@@ -42,11 +44,24 @@ const {
 } = await import('../services/ai/aiBudgetService.js')
 const { getAiBudgetSnapshot } = await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
-const { getPlanCommitment, getPlanLimit, getSharedKeyTenantUsdCap, getTenantPlanFraction } =
-  await import('../services/ai/aiPlanPolicy.js')
-const { getModelChain } = await import('../services/ai/geminiModels.js')
-const { getModelPrice } = await import('../services/ai/aiModelPricing.js')
-const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
+const {
+  getPlanCommitment,
+  getPlanLimit,
+  getPlatformBudgetSource,
+  getPlatformMonthlyTokenBudget,
+  getPlatformMonthlyUsdBudget,
+  getPlatformUsdBudgetSource,
+  getSharedKeyTenantUsdCap,
+  getTenantPlanFraction,
+  setPlatformCommitmentSnapshot,
+} = await import('../services/ai/aiPlanPolicy.js')
+const { invalidateTenantAiProfile, loadTenantAiProfile } =
+  await import('../services/ai/aiCredentialsService.js')
+const { encryptSecret } = await import('../services/aiAgent/secretCryptoService.js')
+const { refreshPlatformAiSettings, setPlatformAiOverride, setTenantAiPolicy } =
+  await import('../services/ai/platformAiSettingService.js')
+const { PLATFORM_AI_SETTINGS } = await import('../models/platformAiSettingModel.js')
+const { refreshPlatformCommitment } = await import('../services/ai/aiSpendReportService.js')
 const { cacheDel } = await import('../utils/cache.js')
 
 const TENANT = '64b7f0000000000000000001'
@@ -893,30 +908,6 @@ describe('el cupo de cada comercio sale de su plan', () => {
     expect(resultado.byok).toBe(true)
   })
 
-  test('el panel de un comercio con clave propia sigue mostrando su plan', async () => {
-    // Un comercio propio: el perfil se cachea por id y contaminaria al resto.
-    const CON_CLAVE = '64b7f00000000000000000b1'
-    const _id = new mongoose.Types.ObjectId(CON_CLAVE)
-    const { encryptSecret } = await import('../services/aiAgent/secretCryptoService.js')
-
-    await mongoose.connection.collection('tenants').deleteMany({ _id })
-    await mongoose.connection.collection('tenants').insertOne({
-      _id,
-      name: 'Comercio',
-      slug: 'comercio',
-      plan: 'pro',
-      status: 'active',
-      subscriptionStatus: 'active',
-      ai: { byokEnabled: true, geminiApiKey: encryptSecret('AIzaDELCOMERCIO') },
-    })
-    await acotar({ share: 0.01 }, CON_CLAVE)
-
-    const { credentials, metrics } = await getAiBudgetSnapshot(CON_CLAVE)
-
-    expect(credentials.source).toBe('tenant')
-    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(48_750_000)
-  })
-
   test.each([
     [null, 1],
     [0.25, 0.25],
@@ -1008,21 +999,13 @@ describe('el cupo de cada comercio sale de su plan', () => {
       expect(getPlanCommitment('pro').tokens).toBe(48_750_000)
     })
 
-    test('ningun modelo de la cadena cuesta mas que el de referencia', () => {
-      // El tope en plata solo garantiza que nadie se corte dentro de su plan si la
-      // tarifa de referencia es la mas alta de lo que puede responder.
-      const referencia = getModelPrice('gemini-3.8-flash').output
-
-      for (const modelo of getModelChain()) {
-        expect(getModelPrice(modelo).output).toBeLessThanOrEqual(referencia)
-      }
-    })
-
-    test('entra solo el aumento de tarifas de 2027', () => {
-      const hoy = getPlanCommitment('starter', new Date('2026-12-31T00:00:00Z')).usd
-      const despues = getPlanCommitment('starter', new Date('2027-01-02T00:00:00Z')).usd
-
-      expect(despues).toBeGreaterThan(hoy)
+    test('el tope en dolares queda por debajo de lo que deja cada plan', () => {
+      // ESTA ES LA PROPIEDAD. Neto de IVA y unos 6% de comision, al A3500 de $1.545,50:
+      // ningun comercio puede costar mas de lo que deja, sin importar cuantos haya.
+      expect(getPlanCommitment('starter').usd).toBe(16)
+      expect(getPlanCommitment('pro').usd).toBe(26)
+      expect(getPlanCommitment('starter').usd).toBeLessThan(24.8)
+      expect(getPlanCommitment('pro').usd).toBeLessThan(32.2)
     })
 
     test('un plan forzado a ilimitado no promete un maximo', () => {
@@ -1146,19 +1129,6 @@ describe('la bolsa de creditos', () => {
     expect((await reservarAccion(tenantId, AI_METRICS.VISION)).reason).toBe(DENY_REASONS.CREDITS)
   })
 
-  test('con clave propia, lo que paga el comercio no descuenta', async () => {
-    const tenantId = comercio()
-
-    await gastado(tenantId, { agentMessages: 6500 })
-
-    const fondo = await reservarAccion(tenantId, AI_METRICS.IMAGE_EDITS, {
-      profile: { ...PERFIL, tenantId, plan: 'pro', keySource: 'tenant' },
-      forcePlatformBilling: true,
-    })
-
-    expect(fondo.allowed).toBe(true)
-  })
-
   test('el chequeo previo corta igual que la reserva', async () => {
     const tenantId = comercio()
 
@@ -1194,5 +1164,318 @@ describe('la bolsa de creditos', () => {
     expect(metrics[AI_METRICS.AGENT_MESSAGES]).toMatchObject({ used: 1000, limit: 3700 })
     expect(metrics[AI_METRICS.MARKET_ANALYSES]).toMatchObject({ used: 0, limit: 108 })
     expect(metrics[AI_METRICS.VISION].creditCost).toBe(3)
+  })
+})
+
+// Primero lo que el comercio pago con su plan, despues su clave.
+describe('cuando se terminan los creditos', () => {
+  const CLAVE = 'AIzaDELCOMERCIO'
+  let numero = 0
+
+  const comercio = async ({ conClave = true, plan = 'starter' } = {}) => {
+    const tenantId = `64b7f00000000000000002${String(++numero).padStart(2, '0')}`
+
+    await mongoose.connection.collection('tenants').insertOne({
+      _id: new mongoose.Types.ObjectId(tenantId),
+      name: `Comercio ${tenantId}`,
+      slug: `comercio-${tenantId}`,
+      plan,
+      status: 'active',
+      subscriptionStatus: 'active',
+      ai: conClave ? { byokEnabled: true, geminiApiKey: encryptSecret(CLAVE) } : {},
+    })
+
+    return tenantId
+  }
+
+  const consumo = async (tenantId, campos) => {
+    await AiUsage.collection.updateOne(
+      { tenantId: new mongoose.Types.ObjectId(tenantId), period: PERIODO_REAL },
+      { $set: campos },
+      { upsert: true },
+    )
+    await invalidateTenantAiProfile(tenantId)
+  }
+
+  const agotar = tenantId => consumo(tenantId, { 'counters.agentMessages': 4000 })
+
+  const perfil = tenantId => loadTenantAiProfile(tenantId)
+
+  const reservar = async (tenantId, metric, extra = {}) =>
+    reserveAiBudget({
+      tenantId,
+      metric,
+      profile: await perfil(tenantId),
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      ...extra,
+    })
+
+  test('con creditos disponibles, paga HENKO aunque tenga clave guardada', async () => {
+    // ESTA ES LA PROPIEDAD. Si la clave mandara desde el principio, el comercio pagaria
+    // dos veces: el plan y su cuenta de Google.
+    const tenantId = await comercio()
+
+    await consumo(tenantId, { 'counters.agentMessages': 100 })
+
+    expect((await perfil(tenantId)).keySource).toBe('platform')
+  })
+
+  test('sin creditos entra su clave, tambien en Starter', async () => {
+    const tenantId = await comercio()
+
+    await agotar(tenantId)
+
+    expect(await perfil(tenantId)).toMatchObject({ keySource: 'tenant', apiKey: CLAVE })
+  })
+
+  test('puede seguir con mensajes y analisis, sin pasar por la bolsa', async () => {
+    const tenantId = await comercio()
+
+    await agotar(tenantId)
+
+    const mensaje = await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)
+    const vision = await reservar(tenantId, AI_METRICS.VISION)
+
+    expect(mensaje).toMatchObject({ allowed: true, byok: true })
+    expect(vision).toMatchObject({ allowed: true, byok: true })
+  })
+
+  test('los fondos siguen cortados: esos los paga HENKO a otro proveedor', async () => {
+    const tenantId = await comercio()
+
+    await agotar(tenantId)
+
+    const fondo = await reservar(tenantId, AI_METRICS.IMAGE_EDITS, { forcePlatformBilling: true })
+
+    expect(fondo.allowed).toBe(false)
+    expect(fondo.reason).toBe(DENY_REASONS.CREDITS)
+  })
+
+  test('el analisis de mercado no sale gratis con la clave del comercio', async () => {
+    // Las busquedas de Tavily las paga HENKO: una clave de Google no las cubre.
+    const tenantId = await comercio()
+
+    await agotar(tenantId)
+
+    const analisis = await reservar(tenantId, AI_METRICS.MARKET_ANALYSES, {
+      forcePlatformBilling: true,
+    })
+
+    expect(analisis.reason).toBe(DENY_REASONS.CREDITS)
+
+    const fuente = readFileSync(
+      new URL('../services/marketIntelligence/marketIntelligenceService.js', import.meta.url),
+      'utf8',
+    )
+
+    expect(fuente).toMatch(
+      /feature: AI_FEATURES\.MARKET_INTELLIGENCE[\s\S]*?forcePlatformBilling: true/,
+    )
+  })
+
+  test('sin clave guardada, la IA espera a la renovacion', async () => {
+    const tenantId = await comercio({ conClave: false })
+
+    await agotar(tenantId)
+
+    expect((await perfil(tenantId)).keySource).toBe('platform')
+    expect((await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)).reason).toBe(DENY_REASONS.CREDITS)
+  })
+
+  test('tambien entra si no alcanza para un analisis, aunque queden creditos', async () => {
+    const tenantId = await comercio()
+
+    await consumo(tenantId, { 'counters.agentMessages': 3998 })
+
+    expect((await perfil(tenantId)).keySource).toBe('tenant')
+  })
+
+  test('tambien entra si llego a su tope en dolares', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '500'
+
+    const tenantId = await comercio()
+
+    await consumo(tenantId, { estimatedCostUsd: 16, 'counters.agentMessages': 10 })
+
+    expect((await perfil(tenantId)).keySource).toBe('tenant')
+  })
+
+  test('gobernarlo adelanta el momento en que entra la clave', async () => {
+    const tenantId = await comercio()
+
+    await setTenantAiPolicy({
+      tenantId,
+      share: 0.5,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+    await consumo(tenantId, { 'counters.agentMessages': 2000 })
+
+    expect((await perfil(tenantId)).keySource).toBe('tenant')
+  })
+
+  test('el rechazo destraba la clave sin esperar el minuto del cache', async () => {
+    const tenantId = await comercio()
+
+    await consumo(tenantId, { 'counters.agentMessages': 100 })
+    expect((await perfil(tenantId)).keySource).toBe('platform')
+
+    // El contador llega a la bolsa con el perfil de plataforma todavia en cache.
+    await AiUsage.collection.updateOne(
+      { tenantId: new mongoose.Types.ObjectId(tenantId), period: PERIODO_REAL },
+      { $set: { 'counters.agentMessages': 4000 } },
+    )
+
+    expect((await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)).reason).toBe(DENY_REASONS.CREDITS)
+    expect((await perfil(tenantId)).keySource).toBe('tenant')
+  })
+
+  test('el mes siguiente vuelven los creditos y deja de usarse la clave', async () => {
+    const tenantId = await comercio()
+
+    await AiUsage.collection.insertOne({
+      tenantId: new mongoose.Types.ObjectId(tenantId),
+      period: '2020-01',
+      counters: { agentMessages: 4000 },
+    })
+    await invalidateTenantAiProfile(tenantId)
+
+    expect((await perfil(tenantId)).keySource).toBe('platform')
+  })
+
+  test('si no se puede saber, no se le factura al comercio', async () => {
+    const tenantId = await comercio()
+    const original = AiUsage.findOne
+
+    AiUsage.findOne = () => {
+      throw new Error('sin conexion')
+    }
+
+    try {
+      await invalidateTenantAiProfile(tenantId)
+      expect((await perfil(tenantId)).keySource).toBe('platform')
+    } finally {
+      AiUsage.findOne = original
+      await invalidateTenantAiProfile(tenantId)
+    }
+  })
+})
+
+describe('el freno automatico', () => {
+  const COMPROMETIDO = { tokens: 100_000_000, usd: 1000 }
+
+  afterEach(async () => {
+    setPlatformCommitmentSnapshot(null)
+    await mongoose.connection.collection('tenants').deleteMany({})
+    await mongoose.connection.collection('platformaisettings').deleteMany({})
+    await refreshPlatformAiSettings()
+    delete process.env.AI_BRAKE_MARGIN
+  })
+
+  const maximo = async (setting, value) => {
+    await setPlatformAiOverride({
+      setting,
+      value,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+    await refreshPlatformAiSettings()
+  }
+
+  test('es lo comprometido por planes mas un margen', () => {
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(125_000_000)
+    expect(getPlatformMonthlyUsdBudget()).toBe(1250)
+    expect(getPlatformBudgetSource()).toBe('auto')
+    expect(getPlatformUsdBudgetSource()).toBe('auto')
+  })
+
+  test('el valor de Render ya no corta cuando hay una suma', () => {
+    // ESTA ES LA PROPIEDAD. Un numero fijo cortaba a todos con cada venta nueva.
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '1000'
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(125_000_000)
+  })
+
+  test('crece solo con cada comercio nuevo', async () => {
+    await mongoose.connection.collection('tenants').insertMany(
+      ['01', '02'].map(n => ({
+        _id: new mongoose.Types.ObjectId(`64b7f00000000000000003${n}`),
+        name: `Comercio ${n}`,
+        slug: `comercio-freno-${n}`,
+        plan: 'starter',
+        status: 'active',
+        subscriptionStatus: 'active',
+      })),
+    )
+
+    await refreshPlatformCommitment()
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(75_000_000)
+  })
+
+  test('el maximo del panel solo puede bajarlo', async () => {
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    await maximo(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET, 50_000_000)
+    expect(getPlatformMonthlyTokenBudget()).toBe(50_000_000)
+    expect(getPlatformBudgetSource()).toBe('panel')
+
+    await maximo(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET, 900_000_000)
+    expect(getPlatformMonthlyTokenBudget()).toBe(125_000_000)
+    expect(getPlatformBudgetSource()).toBe('auto')
+  })
+
+  test('cero en el panel sigue siendo apagar la IA', async () => {
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    await maximo(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET, 0)
+
+    expect(getPlatformMonthlyUsdBudget()).toBe(0)
+  })
+
+  test('sin suma todavia, sigue el valor configurado', () => {
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '200000000'
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(200_000_000)
+  })
+
+  test('sin comercios no apaga la IA del primero que llegue', () => {
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '200000000'
+    setPlatformCommitmentSnapshot({ tokens: 0, usd: 0 })
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(200_000_000)
+  })
+
+  test('si la suma falla, se queda con lo ultimo que supo', async () => {
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    const { default: Tenant } = await import('../models/tenantModel.js')
+    const original = Tenant.find
+
+    Tenant.find = () => {
+      throw new Error('sin conexion')
+    }
+
+    try {
+      await refreshPlatformCommitment()
+    } finally {
+      Tenant.find = original
+    }
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(125_000_000)
+  })
+
+  test('el margen se puede mover por entorno, pero nunca por debajo de lo vendido', () => {
+    setPlatformCommitmentSnapshot(COMPROMETIDO)
+
+    process.env.AI_BRAKE_MARGIN = '1.5'
+    expect(getPlatformMonthlyTokenBudget()).toBe(150_000_000)
+
+    process.env.AI_BRAKE_MARGIN = '0.5'
+    expect(getPlatformMonthlyTokenBudget()).toBe(100_000_000)
   })
 })
