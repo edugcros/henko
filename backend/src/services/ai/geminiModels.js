@@ -73,7 +73,7 @@ import logger from '../../../config/logger.js'
  *   gemini-3.5-flash-lite  200 · 500/día · USD 0.30/2.50 por 1M
  *   gemini-3.1-flash-lite  200 · 500/día · USD 0.25/1.50 — degradación barata
  *   gemini-3.8-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
- *   gemini-3.7-flash       200 · 20/día  · USD 0.75/3.75 — degradación cara
+ *   gemini-3.7-flash       200 · 20/día  · sin tarifa publicada: ver FALLBACK_MODELS
  *
  * El 01/11/2026 el de texto por defecto pasó a 3.1-flash-lite: ver
  * DEFAULT_TEXT_MODEL. 3.8-flash sigue existiendo, pero se saturaba.
@@ -90,10 +90,17 @@ import logger from '../../../config/logger.js'
  * OJO con los precios: los modelos 3.x duplican tarifa el 1/1/2027
  * (0.75/3.75 → 1.50/7.50). El flash-lite 3.1 no tiene ese ajuste anunciado.
  *
+ * NINGÚN MODELO DE ESTA CADENA PUEDE SALIR SIN PRECIO PUBLICADO.
+ *
+ * gemini-3.7-flash era el último escalón y no figura en la página de precios de
+ * Google (revisada el 05/11/2026): su costo era una suposición por analogía con 3.6 y
+ * 3.8. Lo reemplazó 3.8-flash, con la misma tarifa y publicada. Si se satura, el 503
+ * ya lo manda a enfriar.
+ *
  * TODO: revisar cada vez que Google anuncie retiros o nuevas versiones, y
  * verificar con una llamada real antes de agregar un nombre acá.
  */
-const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.7-flash']
+const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash']
 
 /**
  * La cadena cuando hay que ahorrar, ordenada por TARIFA y no por calidad.

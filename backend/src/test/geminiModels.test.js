@@ -8,6 +8,7 @@
 //
 // El primer test es la guarda de regresión de eso.
 
+import { getModelPrice } from '../services/ai/aiModelPricing.js'
 import {
   extractErrorStatus,
   supportsSearchGrounding,
@@ -258,12 +259,22 @@ describe('qué modelo puede buscar en Google', () => {
     expect(supportsSearchGrounding('gemini-3.1-flash-lite')).toBe(true)
   })
 
+  test('la cadena de respaldo no sale con un modelo sin precio publicado', () => {
+    // gemini-3.7-flash no está en la página de precios de Google: su costo sería una
+    // suposición, justo en el escalón que cae cuando todo lo demás falló.
+    const chain = getModelChain()
+
+    expect(chain).not.toContain('gemini-3.7-flash')
+    expect(chain.length).toBeGreaterThan(0)
+    expect(chain.filter(modelo => getModelPrice(modelo).fallback)).toEqual([])
+  })
+
   test('la cadena de respaldo prioriza cuota, y Gemma no está', () => {
-    const chain = getModelChain('gemini-3.8-flash')
+    const chain = getModelChain('gemini-3.1-flash-lite')
 
     // Los Flash grandes tienen 20 pedidos por día; los Lite, 500. Por eso los
-    // Lite van antes que el otro Flash grande.
-    expect(chain.indexOf('gemini-3.5-flash-lite')).toBeLessThan(chain.indexOf('gemini-3.7-flash'))
+    // Lite van antes que el Flash grande.
+    expect(chain.indexOf('gemini-3.5-flash-lite')).toBeLessThan(chain.indexOf('gemini-3.8-flash'))
     expect(chain).toContain('gemini-3.1-flash-lite')
 
     // Gemma quedó fuera por decisión de producto, aunque su cuota sea la mayor.
