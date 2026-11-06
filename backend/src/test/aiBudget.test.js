@@ -13,6 +13,8 @@ const {
   isByokAllowedForPlan,
   normalizePlan,
 } = await import('../services/ai/aiPlanPolicy.js')
+const { getAssumedInputRatio, getImagePrice, getModelPrice, getToolPrice } =
+  await import('../services/ai/aiModelPricing.js')
 
 const restoreEnv = (name, value) => {
   if (value === undefined) delete process.env[name]
@@ -73,6 +75,53 @@ describe('aiPlanPolicy · topes por plan', () => {
     }
   })
 
+  test('los tokens alcanzan para los mensajes que promete el plan, a su peso real', () => {
+    // Medido en producción: cada llamada del asistente pesa unos 7.500 tokens. Con menos
+    // el tope de tokens se agotaba primero: Starter prometía 2.000 y entregaba 1.340.
+    const TOKENS_POR_MENSAJE = 7500
+
+    for (const plan of AI_PLANS) {
+      const mensajes = getPlanLimit(plan, AI_METRICS.AGENT_MESSAGES)
+
+      expect(getPlanLimit(plan, AI_METRICS.AGENT_TOKENS)).toBeGreaterThanOrEqual(
+        mensajes * TOKENS_POR_MENSAJE,
+      )
+    }
+  })
+
+  test.each([
+    ['starter', 8],
+    ['pro', 13],
+  ])('agotar %s con el modelo por defecto no pasa de USD %s', (plan, presupuesto) => {
+    // ESTA ES LA PROPIEDAD. Pro traía cinco veces los cupos de Starter por 30% más de
+    // precio: unos USD 30 de IA sobre unos USD 42 de ingreso bruto.
+    //
+    // Sale del catálogo vigente, así que un cupo más alto o una tarifa nueva no pueden
+    // dejar al plan fuera de su presupuesto sin que este test lo diga.
+    const MODELO = 'gemini-3.1-flash-lite'
+    const { input, output } = getModelPrice(MODELO)
+
+    const tokens = (cantidad, metric) => {
+      const { ratio } = getAssumedInputRatio(metric, MODELO)
+
+      return (cantidad * ratio * input + cantidad * (1 - ratio) * output) / 1_000_000
+    }
+
+    // Lo medido por análisis de imagen y los cuatro créditos por análisis de mercado.
+    const costoVision = (8440 * input + 1368 * output) / 1_000_000
+    const credito = getToolPrice('tavily_search').unitCostUsd
+    const fondo = getImagePrice(new Date(), 'cloudflare').perImage
+
+    const total =
+      tokens(getPlanLimit(plan, AI_METRICS.AGENT_TOKENS), 'agentTokens') +
+      tokens(getPlanLimit(plan, AI_METRICS.MARKET_TOKENS), 'marketTokens') +
+      getPlanLimit(plan, AI_METRICS.VISION) * costoVision +
+      getPlanLimit(plan, AI_METRICS.MARKET_ANALYSES) * 4 * credito +
+      getPlanLimit(plan, AI_METRICS.IMAGE_EDITS) * fondo
+
+    expect(total).toBeLessThanOrEqual(presupuesto)
+  })
+
   test('un plan desconocido cae al MÁS CHICO, no al mayor', () => {
     // Con dos planes pagos, el fallback ya no puede ser un gratuito. Tiene que
     // ser el de menor cuota: un valor raro no puede terminar regalando pro.
@@ -82,15 +131,14 @@ describe('aiPlanPolicy · topes por plan', () => {
     )
   })
 
-  test('respeta las variables de entorno viejas de la cuota de visión', () => {
-    // Si el deploy actual las tiene puestas, el refactor no le puede cambiar
-    // los límites a nadie por la ventana.
-    setEnv('AI_MONTHLY_LIMIT_STARTER', '17')
-    expect(getPlanLimit('starter', AI_METRICS.VISION)).toBe(17)
+  test('las variables viejas de visión ya no pisan el cupo del plan', () => {
+    // AI_MONTHLY_LIMIT_PRO=1500 dejaba a Pro con el triple de análisis que su
+    // presupuesto, sin que nada lo mostrara.
+    setEnv('AI_MONTHLY_LIMIT_PRO', '1500')
+    expect(getPlanLimit('pro', AI_METRICS.VISION)).toBe(500)
   })
 
-  test('la variable nueva le gana a la vieja', () => {
-    setEnv('AI_MONTHLY_LIMIT_STARTER', '17')
+  test('el cupo se sigue pudiendo mover por entorno, con la variable de hoy', () => {
     setEnv('AI_LIMIT_STARTER_VISION', '42')
     expect(getPlanLimit('starter', AI_METRICS.VISION)).toBe(42)
   })

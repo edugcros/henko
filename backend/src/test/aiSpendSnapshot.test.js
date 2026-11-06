@@ -211,18 +211,18 @@ describe('el snapshot del panel de gasto', () => {
     expect(fila.share).toBe(0.1)
     expect(fila.suspended).toBe(false)
     // Y el tope mostrado es el que se le aplica: el 10% de su plan Pro.
-    expect(fila.planTokens).toBe(63_600_000)
-    expect(fila.tokenCap).toBe(6_360_000)
+    expect(fila.planTokens).toBe(30_950_000)
+    expect(fila.tokenCap).toBe(3_095_000)
   })
 
   test('sin acotar, el tope mostrado es el plan entero', async () => {
     await crearComercio(ACTIVO, 'Comercio Activo', 'starter')
-    await asentar({ tenantId: ACTIVO, day: 1, costUsd: 2, tokens: 127_200 })
+    await asentar({ tenantId: ACTIVO, day: 1, costUsd: 2, tokens: 177_200 })
 
     const { byTenant } = await getPlatformSpendSnapshot()
     const fila = byTenant.find(t => t.tenantId === String(ACTIVO))
 
-    expect(fila.tokenCap).toBe(12_720_000)
+    expect(fila.tokenCap).toBe(17_720_000)
     expect(fila.percentOfCap).toBe(1)
   })
 
@@ -238,7 +238,7 @@ describe('el snapshot del panel de gasto', () => {
     const { byTenant } = await getPlatformSpendSnapshot()
     const fila = byTenant.find(t => t.tenantId === String(PAUSADO))
 
-    expect(fila.tokenCap).toBe(12_720_000)
+    expect(fila.tokenCap).toBe(17_720_000)
     expect(fila.percentOfCap).toBe(0)
   })
 
@@ -276,13 +276,13 @@ describe('el snapshot del panel de gasto', () => {
       const compromiso = await getPlatformCommitment()
 
       expect(compromiso.tenants).toBe(2)
-      expect(compromiso.tokens).toBe(12_720_000 + 63_600_000)
+      expect(compromiso.tokens).toBe(17_720_000 + 30_950_000)
       expect(compromiso.byPlan).toEqual({ starter: 1, pro: 1 })
       expect(compromiso.usd).toBeGreaterThan(0)
 
       await insertar()
 
-      expect((await getPlatformCommitment()).tokens).toBe(25_440_000 + 63_600_000)
+      expect((await getPlatformCommitment()).tokens).toBe(35_440_000 + 30_950_000)
     })
 
     test('cuenta las pruebas vigentes y a los que van en gracia', async () => {
@@ -318,13 +318,13 @@ describe('el snapshot del panel de gasto', () => {
 
       await politica(acotado, { share: 0.5 })
 
-      expect((await getPlatformCommitment()).tokens).toBe(6_360_000)
+      expect((await getPlatformCommitment()).tokens).toBe(8_860_000)
     })
 
     test('avisa si el freno manual quedo por debajo de lo vendido', async () => {
       await insertar()
 
-      // El freno de esta suite es de 1.000.000 de tokens, y un Starter vende 12.720.000.
+      // El freno de esta suite es de 1.000.000 de tokens, y un Starter vende 17.720.000.
       const { commitment } = await getPlatformSpendSnapshot()
 
       expect(commitment.brakeBelowTokens).toBe(true)

@@ -99,6 +99,19 @@ La fracción global `AI_PLATFORM_PER_TENANT_SHARE` solo se usa si un plan se
 fuerza a ilimitado por variable de entorno, que es el caso de la sección
 siguiente. Ningún plan que se vende hoy es ilimitado.
 
+### Presupuesto de IA por plan
+
+Los cupos salen de cuánto puede costar cada plan si se agota con el modelo por
+defecto (noviembre de 2026, con planes a ARS 50.000 y 65.000):
+
+| Plan    | Análisis | Mensajes | Fondos | Mercado | Costo normal | Presupuesto |
+| ------- | -------- | -------- | ------ | ------- | ------------ | ----------- |
+| Starter | 300      | 2.000    | 100    | 50      | USD 7,3      | USD 8       |
+| Pro     | 500      | 3.500    | 200    | 90      | USD 12,8     | USD 13      |
+
+Un test recalcula el costo normal con el catálogo vigente. Si se sube un cupo o
+cambia una tarifa, el test avisa antes de que el plan salga de su presupuesto.
+
 ### El techo por tenant sobre la key compartida
 
 El disyuntor solo tiene sentido acompañado de esta regla, porque **corta para
@@ -194,9 +207,9 @@ AI_COST_USD_PER_1M_TOKENS=1.3
 AI_PROFILE_CACHE_TTL_SEC=60
 ```
 
-Las variables viejas de la cuota de visión (`AI_MONTHLY_LIMIT_FREE`,
-`_STARTER`, `_PRO`, `_ENTERPRISE`) **se siguen respetando**: si el deploy
-actual las tiene puestas, mandan ellas. La variable nueva le gana a la vieja.
+Las variables viejas de la cuota de visión (`AI_MONTHLY_LIMIT_STARTER`, `_PRO`)
+**ya no se leen** desde el 06/11/2026: pisaban el presupuesto del plan sin que se
+viera. Para mover un cupo se usa `AI_LIMIT_<PLAN>_VISION`.
 
 ## Compatibilidad
 

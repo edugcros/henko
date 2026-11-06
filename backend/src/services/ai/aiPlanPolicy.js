@@ -86,9 +86,19 @@ export const AI_METRIC_LABELS = Object.freeze({
  * el panel seguía prometiendo 300. Un medidor que promete cinco veces lo que
  * entrega es el mismo problema que este refactor vino a arreglar.
  *
- * Regla: los tokens se dimensionan como mensajes x ~5.000, con el tope de
- * mensajes como la promesa visible y el de tokens como freno de las
- * conversaciones anormalmente caras, no como el límite de todos los días.
+ * Regla: los tokens se dimensionan como mensajes x 7.500, lo que pesó de verdad cada
+ * llamada del asistente en producción (septiembre de 2026). Con ~5.000, el tope de
+ * tokens se agotaba antes: Starter prometía 2.000 mensajes y entregaba unos 1.340.
+ *
+ * CUÁNTO PUEDE COSTAR CADA PLAN (noviembre de 2026).
+ *
+ * Los cupos salen de un presupuesto de IA por plan: USD 8 para Starter y USD 13 para
+ * Pro, si el comercio agota todo con el modelo por defecto. Es lo que deja margen con
+ * precios de ARS 50.000 y 65.000. Antes Pro traía cinco veces los cupos de Starter por
+ * 30% más de precio: unos USD 30 de IA sobre unos USD 42 de ingreso bruto.
+ *
+ * Un test recalcula ese costo con el catálogo vigente, así que subir un cupo o que
+ * cambie una tarifa no puede dejar a un plan fuera de su presupuesto sin que se note.
  *
  * Cualquiera se puede sobrescribir por entorno sin tocar código:
  *   AI_LIMIT_STARTER_AGENT_MESSAGES=500
@@ -97,18 +107,18 @@ const DEFAULT_PLAN_LIMITS = Object.freeze({
   starter: {
     [AI_METRICS.VISION]: 300,
     [AI_METRICS.AGENT_MESSAGES]: 2_000,
-    [AI_METRICS.AGENT_TOKENS]: 10_000_000,
+    [AI_METRICS.AGENT_TOKENS]: 15_000_000,
     [AI_METRICS.IMAGE_EDITS]: 100,
     [AI_METRICS.MARKET_ANALYSES]: 50,
     [AI_METRICS.MARKET_TOKENS]: 1_250_000,
   },
   pro: {
-    [AI_METRICS.VISION]: 1_500,
-    [AI_METRICS.AGENT_MESSAGES]: 10_000,
-    [AI_METRICS.AGENT_TOKENS]: 50_000_000,
-    [AI_METRICS.IMAGE_EDITS]: 500,
-    [AI_METRICS.MARKET_ANALYSES]: 250,
-    [AI_METRICS.MARKET_TOKENS]: 6_250_000,
+    [AI_METRICS.VISION]: 500,
+    [AI_METRICS.AGENT_MESSAGES]: 3_500,
+    [AI_METRICS.AGENT_TOKENS]: 26_250_000,
+    [AI_METRICS.IMAGE_EDITS]: 200,
+    [AI_METRICS.MARKET_ANALYSES]: 90,
+    [AI_METRICS.MARKET_TOKENS]: 2_250_000,
   },
 })
 
@@ -122,14 +132,6 @@ const METRIC_ENV_SUFFIX = Object.freeze({
   [AI_METRICS.IMAGE_EDITS]: 'IMAGE_EDITS',
   [AI_METRICS.MARKET_ANALYSES]: 'MARKET_ANALYSES',
   [AI_METRICS.MARKET_TOKENS]: 'MARKET_TOKENS',
-})
-
-// Variables que ya existían en producción para la cuota de visión. Si el
-// deploy actual las tiene seteadas, mandan ellas: este refactor no debe
-// cambiarle los límites a nadie sin que se entere.
-const LEGACY_VISION_ENV = Object.freeze({
-  starter: 'AI_MONTHLY_LIMIT_STARTER',
-  pro: 'AI_MONTHLY_LIMIT_PRO',
 })
 
 /**
@@ -177,11 +179,6 @@ export const getPlanLimit = (plan, metric) => {
     `AI_LIMIT_${normalizedPlan.toUpperCase()}_${METRIC_ENV_SUFFIX[normalizedMetric]}`,
   )
   if (envLimit !== null) return envLimit
-
-  if (normalizedMetric === AI_METRICS.VISION) {
-    const legacyLimit = readEnvLimit(LEGACY_VISION_ENV[normalizedPlan])
-    if (legacyLimit !== null) return legacyLimit
-  }
 
   return DEFAULT_PLAN_LIMITS[normalizedPlan][normalizedMetric]
 }
