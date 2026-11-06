@@ -9,6 +9,7 @@ import React from 'react'
 import { jest } from '@jest/globals'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { getPlanQuotaLines } from '../constants/plans.js'
 
 const mockNavigate = jest.fn()
 const mockGetPlanCatalog = jest.fn()
@@ -132,7 +133,7 @@ describe('SubscriptionPage · lo que muestra', () => {
     await (await plan('Profesional')).findByText('1.500')
 
     expect(screen.queryByText('Analizador de productos con IA')).not.toBeInTheDocument()
-    expect((await plan('Profesional')).getByText('Cupos de IA ampliados')).toBeInTheDocument()
+    expect((await plan('Profesional')).getByText('Más créditos de IA')).toBeInTheDocument()
     expect((await plan('Emprendedor')).getByText(/análisis de imágenes con IA/)).toBeInTheDocument()
     expect((await plan('Profesional')).getByText(/análisis de imágenes con IA/)).toBeInTheDocument()
   })
@@ -332,5 +333,31 @@ describe('SubscriptionPage · no afirma lo que el producto no sostiene', () => {
     await (await plan('Emprendedor')).findByText(/\$\s*19\.900/)
 
     expect(container.textContent).not.toMatch(/paypal|stripe|uala|shopify|tienda ?nube/i)
+  })
+})
+
+describe('getPlanQuotaLines', () => {
+  const COSTOS = { vision: 3, agentMessages: 1, imageEdits: 5, marketAnalyses: 25 }
+
+  test('con bolsa, muestra los créditos y lo que descuenta cada acción', () => {
+    const lineas = getPlanQuotaLines({ credits: 4000, agentMessages: 4000, creditCosts: COSTOS })
+
+    expect(lineas[0]).toEqual({ key: 'credits', amount: 4000, label: 'créditos de IA por mes' })
+    expect(lineas).toContainEqual({
+      key: 'agentMessages',
+      amount: 1,
+      label: 'crédito por mensaje del asistente',
+    })
+    expect(lineas).toContainEqual({
+      key: 'marketAnalyses',
+      amount: 25,
+      label: 'créditos por análisis de mercado',
+    })
+  })
+
+  test('sin bolsa, sigue mostrando los cupos de siempre', () => {
+    expect(getPlanQuotaLines({ vision: 300 })).toEqual([
+      expect.objectContaining({ key: 'vision', amount: 300 }),
+    ])
   })
 })

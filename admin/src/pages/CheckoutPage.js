@@ -24,7 +24,13 @@ import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '
 // del plan.
 import { ArrowBack, CheckCircle, HourglassTop, Lock } from '@mui/icons-material'
 import api from '@utils/axiosConfig'
-import { PLAN_PRESENTATION, SELLABLE_PLANS, formatArs, trialDaysLeft } from '../constants/plans.js'
+import {
+  PLAN_PRESENTATION,
+  SELLABLE_PLANS,
+  formatArs,
+  getPlanQuotaLines,
+  trialDaysLeft,
+} from '../constants/plans.js'
 import { getPlanCatalog } from '../services/subscriptionPlansService.js'
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react'
 
@@ -63,6 +69,12 @@ const CUOTAS_VISIBLES = ['vision', 'agentMessages', 'imageEdits', 'marketAnalyse
 
 const describirCuotas = limits => {
   if (!limits) return []
+
+  if (limits.credits > 0) {
+    return getPlanQuotaLines(limits).map(
+      ({ amount, label }) => `${new Intl.NumberFormat('es-AR').format(amount)} ${label}`,
+    )
+  }
 
   return CUOTAS_VISIBLES.filter(clave => limits[clave] > 0).map(
     clave => `${new Intl.NumberFormat('es-AR').format(limits[clave])} ${ETIQUETA_CUOTA[clave]}/mes`,

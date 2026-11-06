@@ -61,6 +61,51 @@ export const AI_PLANS = Object.freeze(['starter', 'pro'])
 
 export const UNLIMITED = 0
 
+/**
+ * La bolsa de créditos: lo que compra un comercio con su plan.
+ *
+ * POR QUÉ UNA SOLA BOLSA.
+ *
+ * Eran seis cupos separados, y el peor caso de un plan era agotarlos todos a la vez.
+ * Con una bolsa, el comercio elige en qué gastar y el costo queda acotado sin importar
+ * la mezcla. Es como lo hacen Wix, Canva y Photoroom. Nadie le vende tokens a un
+ * comercio: es una unidad que no significa nada para quien vende zapatillas.
+ *
+ * QUÉ VALE UN CRÉDITO.
+ *
+ * USD 0,002, lo que cuesta un mensaje del asistente con el modelo por defecto. Con eso,
+ * USD 8 y USD 13 de presupuesto mensual son 4.000 y 6.500 créditos (planes a ARS 50.000
+ * y 65.000 en noviembre de 2026).
+ *
+ * Cada acción descuenta según lo que cuesta, redondeando para que ninguna gaste más
+ * plata por crédito que un mensaje, que es la cuenta que sostiene el presupuesto. Un
+ * test la recalcula con el catálogo vigente:
+ *
+ *   mensaje             1   USD 0,0020
+ *   análisis de imagen  3   USD 0,0042
+ *   fondo con IA        5   USD 0,0006 (Cloudflare). El respaldo de Gemini cuesta
+ *                           0,0336 y se cubre con el margen de los demás.
+ *   análisis de mercado 25  USD 0,04: tokens y cuatro créditos de Tavily
+ *
+ * Las métricas de tokens no descuentan: son el freno de una conversación anormalmente
+ * cara, no algo que el comercio elija hacer.
+ */
+export const AI_CREDIT_COSTS = Object.freeze({
+  [AI_METRICS.AGENT_MESSAGES]: 1,
+  [AI_METRICS.VISION]: 3,
+  [AI_METRICS.IMAGE_EDITS]: 5,
+  [AI_METRICS.MARKET_ANALYSES]: 25,
+})
+
+const PLAN_CREDITS = Object.freeze({ starter: 4_000, pro: 6_500 })
+
+// Lo medido en producción: ver las notas de DEFAULT_PLAN_LIMITS y getPlanCommitment.
+const TOKENS_PER_MESSAGE = 7_500
+const TOKENS_PER_MARKET_ANALYSIS = 25_000
+
+/** Lo que descuenta una unidad de esta métrica. Cero si no sale de la bolsa. */
+export const getCreditCost = metric => AI_CREDIT_COSTS[metric] ?? 0
+
 // Etiquetas para el admin y para los mensajes de error. El usuario final del
 // panel no sabe qué es "agentMessages".
 export const AI_METRIC_LABELS = Object.freeze({
@@ -90,36 +135,28 @@ export const AI_METRIC_LABELS = Object.freeze({
  * llamada del asistente en producción (septiembre de 2026). Con ~5.000, el tope de
  * tokens se agotaba antes: Starter prometía 2.000 mensajes y entregaba unos 1.340.
  *
- * CUÁNTO PUEDE COSTAR CADA PLAN (noviembre de 2026).
+ * LOS CUPOS SALEN DE LA BOLSA DE CRÉDITOS.
  *
- * Los cupos salen de un presupuesto de IA por plan: USD 8 para Starter y USD 13 para
- * Pro, si el comercio agota todo con el modelo por defecto. Es lo que deja margen con
- * precios de ARS 50.000 y 65.000. Antes Pro traía cinco veces los cupos de Starter por
- * 30% más de precio: unos USD 30 de IA sobre unos USD 42 de ingreso bruto.
- *
- * Un test recalcula ese costo con el catálogo vigente, así que subir un cupo o que
- * cambie una tarifa no puede dejar a un plan fuera de su presupuesto sin que se note.
+ * Cada métrica puede llevarse la bolsa entera, así que su tope es lo que entra si el
+ * comercio usa todos sus créditos en ella. Lo que limita de verdad es la bolsa: ver
+ * AI_CREDIT_COSTS.
  *
  * Cualquiera se puede sobrescribir por entorno sin tocar código:
  *   AI_LIMIT_STARTER_AGENT_MESSAGES=500
  */
+const limitesDeLaBolsa = credits => ({
+  [AI_METRICS.VISION]: Math.floor(credits / AI_CREDIT_COSTS[AI_METRICS.VISION]),
+  [AI_METRICS.AGENT_MESSAGES]: credits,
+  [AI_METRICS.AGENT_TOKENS]: credits * TOKENS_PER_MESSAGE,
+  [AI_METRICS.IMAGE_EDITS]: Math.floor(credits / AI_CREDIT_COSTS[AI_METRICS.IMAGE_EDITS]),
+  [AI_METRICS.MARKET_ANALYSES]: Math.floor(credits / AI_CREDIT_COSTS[AI_METRICS.MARKET_ANALYSES]),
+  [AI_METRICS.MARKET_TOKENS]:
+    Math.floor(credits / AI_CREDIT_COSTS[AI_METRICS.MARKET_ANALYSES]) * TOKENS_PER_MARKET_ANALYSIS,
+})
+
 const DEFAULT_PLAN_LIMITS = Object.freeze({
-  starter: {
-    [AI_METRICS.VISION]: 300,
-    [AI_METRICS.AGENT_MESSAGES]: 2_000,
-    [AI_METRICS.AGENT_TOKENS]: 15_000_000,
-    [AI_METRICS.IMAGE_EDITS]: 100,
-    [AI_METRICS.MARKET_ANALYSES]: 50,
-    [AI_METRICS.MARKET_TOKENS]: 1_250_000,
-  },
-  pro: {
-    [AI_METRICS.VISION]: 500,
-    [AI_METRICS.AGENT_MESSAGES]: 3_500,
-    [AI_METRICS.AGENT_TOKENS]: 26_250_000,
-    [AI_METRICS.IMAGE_EDITS]: 200,
-    [AI_METRICS.MARKET_ANALYSES]: 90,
-    [AI_METRICS.MARKET_TOKENS]: 2_250_000,
-  },
+  starter: limitesDeLaBolsa(PLAN_CREDITS.starter),
+  pro: limitesDeLaBolsa(PLAN_CREDITS.pro),
 })
 
 // Nombre de la variable de entorno por métrica. Se escribe a mano en vez de
@@ -182,6 +219,29 @@ export const getPlanLimit = (plan, metric) => {
 
   return DEFAULT_PLAN_LIMITS[normalizedPlan][normalizedMetric]
 }
+
+/**
+ * Los créditos que trae un plan por mes. Se mueven por entorno, igual que los cupos:
+ *   AI_CREDITS_STARTER=5000
+ */
+export const getPlanCredits = plan => {
+  const normalizedPlan = normalizePlan(plan)
+
+  return readEnvLimit(`AI_CREDITS_${normalizedPlan.toUpperCase()}`) ?? PLAN_CREDITS[normalizedPlan]
+}
+
+/**
+ * Cuántos créditos gastó este consumo.
+ *
+ * Se CALCULA de los contadores y no se guarda aparte, a propósito: no hay un segundo
+ * número que se pueda desviar, una devolución corrige la bolsa sola, y el consumo que
+ * ya estaba en el mes cuenta desde el día del despliegue sin migrar nada.
+ *
+ * `metrics` acota qué métricas cuentan: a quien usa su propia clave no se le descuenta
+ * lo que paga él.
+ */
+export const computeCreditsUsed = (readCounter, metrics = Object.keys(AI_CREDIT_COSTS)) =>
+  metrics.reduce((total, metric) => total + readCounter(metric) * getCreditCost(metric), 0)
 
 /**
  * Todos los topes de un plan de una sola vez (para el snapshot del admin).
@@ -536,7 +596,14 @@ export const getPlanCatalog = () =>
     // compañía—, o sea una segunda copia de DEFAULT_PLAN_LIMITS. Hoy coincidían;
     // el día que alguien mueva un tope por variable de entorno, la pantalla
     // seguiría prometiendo lo viejo y el medidor entregaría otra cosa.
-    limits: getPlanLimits(plan),
+    //
+    // La bolsa va adentro de `limits` porque es la cuota que se compra: quien arma los
+    // planes para mostrarlos pasa ese objeto entero, y así no se pierde en el camino.
+    limits: {
+      ...getPlanLimits(plan),
+      credits: getPlanCredits(plan),
+      creditCosts: AI_CREDIT_COSTS,
+    },
   }))
 
 // ─── Costos operativos de HENKO (Bloque 8.10) ────────────
@@ -941,6 +1008,9 @@ const MARKET_CREDITS_PER_ANALYSIS = 4
  * promedio dependería de la proporción entre entrada y salida, y con esa proporción
  * mal medida se le cortaría el servicio a un comercio al día.
  *
+ * Con la bolsa, el peor caso ya no es agotar todo: es gastar TODOS los créditos en la
+ * acción que más cuesta por crédito. Por eso se toma ese máximo y no una suma.
+ *
  * Se apoya en el catálogo con la fecha pedida, así que el aumento del 1/1/2027 entra
  * solo. Los precios siguen sin estar escritos acá.
  *
@@ -948,26 +1018,29 @@ const MARKET_CREDITS_PER_ANALYSIS = 4
  * pasa si se fuerza por variable de entorno: ahí no hay máximo que calcular.
  */
 export const getPlanCommitment = (plan, at = new Date()) => {
-  const tope = metric => getPlanLimit(plan, metric)
+  const unbounded = AI_METRIC_LIST.some(metric => getPlanLimit(plan, metric) === UNLIMITED)
+  const credits = getPlanCredits(plan)
+  const creditosDe = metric => getCreditCost(metric)
 
-  const agentTokens = tope(AI_METRICS.AGENT_TOKENS)
-  const marketTokens = tope(AI_METRICS.MARKET_TOKENS)
-  const vision = tope(AI_METRICS.VISION)
-  const imageEdits = tope(AI_METRICS.IMAGE_EDITS)
-  const marketAnalyses = tope(AI_METRICS.MARKET_ANALYSES)
-
-  const unbounded = [agentTokens, marketTokens, vision, imageEdits, marketAnalyses].includes(
-    UNLIMITED,
+  // Lo máximo que puede costar UN crédito, según en qué se gaste.
+  const usdPorCredito = Math.max(
+    computeMaxTokenCostUsd(TOKENS_PER_MESSAGE, PLAN_COST_REFERENCE_MODEL, at) /
+      creditosDe(AI_METRICS.AGENT_MESSAGES),
+    computeMaxTokenCostUsd(getVisionTokensPerCall(), PLAN_COST_REFERENCE_MODEL, at) /
+      creditosDe(AI_METRICS.VISION),
+    getImagePrice(at, 'gemini', PLAN_COST_REFERENCE_IMAGE_MODEL).perImage /
+      creditosDe(AI_METRICS.IMAGE_EDITS),
+    (computeMaxTokenCostUsd(TOKENS_PER_MARKET_ANALYSIS, PLAN_COST_REFERENCE_MODEL, at) +
+      MARKET_CREDITS_PER_ANALYSIS * getToolPrice('tavily_search', at).unitCostUsd) /
+      creditosDe(AI_METRICS.MARKET_ANALYSES),
   )
 
-  const tokens = agentTokens + marketTokens + vision * getVisionTokensPerCall()
-
-  const usd =
-    computeMaxTokenCostUsd(tokens, PLAN_COST_REFERENCE_MODEL, at) +
-    imageEdits * getImagePrice(at, 'gemini', PLAN_COST_REFERENCE_IMAGE_MODEL).perImage +
-    marketAnalyses * MARKET_CREDITS_PER_ANALYSIS * getToolPrice('tavily_search', at).unitCostUsd
-
-  return { tokens, usd, unbounded }
+  return {
+    credits,
+    tokens: credits * TOKENS_PER_MESSAGE,
+    usd: credits * usdPorCredito,
+    unbounded,
+  }
 }
 
 /**
@@ -1076,6 +1149,7 @@ export default {
   AI_METRIC_LIST,
   AI_METRIC_LABELS,
   AI_PLANS,
+  AI_CREDIT_COSTS,
   UNLIMITED,
   normalizePlan,
   normalizeMetric,
@@ -1088,6 +1162,9 @@ export default {
   getUsdToArsQuote,
   getPlatformMonthlyTokenBudget,
   getPlanCommitment,
+  getPlanCredits,
+  computeCreditsUsed,
+  getCreditCost,
   getTenantPlanFraction,
   getSharedKeyTenantCap,
   getPlatformMonthlyInfraCostUsd,

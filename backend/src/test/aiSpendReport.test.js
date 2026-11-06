@@ -387,10 +387,13 @@ describe('por comercio · quien se lo gasto', () => {
     const [comercio] = await getPeriodSpendByTenant(PERIODO)
 
     // Sin techo configurado no se inventa un porcentaje.
-    if (comercio.tokenCap === null) {
+    if (comercio.creditCap === null) {
       expect(comercio.percentOfCap).toBeNull()
     } else {
-      expect(comercio.percentOfCap).toBeCloseTo((10000 / comercio.tokenCap) * 100, 1)
+      expect(comercio.percentOfCap).toBeCloseTo(
+        (comercio.creditsUsed / comercio.creditCap) * 100,
+        1,
+      )
     }
   })
 

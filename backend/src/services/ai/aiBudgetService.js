@@ -37,6 +37,10 @@ import {
   getSharedKeyTenantCap,
   getSharedKeyTenantUsdCap,
   getTenantPlanFraction,
+  getPlanCredits,
+  getCreditCost,
+  computeCreditsUsed,
+  AI_CREDIT_COSTS,
   getSubscriptionState,
   getUsdToArsRate,
   normalizeMetric,
@@ -733,6 +737,8 @@ export const DENY_REASONS = Object.freeze({
   NO_API_KEY: 'no_api_key',
   METRIC_LIMIT: 'metric_limit_exceeded',
   GUARD_LIMIT: 'guard_limit_exceeded',
+  // Se terminó la bolsa de créditos del plan. Se repone el mes que viene.
+  CREDITS: 'ai_credits_exhausted',
   PLATFORM_BUDGET: 'platform_budget_exhausted',
   // ESTE comercio se gastó su techo en plata. Distinto de PLATFORM_BUDGET, que
   // es la plataforma entera: acá los demás comercios siguen funcionando, y es
@@ -792,6 +798,9 @@ export const buildBudgetDenialMessage = (result = {}) => {
       return result.detail
         ? `Las funciones de IA de tu cuenta están pausadas: ${result.detail}`
         : 'Las funciones de IA de tu cuenta están pausadas. Contactá al soporte para reactivarlas.'
+
+    case DENY_REASONS.CREDITS:
+      return 'Se terminaron los créditos de IA de tu plan. Se renuevan el mes que viene, o podés subir de plan.'
 
     case DENY_REASONS.GUARD_LIMIT:
       return `Se alcanzó el límite mensual de ${label} de tu plan. Se renueva el mes que viene, o podés subir de plan.`
@@ -1389,10 +1398,47 @@ const buildGuardExpression = ({ metric, limit }) => {
   }
 }
 
-const buildAtomicReservationFilter = ({ tenantId, period, metric, limit, amount, guardLimits }) => {
+/**
+ * La bolsa, en la misma condición atómica que el resto de los cupos.
+ *
+ * Lo usado se calcula de los contadores dentro del propio filtro, así que dos pedidos
+ * simultáneos no pueden pasar los dos: no hay lectura previa que se pueda vencer.
+ */
+const buildCreditExpression = ({ metric, amount, credits }) => {
+  const cost = getCreditCost(metric)
+
+  if (!credits || credits.limit === UNLIMITED || cost === 0) return null
+
+  return {
+    $lte: [
+      {
+        $add: [
+          ...credits.metrics.map(counted => ({
+            $multiply: [{ $ifNull: [`$${counterPath(counted)}`, 0] }, getCreditCost(counted)],
+          })),
+          amount * cost,
+        ],
+      },
+      credits.limit,
+    ],
+  }
+}
+
+const buildAtomicReservationFilter = ({
+  tenantId,
+  period,
+  metric,
+  limit,
+  amount,
+  guardLimits,
+  credits = null,
+}) => {
   const expressions = []
   const quotaExpression = buildQuotaExpression({ metric, limit, amount })
   if (quotaExpression) expressions.push(quotaExpression)
+
+  const creditExpression = buildCreditExpression({ metric, amount, credits })
+  if (creditExpression) expressions.push(creditExpression)
 
   for (const guard of guardLimits) {
     const expression = buildGuardExpression(guard)
@@ -1421,6 +1467,7 @@ const applyReservation = async ({
   amount,
   limit,
   guardLimits,
+  credits = null,
   costUsd = 0,
 }) => {
   const increment = {
@@ -1444,6 +1491,7 @@ const applyReservation = async ({
       limit,
       amount,
       guardLimits,
+      credits,
     }),
     {
       $inc: increment,
@@ -1483,6 +1531,21 @@ const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) 
 
   return fraction < 1 ? Math.max(1, Math.floor(planLimit * fraction)) : planLimit
 }
+
+/**
+ * La bolsa de un comercio: cuántos créditos tiene y qué consumo cuenta contra ella.
+ *
+ * Con clave propia, lo que corre con esa clave lo paga él y no descuenta. Solo cuenta
+ * lo que factura HENKO igual, como los fondos con IA.
+ */
+const resolveCredits = ({ plan, keySource, tenantShare = null }) => ({
+  limit: Math.max(1, Math.floor(getPlanCredits(plan) * getTenantPlanFraction(tenantShare))),
+  metrics:
+    keySource === KEY_SOURCE.TENANT ? [AI_METRICS.IMAGE_EDITS] : Object.keys(AI_CREDIT_COSTS),
+})
+
+const creditsUsedBy = (usage, credits) =>
+  computeCreditsUsed(metric => readCounter(usage, metric), credits.metrics)
 
 /**
  * Costo que se puede cobrar POR ADELANTADO, en el mismo movimiento que reserva
@@ -2212,6 +2275,12 @@ export const reserveAiBudget = async ({
     })
   }
 
+  const credits = resolveCredits({
+    plan: aiProfile.plan,
+    keySource: aiProfile.keySource,
+    tenantShare: tenantPolicy.share,
+  })
+
   const updated = await applyReservation({
     tenantId: id,
     period,
@@ -2219,6 +2288,7 @@ export const reserveAiBudget = async ({
     amount: reservationAmount,
     limit,
     guardLimits,
+    credits,
     costUsd: upfrontCostUsd,
   })
 
@@ -2255,6 +2325,28 @@ export const reserveAiBudget = async ({
         used: readCounter(usage, exhaustedGuard.metric),
         reason: DENY_REASONS.GUARD_LIMIT,
         detail: exhaustedGuard.metric,
+        profile: aiProfile,
+      })
+    }
+
+    // La bolsa antes que el cupo de la métrica: el cupo es lo que entra si se gasta
+    // todo en una sola cosa, así que cuando se llega a él lo que se terminó es la bolsa.
+    const creditCost = getCreditCost(normalizedMetric) * reservationAmount
+    const creditsUsed = creditsUsedBy(usage, credits)
+
+    if (creditCost > 0 && creditsUsed + creditCost > credits.limit) {
+      closeOperation({
+        tenantId: id,
+        operationId,
+        status: AI_OPERATION_STATUS.FAILED,
+        failureReason: DENY_REASONS.CREDITS,
+      })
+
+      return buildDeniedResult({
+        metric: normalizedMetric,
+        limit: credits.limit,
+        used: creditsUsed,
+        reason: DENY_REASONS.CREDITS,
         profile: aiProfile,
       })
     }
@@ -3517,6 +3609,26 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
 
   const used = readCounter(usage, normalizedMetric)
 
+  // La misma bolsa que la reserva: sin esto, este chequeo dejaría pasar una operación
+  // que la reserva va a rechazar, y el rechazo llegaría tarde y con otro mensaje.
+  const credits = resolveCredits({
+    plan: aiProfile.plan,
+    keySource: aiProfile.keySource,
+    tenantShare: tenantPolicy.share,
+  })
+  const creditCost = getCreditCost(normalizedMetric)
+  const creditsUsed = creditsUsedBy(usage, credits)
+
+  if (creditCost > 0 && creditsUsed + creditCost > credits.limit) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit: credits.limit,
+      used: creditsUsed,
+      reason: DENY_REASONS.CREDITS,
+      profile: aiProfile,
+    })
+  }
+
   if (used >= limit) {
     return buildDeniedResult({
       metric: normalizedMetric,
@@ -3589,6 +3701,13 @@ export const getAiBudgetSnapshot = async tenantId => {
     return acc
   }, {})
   const subscription = getSubscriptionState(profile)
+  const credits = resolveCredits({
+    plan: profile.plan,
+    keySource: profile.keySource,
+    tenantShare: tenantPolicy.share,
+  })
+  const creditsUsed = creditsUsedBy(usage, credits)
+  const creditsRemaining = Math.max(0, credits.limit - creditsUsed)
 
   // Se acota a cero por el cruce del despliegue: una edición reservada por la
   // versión vieja (que no cobraba al reservar) y devuelta por la nueva (que sí
@@ -3606,8 +3725,17 @@ export const getAiBudgetSnapshot = async tenantId => {
     // panel seguía mostrando el tope del plan, así que quien se ponía un
     // freno de 2.000 mensajes veía "10K" y se quedaba sin asistente en 2.000
     // sin ninguna explicación a la vista.
-    const limit = applyLimitOverride(planLimit, selfLimits[metric] ?? null)
+    const propio = applyLimitOverride(planLimit, selfLimits[metric] ?? null)
     const used = readCounter(usage, metric)
+
+    // Lo que le queda de verdad: la bolsa es compartida, así que gastar en una función
+    // achica lo disponible en las otras. Sin esto el panel mostraría cupos enteros que
+    // la reserva ya no puede cumplir.
+    const creditCost = credits.metrics.includes(metric) ? getCreditCost(metric) : 0
+    const limit =
+      creditCost > 0 && propio !== UNLIMITED
+        ? Math.min(propio, used + Math.floor(creditsRemaining / creditCost))
+        : propio
 
     acc[metric] = {
       label: AI_METRIC_LABELS[metric],
@@ -3619,10 +3747,8 @@ export const getAiBudgetSnapshot = async tenantId => {
       // sale el recorte. Sin esto, un tope más bajo que el contratado se lee
       // como un error de facturación.
       planLimit,
-      selfLimited: limit !== planLimit,
-      // Lo que incluye el plan contratado. Si HENKO se lo bajó, el comercio tiene
-      // que poder leerlo: su checkout le prometió el número de acá.
-      contractedLimit: getPlanLimit(profile.plan, metric),
+      selfLimited: propio !== planLimit,
+      creditCost,
     }
 
     return acc
@@ -3642,6 +3768,14 @@ export const getAiBudgetSnapshot = async tenantId => {
       byokEnabled: profile.byokEnabled,
       byokAllowed: profile.byokAllowed,
       hasTenantKey: profile.hasTenantKey,
+    },
+    // La bolsa del mes. `contracted` es lo que incluye su plan: si HENKO se lo bajó, el
+    // comercio tiene que poder leerlo, porque el checkout le prometió ese número.
+    credits: {
+      used: creditsUsed,
+      limit: credits.limit,
+      remaining: creditsRemaining,
+      contracted: getPlanCredits(profile.plan),
     },
     metrics,
     // La suspensión viaja al panel del comercio. Sin esto, el panel mostraría

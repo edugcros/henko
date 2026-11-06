@@ -162,13 +162,14 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
 
   const budget = await reserveAiBudget({
     tenantId,
-    metric: AI_METRICS.MARKET_ANALYSES,
+    // Descuenta como un mensaje y no como un análisis de mercado: es una sola llamada
+    // al modelo, sin búsquedas. A 25 créditos costaría unas diez veces lo que vale.
+    metric: AI_METRICS.AGENT_MESSAGES,
     amount: 1,
-    // Mismo guard que el análisis de mercado: son el mismo presupuesto de
-    // research, distinto del que consume el asistente de ventas.
+    // Mismo guard que el análisis de mercado: sus tokens son research, distintos de
+    // los que consume el asistente de ventas.
     guards: [AI_METRICS.MARKET_TOKENS],
-    // Comparte métrica y presupuesto con el análisis de mercado; `feature` es
-    // lo que permite ver cuánto cuesta cada uno por separado.
+    // `feature` es lo que permite ver cuánto cuesta por separado.
     feature: AI_FEATURES.PRICING,
     provider: AI_PROVIDERS.GEMINI,
     profile,
@@ -230,7 +231,7 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
     if (result?.fallback || !result?.content) {
       await refundAiBudget({
         tenantId,
-        metric: AI_METRICS.MARKET_ANALYSES,
+        metric: AI_METRICS.AGENT_MESSAGES,
         amount: 1,
         operationId: budget.operationId,
       })
@@ -242,7 +243,7 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
     if (!parsed) {
       await refundAiBudget({
         tenantId,
-        metric: AI_METRICS.MARKET_ANALYSES,
+        metric: AI_METRICS.AGENT_MESSAGES,
         amount: 1,
         operationId: budget.operationId,
       })
@@ -255,7 +256,7 @@ export const analyzePricingWithAI = async ({ tenantId, signals, policy }) => {
     // cobra un análisis que no recibió.
     await refundAiBudget({
       tenantId,
-      metric: AI_METRICS.MARKET_ANALYSES,
+      metric: AI_METRICS.AGENT_MESSAGES,
       amount: 1,
       operationId: budget.operationId,
     }).catch(() => undefined)

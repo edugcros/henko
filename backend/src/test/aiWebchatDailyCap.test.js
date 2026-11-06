@@ -65,10 +65,11 @@ beforeEach(() => {
 
 describe('de dónde sale el tope', () => {
   test('el plan más chico no puede vaciar su mes en menos de diez días', async () => {
-    // 2.000 mensajes al mes, factor 3 sobre el promedio diario: 200 por día.
+    // 4.000 créditos al mes, un mensaje por crédito y factor 3 sobre el promedio
+    // diario: 400 por día. Ni gastando toda la bolsa en el chat se vacía antes.
     // Es la garantía que motiva todo el middleware, y sale del tope del plan:
     // no hay un número escrito acá que se pueda desincronizar.
-    expect(resolveDailyCap('starter')).toBe(200)
+    expect(resolveDailyCap('starter')).toBe(400)
   })
 
   test('escala con el plan sin una tabla nueva que mantener', async () => {
@@ -91,7 +92,7 @@ describe('de dónde sale el tope', () => {
   })
 
   test('un plan chico no queda con un tope inusable', async () => {
-    process.env.AI_WEBCHAT_DAILY_BURST_FACTOR = '0.1'
+    process.env.AI_WEBCHAT_DAILY_BURST_FACTOR = '0.01'
 
     expect(resolveDailyCap('starter')).toBe(10)
   })
@@ -113,7 +114,7 @@ describe('qué hace en cada caso', () => {
   })
 
   test('pasado el tope corta con 429 y un mensaje que se puede mostrar', async () => {
-    const { next, res } = await run({ used: 201 })
+    const { next, res } = await run({ used: 401 })
 
     expect(next).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(429)

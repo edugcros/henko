@@ -84,12 +84,12 @@ gasto no toca la factura de la plataforma.
 
 Desde el 06/11/2026 las tres piezas se relacionan así:
 
-- **Cada comercio tiene el 100% de su plan.** Es su límite real, en todas las
-  métricas, y también su tope en dólares: lo máximo que puede costar el plan,
-  con cada token a la tarifa de salida del modelo más caro de la cadena.
+- **Cada comercio tiene el 100% de su plan.** Es su bolsa de créditos, y también
+  su tope en dólares: lo máximo que puede costar esa bolsa, gastada entera en la
+  acción más cara y con cada token a la tarifa de salida del modelo más caro.
 - **Gobernar solo baja.** `AiTenantPolicy.share` es la parte de SU PLAN que
-  recibe (1% a 100%), y `usdCap` un tope en dólares que no puede superar el del
-  plan. Lo extra se vende con un plan superior.
+  recibe (1% a 100%): achica la bolsa y los cupos. `usdCap` es un tope en dólares
+  que no puede superar el del plan. Lo extra se vende con un plan superior.
 - **Lo comprometido se calcula solo:** la suma de los planes con derecho a la IA
   sobre la key compartida. Crece con cada comercio y no corta nada.
 - **El techo manual es un freno de emergencia.** Corta para todos, así que tiene
@@ -104,13 +104,29 @@ siguiente. Ningún plan que se vende hoy es ilimitado.
 Los cupos salen de cuánto puede costar cada plan si se agota con el modelo por
 defecto (noviembre de 2026, con planes a ARS 50.000 y 65.000):
 
-| Plan    | Análisis | Mensajes | Fondos | Mercado | Costo normal | Presupuesto |
-| ------- | -------- | -------- | ------ | ------- | ------------ | ----------- |
-| Starter | 300      | 2.000    | 100    | 50      | USD 7,3      | USD 8       |
-| Pro     | 500      | 3.500    | 200    | 90      | USD 12,8     | USD 13      |
+| Plan    | Créditos por mes | Presupuesto |
+| ------- | ---------------- | ----------- |
+| Starter | 4.000            | USD 8       |
+| Pro     | 6.500            | USD 13      |
 
-Un test recalcula el costo normal con el catálogo vigente. Si se sube un cupo o
-cambia una tarifa, el test avisa antes de que el plan salga de su presupuesto.
+Un crédito vale USD 0,002. El comercio tiene una sola bolsa, y cada acción descuenta
+según lo que cuesta:
+
+| Acción              | Créditos |
+| ------------------- | -------- |
+| Mensaje             | 1        |
+| Análisis de imagen  | 3        |
+| Fondo con IA        | 5        |
+| Análisis de mercado | 25       |
+
+Lo usado se calcula de los contadores de `AiUsage`, dentro de la misma condición
+atómica que reserva el cupo. No hay un contador aparte: una devolución corrige la
+bolsa sola y no hace falta migrar nada. Los créditos se mueven por entorno con
+`AI_CREDITS_STARTER` y `AI_CREDITS_PRO`.
+
+Un test recalcula el costo por crédito con el catálogo vigente. Si cambia una tarifa
+o el precio en créditos de una acción, avisa antes de que el plan salga de su
+presupuesto.
 
 ### El techo por tenant sobre la key compartida
 

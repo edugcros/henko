@@ -211,19 +211,26 @@ describe('el snapshot del panel de gasto', () => {
     expect(fila.share).toBe(0.1)
     expect(fila.suspended).toBe(false)
     // Y el tope mostrado es el que se le aplica: el 10% de su plan Pro.
-    expect(fila.planTokens).toBe(30_950_000)
-    expect(fila.tokenCap).toBe(3_095_000)
+    expect(fila.planCredits).toBe(6500)
+    expect(fila.creditCap).toBe(650)
   })
 
   test('sin acotar, el tope mostrado es el plan entero', async () => {
     await crearComercio(ACTIVO, 'Comercio Activo', 'starter')
-    await asentar({ tenantId: ACTIVO, day: 1, costUsd: 2, tokens: 177_200 })
+    await asentar({ tenantId: ACTIVO, day: 1, costUsd: 2 })
+    await mongoose.connection.collection('aiusages').insertOne({
+      tenantId: ACTIVO,
+      period: PERIODO,
+      counters: { agentMessages: 10, marketAnalyses: 2, vision: 0, imageEdits: 0 },
+    })
 
     const { byTenant } = await getPlatformSpendSnapshot()
     const fila = byTenant.find(t => t.tenantId === String(ACTIVO))
 
-    expect(fila.tokenCap).toBe(17_720_000)
-    expect(fila.percentOfCap).toBe(1)
+    // 10 mensajes y 2 analisis de mercado son 60 creditos de 4.000.
+    expect(fila.creditCap).toBe(4000)
+    expect(fila.creditsUsed).toBe(60)
+    expect(fila.percentOfCap).toBe(1.5)
   })
 
   test('un comercio pausado sin consumo igual muestra sus topes', async () => {
@@ -238,7 +245,7 @@ describe('el snapshot del panel de gasto', () => {
     const { byTenant } = await getPlatformSpendSnapshot()
     const fila = byTenant.find(t => t.tenantId === String(PAUSADO))
 
-    expect(fila.tokenCap).toBe(17_720_000)
+    expect(fila.creditCap).toBe(4000)
     expect(fila.percentOfCap).toBe(0)
   })
 
@@ -276,13 +283,14 @@ describe('el snapshot del panel de gasto', () => {
       const compromiso = await getPlatformCommitment()
 
       expect(compromiso.tenants).toBe(2)
-      expect(compromiso.tokens).toBe(17_720_000 + 30_950_000)
+      expect(compromiso.credits).toBe(10_500)
+      expect(compromiso.tokens).toBe(30_000_000 + 48_750_000)
       expect(compromiso.byPlan).toEqual({ starter: 1, pro: 1 })
       expect(compromiso.usd).toBeGreaterThan(0)
 
       await insertar()
 
-      expect((await getPlatformCommitment()).tokens).toBe(35_440_000 + 30_950_000)
+      expect((await getPlatformCommitment()).tokens).toBe(60_000_000 + 48_750_000)
     })
 
     test('cuenta las pruebas vigentes y a los que van en gracia', async () => {
@@ -318,17 +326,23 @@ describe('el snapshot del panel de gasto', () => {
 
       await politica(acotado, { share: 0.5 })
 
-      expect((await getPlatformCommitment()).tokens).toBe(8_860_000)
+      expect((await getPlatformCommitment()).tokens).toBe(15_000_000)
     })
 
     test('avisa si el freno manual quedo por debajo de lo vendido', async () => {
       await insertar()
 
-      // El freno de esta suite es de 1.000.000 de tokens, y un Starter vende 17.720.000.
-      const { commitment } = await getPlatformSpendSnapshot()
+      // El freno de esta suite es de 1.000.000 de tokens, y un Starter compromete 30.000.000.
+      process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '500'
 
-      expect(commitment.brakeBelowTokens).toBe(true)
-      expect(commitment.brakeBelowUsd).toBe(false)
+      try {
+        const { commitment } = await getPlatformSpendSnapshot()
+
+        expect(commitment.brakeBelowTokens).toBe(true)
+        expect(commitment.brakeBelowUsd).toBe(false)
+      } finally {
+        process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '100'
+      }
     })
 
     test('con el freno por encima no avisa', async () => {

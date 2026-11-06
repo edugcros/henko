@@ -37,6 +37,8 @@ const {
   recordImageProviderCall,
   AI_METRICS,
   DENY_REASONS,
+  buildBudgetDenialMessage,
+  checkAiEntitlement,
 } = await import('../services/ai/aiBudgetService.js')
 const { getAiBudgetSnapshot } = await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
@@ -846,23 +848,23 @@ describe('el cupo de cada comercio sale de su plan', () => {
   test('el freno de la plataforma no cambia el cupo de nadie', async () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '400000'
 
-    expect((await reservarTokens('pro')).limit).toBe(26_250_000)
+    expect((await reservarTokens('pro')).limit).toBe(48_750_000)
   })
 
   test('gobernarlo le baja el cupo de verdad', async () => {
     // ESTA ES LA PROPIEDAD. Con el 1% seguia con el plan entero.
     await acotar({ share: 0.01 })
 
-    expect((await reservarTokens('starter')).limit).toBe(150_000)
+    expect((await reservarTokens('starter')).limit).toBe(300_000)
   })
 
   test('y deja de entrar lo que supera ese cupo', async () => {
     await acotar({ share: 0.01 })
 
-    const resultado = await reservarTokens('starter', 200_000)
+    const resultado = await reservarTokens('starter', 400_000)
 
     expect(resultado.allowed).toBe(false)
-    expect(resultado.limit).toBe(150_000)
+    expect(resultado.limit).toBe(300_000)
   })
 
   test('baja todas las metricas, no solo los tokens', async () => {
@@ -877,7 +879,7 @@ describe('el cupo de cada comercio sale de su plan', () => {
       guards: [AI_METRICS.AGENT_TOKENS],
     })
 
-    expect(mensajes.limit).toBe(1000)
+    expect(mensajes.limit).toBe(2000)
   })
 
   test('un comercio con clave propia no se ve afectado', async () => {
@@ -912,7 +914,7 @@ describe('el cupo de cada comercio sale de su plan', () => {
     const { credentials, metrics } = await getAiBudgetSnapshot(CON_CLAVE)
 
     expect(credentials.source).toBe('tenant')
-    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(26_250_000)
+    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(48_750_000)
   })
 
   test.each([
@@ -928,14 +930,14 @@ describe('el cupo de cada comercio sale de su plan', () => {
   test('acotar a uno no toca a los demas', async () => {
     await acotar({ share: 0.01 }, '64b7f0000000000000000002')
 
-    expect((await reservarTokens('starter')).limit).toBe(15_000_000)
+    expect((await reservarTokens('starter')).limit).toBe(30_000_000)
   })
 
   test('volver a null le devuelve el plan entero', async () => {
     await acotar({ share: 0.01 })
     await acotar({ share: null })
 
-    expect((await reservarTokens('starter')).limit).toBe(15_000_000)
+    expect((await reservarTokens('starter')).limit).toBe(30_000_000)
   })
 
   test('el panel del comercio muestra lo que se le aplica y lo que compro', async () => {
@@ -952,11 +954,10 @@ describe('el cupo de cada comercio sale de su plan', () => {
     })
     await acotar({ share: 0.5 }, ACOTADO)
 
-    const { metrics } = await getAiBudgetSnapshot(ACOTADO)
-    const tokens = metrics[AI_METRICS.AGENT_TOKENS]
+    const { credits, metrics } = await getAiBudgetSnapshot(ACOTADO)
 
-    expect(tokens.limit).toBe(7_500_000)
-    expect(tokens.contractedLimit).toBe(15_000_000)
+    expect(credits).toMatchObject({ limit: 2000, contracted: 4000, used: 0, remaining: 2000 })
+    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(15_000_000)
   })
 
   describe('en dolares', () => {
@@ -1001,10 +1002,10 @@ describe('el cupo de cada comercio sale de su plan', () => {
   })
 
   describe('lo que compromete un plan', () => {
-    test('suma todo lo que gasta tokens', () => {
-      // 15.000.000 del asistente, 1.250.000 de mercado y 300 analisis de 4.900.
-      expect(getPlanCommitment('starter').tokens).toBe(17_720_000)
-      expect(getPlanCommitment('pro').tokens).toBe(30_950_000)
+    test('toma el peor destino de la bolsa, sin sumar lo que no puede pasar junto', () => {
+      // La bolsa entera en mensajes, que es lo que mas tokens gasta por credito.
+      expect(getPlanCommitment('starter').tokens).toBe(30_000_000)
+      expect(getPlanCommitment('pro').tokens).toBe(48_750_000)
     })
 
     test('ningun modelo de la cadena cuesta mas que el de referencia', () => {
@@ -1033,5 +1034,165 @@ describe('el cupo de cada comercio sale de su plan', () => {
         delete process.env.AI_LIMIT_STARTER_VISION
       }
     })
+  })
+})
+
+// Una sola bolsa por comercio: cada accion descuenta de la misma.
+describe('la bolsa de creditos', () => {
+  // Un comercio por caso: el perfil y el contador no se contaminan entre si.
+  let numero = 0
+  const comercio = () => `64b7f00000000000000001${String(++numero).padStart(2, '0')}`
+
+  const reservarAccion = (tenantId, metric, extra = {}) =>
+    reserveAiBudget({
+      tenantId,
+      metric,
+      profile: { ...PERFIL, tenantId },
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      ...extra,
+    })
+
+  const gastado = (tenantId, counters) =>
+    AiUsage.collection.updateOne(
+      { tenantId: new mongoose.Types.ObjectId(tenantId), period: PERIODO_REAL },
+      { $set: Object.fromEntries(Object.entries(counters).map(([k, v]) => [`counters.${k}`, v])) },
+      { upsert: true },
+    )
+
+  test('gastar en una funcion achica lo disponible en las otras', async () => {
+    // ESTA ES LA PROPIEDAD. Con cupos separados esto entraba: 2.000 mensajes no le
+    // quitaban nada a los analisis de mercado.
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3980 })
+
+    const mercado = await reservarAccion(tenantId, AI_METRICS.MARKET_ANALYSES)
+
+    expect(mercado.allowed).toBe(false)
+    expect(mercado.reason).toBe(DENY_REASONS.CREDITS)
+    expect(mercado.used).toBe(3980)
+    expect(mercado.limit).toBe(4000)
+  })
+
+  test('lo que queda se puede usar en otra cosa mas barata', async () => {
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3980 })
+
+    expect((await reservarAccion(tenantId, AI_METRICS.VISION)).allowed).toBe(true)
+  })
+
+  test('alcanza exactamente hasta el ultimo credito', async () => {
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3975 })
+
+    expect((await reservarAccion(tenantId, AI_METRICS.MARKET_ANALYSES)).allowed).toBe(true)
+    expect((await reservarAccion(tenantId, AI_METRICS.AGENT_MESSAGES)).reason).toBe(
+      DENY_REASONS.CREDITS,
+    )
+  })
+
+  test('el mensaje que ve el comercio habla de creditos', () => {
+    expect(buildBudgetDenialMessage({ reason: DENY_REASONS.CREDITS })).toMatch(/créditos de IA/)
+  })
+
+  test('dos pedidos simultaneos no gastan el mismo credito', async () => {
+    // La condicion vive en el filtro: no hay lectura previa que se pueda vencer.
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3990 })
+
+    const resultados = await Promise.all(
+      Array.from({ length: 30 }, () => reservarAccion(tenantId, AI_METRICS.AGENT_MESSAGES)),
+    )
+
+    expect(resultados.filter(r => r.allowed)).toHaveLength(10)
+  }, 60000)
+
+  test('devolver una operacion devuelve sus creditos', async () => {
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3980 })
+
+    const vision = await reservarAccion(tenantId, AI_METRICS.VISION)
+
+    await refundAiBudget({
+      tenantId,
+      metric: AI_METRICS.VISION,
+      operationId: vision.operationId,
+    })
+
+    const usage = await AiUsage.findOne({ tenantId, period: PERIODO_REAL })
+      .setOptions({ tenantId })
+      .lean()
+
+    expect(usage.counters.vision).toBe(0)
+    expect((await reservarAccion(tenantId, AI_METRICS.VISION)).allowed).toBe(true)
+  })
+
+  test('gobernarlo achica la bolsa', async () => {
+    const tenantId = comercio()
+
+    await setTenantAiPolicy({
+      tenantId,
+      share: 0.5,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+    await gastado(tenantId, { agentMessages: 2000 })
+
+    expect((await reservarAccion(tenantId, AI_METRICS.VISION)).reason).toBe(DENY_REASONS.CREDITS)
+  })
+
+  test('con clave propia, lo que paga el comercio no descuenta', async () => {
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 6500 })
+
+    const fondo = await reservarAccion(tenantId, AI_METRICS.IMAGE_EDITS, {
+      profile: { ...PERFIL, tenantId, plan: 'pro', keySource: 'tenant' },
+      forcePlatformBilling: true,
+    })
+
+    expect(fondo.allowed).toBe(true)
+  })
+
+  test('el chequeo previo corta igual que la reserva', async () => {
+    const tenantId = comercio()
+
+    await gastado(tenantId, { agentMessages: 3980 })
+
+    const resultado = await checkAiEntitlement({
+      tenantId,
+      metric: AI_METRICS.MARKET_ANALYSES,
+      profile: { ...PERFIL, tenantId },
+    })
+
+    expect(resultado.allowed).toBe(false)
+    expect(resultado.reason).toBe(DENY_REASONS.CREDITS)
+  })
+
+  test('el panel muestra lo que queda de verdad en cada funcion', async () => {
+    const tenantId = comercio()
+
+    await mongoose.connection.collection('tenants').insertOne({
+      _id: new mongoose.Types.ObjectId(tenantId),
+      name: 'Comercio con bolsa',
+      slug: `comercio-bolsa-${tenantId}`,
+      plan: 'starter',
+      status: 'active',
+      subscriptionStatus: 'active',
+    })
+    await gastado(tenantId, { agentMessages: 1000, vision: 100 })
+
+    const { credits, metrics } = await getAiBudgetSnapshot(tenantId)
+
+    expect(credits).toMatchObject({ used: 1300, limit: 4000, remaining: 2700 })
+    // 2.700 creditos entran en 2.700 mensajes mas, o en 108 analisis de mercado.
+    expect(metrics[AI_METRICS.AGENT_MESSAGES]).toMatchObject({ used: 1000, limit: 3700 })
+    expect(metrics[AI_METRICS.MARKET_ANALYSES]).toMatchObject({ used: 0, limit: 108 })
+    expect(metrics[AI_METRICS.VISION].creditCost).toBe(3)
   })
 })

@@ -1214,7 +1214,7 @@ function TenantPolicyDialog({ row, period, onClose, onSaved }) {
   // El tope que resulta, en tokens: es lo que se compara contra lo que el comercio
   // ya consumió, que está en la misma fila.
   const porcentajeDelPlan = shareValue === null ? 100 : Math.round(shareValue * 10000) / 100
-  const topeResultante = row.planTokens ? Math.floor(row.planTokens * (shareValue ?? 1)) : null
+  const topeResultante = row.planCredits ? Math.floor(row.planCredits * (shareValue ?? 1)) : null
 
   // Vacío = el tope de su plan. Igual que el cupo, el backend distingue null de no
   // mandar el campo.
@@ -1278,7 +1278,7 @@ function TenantPolicyDialog({ row, period, onClose, onSaved }) {
           slotProps={{ htmlInput: { step: 1, min: 1, max: 100 } }}
           helperText={
             topeResultante
-              ? `${porcentajeDelPlan}% de su plan = ${formatTokens(topeResultante)} tokens al mes. Solo se puede bajar. Vacío = el plan entero.`
+              ? `${porcentajeDelPlan}% de su plan = ${formatTokens(topeResultante)} créditos al mes. Solo se puede bajar. Vacío = el plan entero.`
               : 'Entre 1 y 100. Solo se puede bajar. Vacío = el plan entero.'
           }
         />
@@ -1659,9 +1659,9 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
             es su plan. */}
         {commitment && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Comprometido por planes: {formatTokens(commitment.tokens)} tokens y hasta{' '}
-            {dinero(commitment.usd)} al mes, en {commitment.tenants}{' '}
-            {commitment.tenants === 1 ? 'comercio' : 'comercios'}.
+            Comprometido por planes: {formatTokens(commitment.credits)} créditos,{' '}
+            {formatTokens(commitment.tokens)} tokens y hasta {dinero(commitment.usd)} al mes, en{' '}
+            {commitment.tenants} {commitment.tenants === 1 ? 'comercio' : 'comercios'}.
           </Typography>
         )}
 
