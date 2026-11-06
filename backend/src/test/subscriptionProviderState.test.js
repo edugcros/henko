@@ -19,6 +19,7 @@
 
 import { jest } from '@jest/globals'
 import mongoose from 'mongoose'
+import { getSubscriptionState } from '../services/ai/aiPlanPolicy.js'
 import { crearMongoEnMemoria } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
@@ -1161,5 +1162,271 @@ describe('un cobro aprobado se revierte', () => {
     expect(auditoria.checked).toBe(1)
     expect(auditoria.findings).toEqual([])
     expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+})
+
+// Una suscripción pausada no cobra, y ningún aviso más iba a llegar.
+describe('el comercio pausa la suscripción', () => {
+  const DIA = 24 * 60 * 60 * 1000
+  const enDias = dias => new Date(Date.now() + dias * DIA)
+
+  const respuesta = () => ({
+    statusCode: 0,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json() {
+      return this
+    },
+  })
+
+  const aviso = async preapproval => {
+    mp.get.mockResolvedValueOnce({ id: 'pre-1', ...preapproval })
+
+    const res = respuesta()
+
+    await handleSubscriptionWebhook(
+      {
+        headers: {},
+        originalUrl: '/webhook',
+        query: {},
+        body: { type: 'subscription_preapproval', data: { id: 'pre-1' } },
+      },
+      res,
+    )
+
+    return res
+  }
+
+  const comercio = (subscriptionStatus = 'active', datos = {}, extra = {}) =>
+    crearTenant(`Comercio${Math.random().toString(16).slice(2, 8)}`, {
+      subscriptionStatus,
+      plan: 'pro',
+      ...extra,
+      integrations: {
+        subscriptionMercadoPago: { subscriptionId: 'pre-1', status: 'authorized', ...datos },
+      },
+    })
+
+  const leer = tenant => Tenant.findById(tenant._id).lean()
+
+  beforeEach(() => {
+    Object.values(mp).forEach(fn => fn.mockReset())
+  })
+
+  afterEach(async () => {
+    await mongoose.connection.collection('subscriptionwebhookevents').deleteMany({})
+  })
+
+  test('deja de estar al día, sin perder lo que pagó', async () => {
+    // ESTA ES LA PROPIEDAD. Seguía activo para siempre sin que nadie le cobrara.
+    const pagadoHasta = enDias(20)
+    const tenant = await comercio('active', { nextBillingAt: pagadoHasta })
+
+    await aviso({ status: 'paused' })
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('past_due')
+    expect(final.subscriptionPastDueAt).toEqual(pagadoHasta)
+    expect(final.plan).toBe('pro')
+    expect(final.integrations.subscriptionMercadoPago).toMatchObject({
+      status: 'paused',
+      pausedFromStatus: 'active',
+    })
+  })
+
+  test('conserva el acceso hasta que termina el período y la gracia', async () => {
+    const tenant = await comercio('active', { nextBillingAt: enDias(20) })
+
+    await aviso({ status: 'paused' })
+
+    const final = await leer(tenant)
+    const estadoEn = dias => {
+      const ahora = Date.now
+
+      Date.now = () => ahora() + dias * DIA
+
+      try {
+        return getSubscriptionState(final)
+      } finally {
+        Date.now = ahora
+      }
+    }
+
+    expect(estadoEn(10).entitled).toBe(true)
+    expect(estadoEn(26).entitled).toBe(true)
+    expect(estadoEn(28)).toMatchObject({
+      entitled: false,
+      reason: 'subscription_past_due_grace_expired',
+    })
+  })
+
+  test('toma la fecha del proveedor antes que la guardada', async () => {
+    const delProveedor = enDias(25)
+    const tenant = await comercio('active', { nextBillingAt: enDias(5) })
+
+    await aviso({ status: 'paused', next_payment_date: delProveedor.toISOString() })
+
+    expect((await leer(tenant)).subscriptionPastDueAt).toEqual(delProveedor)
+  })
+
+  test.each([
+    ['sin fecha', null],
+    ['con una fecha vencida', enDias(-40)],
+  ])('%s, la mora arranca hoy', async (_nombre, nextBillingAt) => {
+    const antes = Date.now()
+    const tenant = await comercio('active', { nextBillingAt })
+
+    await aviso({ status: 'paused' })
+
+    const desde = (await leer(tenant)).subscriptionPastDueAt.getTime()
+
+    expect(desde).toBeGreaterThanOrEqual(antes)
+    expect(desde).toBeLessThanOrEqual(Date.now())
+  })
+
+  test('quien ya debía no gana tiempo por pausar', async () => {
+    const debeDesde = enDias(-3)
+    const tenant = await comercio(
+      'past_due',
+      { nextBillingAt: enDias(20) },
+      { subscriptionPastDueAt: debeDesde },
+    )
+
+    await aviso({ status: 'paused' })
+
+    expect((await leer(tenant)).subscriptionPastDueAt).toEqual(debeDesde)
+  })
+
+  test('un segundo aviso de la misma pausa no pisa nada', async () => {
+    const tenant = await comercio('active', { nextBillingAt: enDias(20) })
+
+    await aviso({ status: 'paused' })
+
+    // Olvidar el evento es lo que hace llegar al filtro de la escritura: si no, lo frena
+    // antes la deduplicación del aviso.
+    const marcada = enDias(1)
+
+    await Tenant.findByIdAndUpdate(tenant._id, { subscriptionPastDueAt: marcada })
+    await mongoose.connection.collection('subscriptionwebhookevents').deleteMany({})
+    await aviso({ status: 'paused' })
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionPastDueAt).toEqual(marcada)
+    expect(final.integrations.subscriptionMercadoPago.pausedFromStatus).toBe('active')
+  })
+
+  test.each(['trialing', 'cancelled', 'expired'])(
+    'sin un cobro en curso no cambia nada: %s',
+    async subscriptionStatus => {
+      const tenant = await comercio(subscriptionStatus, { status: 'pending' })
+
+      await aviso({ status: 'paused' })
+
+      expect((await leer(tenant)).subscriptionStatus).toBe(subscriptionStatus)
+    },
+  )
+
+  test('reactivarla devuelve al día a quien estaba al día', async () => {
+    const proximo = enDias(30)
+    const tenant = await comercio('active', { nextBillingAt: enDias(20) })
+
+    await aviso({ status: 'paused' })
+    await aviso({ status: 'authorized', next_payment_date: proximo.toISOString() })
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('active')
+    expect(final.subscriptionPastDueAt).toBeNull()
+    expect(final.integrations.subscriptionMercadoPago).toMatchObject({
+      status: 'authorized',
+      pausedFromStatus: null,
+      nextBillingAt: proximo,
+    })
+  })
+
+  test('reactivarla no le borra la deuda a quien ya debía', async () => {
+    const debeDesde = enDias(-3)
+    const tenant = await comercio('past_due', {}, { subscriptionPastDueAt: debeDesde })
+
+    await aviso({ status: 'paused' })
+    await aviso({ status: 'authorized' })
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('past_due')
+    expect(final.subscriptionPastDueAt).toEqual(debeDesde)
+    expect(final.integrations.subscriptionMercadoPago.status).toBe('authorized')
+  })
+
+  test('una autorización común sigue sin borrar un pago pendiente', async () => {
+    const debeDesde = enDias(-3)
+    const tenant = await comercio('past_due', {}, { subscriptionPastDueAt: debeDesde })
+
+    await aviso({ status: 'authorized' })
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('past_due')
+  })
+
+  test('el aviso atrasado de un cobro no lo devuelve al día estando pausada', async () => {
+    const fetchOriginal = global.fetch
+    const pagadoHasta = enDias(20)
+    const tenant = await comercio('active', { nextBillingAt: pagadoHasta })
+
+    await aviso({ status: 'paused' })
+
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 555,
+        status: 'approved',
+        point_of_interaction: { transaction_data: { subscription_id: 'pre-1' } },
+      }),
+    }))
+
+    try {
+      await handleSubscriptionWebhook(
+        {
+          headers: {},
+          originalUrl: '/webhook',
+          query: {},
+          body: { type: 'payment', data: { id: '555' } },
+        },
+        respuesta(),
+      )
+    } finally {
+      global.fetch = fetchOriginal
+    }
+
+    const final = await leer(tenant)
+
+    expect(final.subscriptionStatus).toBe('past_due')
+    expect(final.subscriptionPastDueAt).toEqual(pagadoHasta)
+    expect(final.integrations.subscriptionMercadoPago.lastPaymentAt).toBeInstanceOf(Date)
+  })
+
+  test('se puede dar de baja estando pausada', async () => {
+    const tenant = await comercio('active')
+
+    await aviso({ status: 'paused' })
+    await aviso({ status: 'cancelled' })
+
+    expect((await leer(tenant)).subscriptionStatus).toBe('cancelled')
+  })
+
+  test('la auditoría no lo cuenta como deriva, pero sí a un activo pausado allá', async () => {
+    const pausado = await comercio('past_due', { status: 'paused' })
+    const auditar = () =>
+      auditSubscriptions({ Tenant, client: { get: async () => ({ status: 'paused' }) } })
+
+    expect((await auditar()).findings).toEqual([])
+
+    await Tenant.findByIdAndUpdate(pausado._id, { subscriptionStatus: 'active' })
+
+    expect((await auditar()).findings).toHaveLength(1)
   })
 })

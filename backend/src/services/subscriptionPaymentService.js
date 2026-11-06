@@ -708,10 +708,10 @@ export const auditSubscriptions = async ({ Tenant, client = null } = {}) => {
 
     if (esperado === almacenado) continue
 
-    // Una suscripción sigue autorizada mientras sus cobros fallan o se revierten.
-    // Eso no es deriva: ningún aviso la va a cerrar, y el comercio figuraría como
-    // descuadre hasta el próximo cobro.
-    if (almacenado === 'past_due' && esperado === 'active') continue
+    // Una suscripción sigue autorizada mientras sus cobros fallan o se revierten, y una
+    // pausa queda en past_due a propósito. Nada de eso es deriva: ningún aviso la va a
+    // cerrar, y el comercio figuraría como descuadre indefinidamente.
+    if (almacenado === 'past_due' && ['active', 'paused'].includes(esperado)) continue
 
     findings.push({
       tenantId: String(tenant._id),

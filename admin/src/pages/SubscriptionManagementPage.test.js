@@ -471,6 +471,23 @@ describe('Mi suscripción · estados', () => {
     expect(alerta).not.toHaveTextContent(/va a reintentar/i)
   })
 
+  test('pausada: lo dice, no promete un reintento y explica cómo reactivarla', async () => {
+    await montar({
+      suscripcion: suscripcion(
+        { subscriptionId: 'mp-1', status: 'paused', nextBillingAt: '2026-12-05T12:00:00.000Z' },
+        { subscriptionStatus: 'past_due' },
+      ),
+    })
+
+    const alerta = screen.getByRole('alert')
+
+    expect(screen.getByText('Pausada')).toBeInTheDocument()
+    expect(screen.queryByText('Pendiente de pago')).not.toBeInTheDocument()
+    expect(screen.getByText('Sin cobro programado')).toBeInTheDocument()
+    expect(alerta).toHaveTextContent(/reactivala en tu cuenta de mercado pago/i)
+    expect(alerta).not.toHaveTextContent(/va a reintentar/i)
+  })
+
   test('cancelada: lo dice, no ofrece cancelar, y vuelve a suscribirse desde acá', async () => {
     // Antes la mandaba a la pantalla pública de planes, un paso más antes del
     // mismo checkout.
