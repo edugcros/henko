@@ -41,12 +41,14 @@ const {
   DENY_REASONS,
   buildBudgetDenialMessage,
   checkAiEntitlement,
+  getAiDenialStatus,
 } = await import('../services/ai/aiBudgetService.js')
 const { getAiBudgetSnapshot } = await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 const {
   getPlanCommitment,
   getPlanLimit,
+  getPlatformBrakeOverrides,
   getPlatformBudgetSource,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
@@ -1360,6 +1362,99 @@ describe('cuando se terminan los creditos', () => {
       await invalidateTenantAiProfile(tenantId)
     }
   })
+
+  describe('con la IA apagada para todos', () => {
+    const interruptor = async value => {
+      await setPlatformAiOverride({
+        setting: PLATFORM_AI_SETTINGS.AI_DISABLED,
+        value,
+        changedByEmail: 'dueno@henko.test',
+        reason: 'prueba',
+      })
+      await refreshPlatformAiSettings()
+    }
+
+    afterEach(async () => {
+      await mongoose.connection.collection('platformaisettings').deleteMany({})
+      await refreshPlatformAiSettings()
+    })
+
+    test('corta la clave de HENKO', async () => {
+      const tenantId = await comercio({ conClave: false })
+
+      await interruptor(1)
+
+      const reserva = await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)
+
+      expect(reserva.allowed).toBe(false)
+      expect(reserva.reason).toBe(DENY_REASONS.PLATFORM_DISABLED)
+    })
+
+    test('corta tambien a quien usa su propia clave', async () => {
+      const tenantId = await comercio()
+
+      await agotar(tenantId)
+      expect((await perfil(tenantId)).keySource).toBe('tenant')
+
+      await interruptor(1)
+
+      const reserva = await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)
+      const chequeo = await checkAiEntitlement({
+        tenantId,
+        metric: AI_METRICS.AGENT_MESSAGES,
+        profile: await perfil(tenantId),
+      })
+
+      expect(reserva.reason).toBe(DENY_REASONS.PLATFORM_DISABLED)
+      expect(chequeo.reason).toBe(DENY_REASONS.PLATFORM_DISABLED)
+    })
+
+    test('al prenderla vuelve a funcionar', async () => {
+      const tenantId = await comercio({ conClave: false })
+
+      await interruptor(1)
+      await interruptor(null)
+
+      expect((await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)).allowed).toBe(true)
+    })
+
+    test('una suscripcion caida se sigue informando como suscripcion', async () => {
+      const tenantId = await comercio({ conClave: false })
+
+      await mongoose.connection
+        .collection('tenants')
+        .updateOne(
+          { _id: new mongoose.Types.ObjectId(tenantId) },
+          { $set: { subscriptionStatus: 'cancelled' } },
+        )
+      await invalidateTenantAiProfile(tenantId)
+      await interruptor(1)
+
+      expect((await reservar(tenantId, AI_METRICS.AGENT_MESSAGES)).reason).toBe(
+        DENY_REASONS.SUBSCRIPTION,
+      )
+    })
+
+    test('dice que es temporal y no manda a subir de plan', () => {
+      expect(buildBudgetDenialMessage({ reason: DENY_REASONS.PLATFORM_DISABLED })).toMatch(
+        /pausado temporalmente/i,
+      )
+      expect(getAiDenialStatus(DENY_REASONS.PLATFORM_DISABLED)).toBe(503)
+      expect(getAiDenialStatus(DENY_REASONS.PLATFORM_BUDGET)).toBe(503)
+      expect(getAiDenialStatus(DENY_REASONS.METRIC_LIMIT)).toBe(402)
+      expect(getAiDenialStatus(DENY_REASONS.SUBSCRIPTION)).toBe(403)
+    })
+
+    test('las rutas que reservan usan ese mismo codigo', () => {
+      // Respondian 402 a cualquier rechazo, y eso manda a subir de plan.
+      for (const ruta of ['imageAiCtrl', 'socialPromotionCtrl']) {
+        const fuente = readFileSync(new URL(`../controller/${ruta}.js`, import.meta.url), 'utf8')
+
+        expect(fuente).toMatch(/status\(getAiDenialStatus\(reservation\.reason\)\)/)
+        expect(fuente).not.toMatch(/\? 403 : 402/)
+      }
+    })
+  })
 })
 
 describe('el freno automatico', () => {
@@ -1429,12 +1524,27 @@ describe('el freno automatico', () => {
     expect(getPlatformBudgetSource()).toBe('auto')
   })
 
-  test('cero en el panel sigue siendo apagar la IA', async () => {
+  test('un cero guardado en el panel no anula el freno automatico', async () => {
+    // UNLIMITED vale 0: este cero dejaba a la plataforma sin freno.
     setPlatformCommitmentSnapshot(COMPROMETIDO)
 
+    await maximo(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET, 0)
     await maximo(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET, 0)
 
-    expect(getPlatformMonthlyUsdBudget()).toBe(0)
+    expect(getPlatformMonthlyTokenBudget()).toBe(125_000_000)
+    expect(getPlatformMonthlyUsdBudget()).toBeCloseTo(COMPROMETIDO.usd * 1.25)
+    expect(getPlatformBudgetSource()).toBe('auto')
+    expect(getPlatformUsdBudgetSource()).toBe('auto')
+    expect(getPlatformBrakeOverrides()).toEqual({ tokens: null, usd: null })
+  })
+
+  test('sin suma, un cero guardado deja el valor configurado', async () => {
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '200000000'
+
+    await maximo(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET, 0)
+
+    expect(getPlatformMonthlyTokenBudget()).toBe(200_000_000)
+    expect(getPlatformBudgetSource()).toBe('env')
   })
 
   test('sin suma todavia, sigue el valor configurado', () => {
@@ -1443,7 +1553,7 @@ describe('el freno automatico', () => {
     expect(getPlatformMonthlyTokenBudget()).toBe(200_000_000)
   })
 
-  test('sin comercios no apaga la IA del primero que llegue', () => {
+  test('sin comercios sigue el valor configurado', () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '200000000'
     setPlatformCommitmentSnapshot({ tokens: 0, usd: 0 })
 

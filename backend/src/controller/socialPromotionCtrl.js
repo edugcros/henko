@@ -12,6 +12,7 @@ import {
   AI_METRICS,
   AI_PROVIDERS,
   buildBudgetDenialMessage,
+  getAiDenialStatus,
   recordAiConsumption,
   refundAiBudget,
   reserveAiBudget,
@@ -56,7 +57,7 @@ export const generateProductSocialContent = expressAsyncHandler(async (req, res)
   })
 
   if (!reservation.allowed) {
-    return res.status(reservation.reason === 'subscription_inactive' ? 403 : 402).json({
+    return res.status(getAiDenialStatus(reservation.reason)).json({
       success: false,
       code: 'AI_ENTITLEMENT_DENIED',
       reason: reservation.reason,

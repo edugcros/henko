@@ -840,8 +840,8 @@ const getBrakeMargin = () => Math.max(1, readEnvNumber('AI_BRAKE_MARGIN') ?? 1.2
  * como respaldo para cuando la suma no se pudo hacer: sin esto, el freno viejo de
  * Render seguiría cortando aunque el automático haya subido.
  *
- * Sin comercios no hay nada comprometido, y un freno en cero apagaría la IA del primero
- * que se suscriba: en ese caso se sigue con el valor manual.
+ * Sin comercios no hay nada comprometido, y el automático daría cero, que para un freno
+ * significa sin límite: en ese caso se sigue con el valor manual.
  */
 const resolveBrake = (field, override, fallback) => {
   const comprometido = Number(commitmentSnapshot?.[field]) || 0
@@ -852,6 +852,20 @@ const resolveBrake = (field, override, fallback) => {
 
   return override !== null ? Math.min(override, automatico) : automatico
 }
+
+/**
+ * El máximo a mano, o null si no hay.
+ *
+ * Cero no es un máximo. UNLIMITED vale 0, así que un override en cero ganaba el mínimo
+ * contra el automático y dejaba a la plataforma sin ningún freno, justo lo contrario de
+ * lo que parece. El panel ya no lo acepta, y esto cubre las filas que quedaron guardadas.
+ * Para apagar la IA está isPlatformAiDisabled.
+ */
+const readManualBrake = value => (Number.isFinite(value) && value > 0 ? value : null)
+
+/** El interruptor general. Corta aparte de los frenos, y también con clave propia. */
+export const isPlatformAiDisabled = () =>
+  Number(getPlatformAiOverride(PLATFORM_AI_SETTINGS.AI_DISABLED)) > 0
 
 export const getPlatformMonthlyTokenBudget = () => {
   // El override del panel gana sobre la variable de entorno. La variable no
@@ -868,7 +882,7 @@ export const getPlatformMonthlyTokenBudget = () => {
   return Math.floor(
     resolveBrake(
       'tokens',
-      override !== null && Number.isFinite(override) ? override : null,
+      readManualBrake(override),
       budget === null ? UNLIMITED : budget,
     ),
   )
@@ -905,7 +919,7 @@ export const getPlatformMonthlyUsdBudget = () => {
 
   return resolveBrake(
     'usd',
-    override !== null && Number.isFinite(override) ? override : null,
+    readManualBrake(override),
     budget === null ? UNLIMITED : budget,
   )
 }
@@ -957,7 +971,7 @@ export const getEstimatedCostUsd = metric => {
 // Cuando hay automático, el panel solo figura si es el que está mandando.
 const brakeSource = (field, override) => {
   const comprometido = Number(commitmentSnapshot?.[field]) || 0
-  const manual = override !== null && Number.isFinite(override) ? override : null
+  const manual = readManualBrake(override)
 
   if (comprometido <= 0) return null
   return manual !== null && manual < comprometido * getBrakeMargin() ? 'panel' : 'auto'
@@ -969,7 +983,7 @@ export const getPlatformUsdBudgetSource = () => {
   const calculado = brakeSource('usd', override)
 
   if (calculado) return calculado
-  if (override !== null && Number.isFinite(override)) return 'panel'
+  if (readManualBrake(override) !== null) return 'panel'
   return readEnvNumber('AI_PLATFORM_MONTHLY_USD_BUDGET') === null ? 'none' : 'env'
 }
 
@@ -979,7 +993,7 @@ export const getPlatformBudgetSource = () => {
   const calculado = brakeSource('tokens', override)
 
   if (calculado) return calculado
-  if (override !== null && Number.isFinite(override)) return 'panel'
+  if (readManualBrake(override) !== null) return 'panel'
   return readEnvNumber('AI_PLATFORM_MONTHLY_TOKEN_BUDGET') === null ? 'none' : 'env'
 }
 
@@ -1002,10 +1016,7 @@ export const getPlatformBudgetSource = () => {
  */
 /** Los máximos cargados a mano, para mostrarlos al editarlos. Null = sin máximo. */
 export const getPlatformBrakeOverrides = () => {
-  const leer = setting => {
-    const valor = getPlatformAiOverride(setting)
-    return valor !== null && Number.isFinite(valor) ? valor : null
-  }
+  const leer = setting => readManualBrake(getPlatformAiOverride(setting))
 
   return {
     tokens: leer(PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET),

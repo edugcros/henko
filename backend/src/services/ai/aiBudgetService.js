@@ -33,6 +33,7 @@ import {
   getPlanLimit,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
+  isPlatformAiDisabled,
   getEstimatedCostUsd,
   getSharedKeyTenantCap,
   getSharedKeyTenantUsdCap,
@@ -742,6 +743,8 @@ export const DENY_REASONS = Object.freeze({
   // Se terminó la bolsa de créditos del plan. Se repone el mes que viene.
   CREDITS: 'ai_credits_exhausted',
   PLATFORM_BUDGET: 'platform_budget_exhausted',
+  // El dueño de la plataforma apagó la IA para todos. Lo levanta una persona.
+  PLATFORM_DISABLED: 'platform_ai_disabled',
   // ESTE comercio se gastó su techo en plata. Distinto de PLATFORM_BUDGET, que
   // es la plataforma entera: acá los demás comercios siguen funcionando, y es
   // justamente el punto. Antes el único techo en plata era el global, así que
@@ -758,6 +761,27 @@ export const DENY_REASONS = Object.freeze({
   // temporal: se levanta solo cuando baja el consumo o arranca el mes.
   DEGRADED: 'service_degraded',
 })
+
+/**
+ * Código HTTP por motivo de rechazo.
+ *
+ * 402 es "pagá más y seguís", así que solo corresponde al límite de plan: cuando el
+ * servicio está cortado, el comercio no tiene nada que comprar. 403 es un permiso
+ * revocado, y el frontend lo distingue para ofrecer cobranza.
+ */
+export const getAiDenialStatus = reason => {
+  if (reason === DENY_REASONS.SUBSCRIPTION) return 403
+
+  if (
+    reason === DENY_REASONS.NO_API_KEY ||
+    reason === DENY_REASONS.PLATFORM_BUDGET ||
+    reason === DENY_REASONS.PLATFORM_DISABLED
+  ) {
+    return 503
+  }
+
+  return 402
+}
 
 /**
  * Mensaje accionable por motivo de rechazo.
@@ -779,6 +803,9 @@ export const buildBudgetDenialMessage = (result = {}) => {
 
     case DENY_REASONS.PLATFORM_BUDGET:
       return 'El servicio de IA está temporalmente pausado por mantenimiento de capacidad. Volvé a intentar más tarde.'
+
+    case DENY_REASONS.PLATFORM_DISABLED:
+      return 'El servicio de IA está pausado temporalmente. El resto de la tienda sigue funcionando normalmente. Volvé a intentar más tarde.'
 
     // Este caso faltaba y caía en el default, que dice "se alcanzó el límite
     // mensual de tu plan". Era falso y además mandaba al comercio a la acción
@@ -2030,6 +2057,19 @@ export const reserveAiBudget = async ({
       reason: DENY_REASONS.TENANT_SUSPENDED,
       // El motivo va al mensaje que ve el comercio, no solo al log.
       detail: tenantPolicy.suspendedReason || undefined,
+      profile: aiProfile,
+    })
+  }
+
+  // El interruptor general, en el mismo lugar y por el mismo motivo: va antes del
+  // bloque de BYOK porque "apagar la IA" tiene que apagarla, también a quien usa su
+  // propia clave.
+  if (isPlatformAiDisabled()) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.PLATFORM_DISABLED,
       profile: aiProfile,
     })
   }
@@ -3491,6 +3531,7 @@ const anunciarFrenos = (log = logger) => {
   const usd = getPlatformMonthlyUsdBudget()
 
   log.info?.('[AI BUDGET] Frenos de plataforma', {
+    ia: isPlatformAiDisabled() ? 'APAGADA' : 'prendida',
     tokenBudget: tokens === UNLIMITED ? 'sin techo' : tokens,
     usdBudget: usd === UNLIMITED ? 'sin techo' : usd,
     // Con los dos sin techo no hay disyuntor. Es una decisión válida, y
@@ -3565,6 +3606,16 @@ export const checkAiEntitlement = async ({ tenantId, metric, profile = null }) =
       used: 0,
       reason: DENY_REASONS.TENANT_SUSPENDED,
       detail: tenantPolicy.suspendedReason || undefined,
+      profile: aiProfile,
+    })
+  }
+
+  if (isPlatformAiDisabled()) {
+    return buildDeniedResult({
+      metric: normalizedMetric,
+      limit,
+      used: 0,
+      reason: DENY_REASONS.PLATFORM_DISABLED,
       profile: aiProfile,
     })
   }

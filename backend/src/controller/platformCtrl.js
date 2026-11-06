@@ -24,6 +24,7 @@ import {
 import {
   AI_PLANS,
   getPlanCatalog,
+  isPlatformAiDisabled,
   normalizePlan,
   getUsdToArsRate,
 } from '../services/ai/aiPlanPolicy.js'
@@ -139,9 +140,14 @@ export const getTenantAiSpendDetail = expressAsyncHandler(async (req, res) => {
  *
  * CADA CAMPO ES OPCIONAL, Y `null` QUITA EL OVERRIDE
  *
- * Mandar solo `usd` mueve solo ese. `usd: null` devuelve el mando a la
- * variable de entorno: sin eso, poner un valor aca seria irreversible sin un
+ * Mandar solo `usd` mueve solo ese. `usd: null` quita el maximo y deja mandar al
+ * freno automatico: sin eso, poner un valor aca seria irreversible sin un
  * deploy, que es exactamente lo que este endpoint vino a evitar.
+ *
+ * CERO NO ES UN FRENO
+ *
+ * Se rechaza: UNLIMITED vale 0, asi que un freno en cero no apaga la IA, deja a la
+ * plataforma sin limite. Para apagarla esta updateAiSwitch.
  */
 export const updateAiBudget = expressAsyncHandler(async (req, res) => {
   const { tokens, usd, perTenantShare, reason } = req.body || {}
@@ -163,26 +169,25 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
    *
    * El reparto es una FRACCION y se acota entre 1% y 100%: en cero deja a
    * todos los comercios sin nada, y arriba de uno permite que uno solo se
-   * lleve mas que el techo entero. Los dos techos son cantidades y solo se
-   * exige que no sean negativas — un techo en cero es una decision valida
-   * (apagar la IA) y distinta de no tener techo.
+   * lleve mas que el techo entero. Los dos techos son cantidades y tienen que
+   * ser mayores a cero despues de normalizarlos: 0,4 tokens tambien seria cero.
    */
   const CAMPOS = [
     {
       valor: tokens,
       setting: PLATFORM_AI_SETTINGS.MONTHLY_TOKEN_BUDGET,
       normalizar: v => Math.floor(v),
-      valido: v => Number.isFinite(v) && v >= 0,
+      valido: v => Number.isFinite(v) && v > 0,
       error:
-        'El techo en tokens debe ser un número no negativo, o null para volver a la variable de entorno.',
+        'El freno en tokens tiene que ser mayor a cero. Para no poner un máximo, dejalo vacío. Para apagar la IA, usá el interruptor.',
     },
     {
       valor: usd,
       setting: PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET,
       normalizar: v => Math.round(v * 100) / 100,
-      valido: v => Number.isFinite(v) && v >= 0,
+      valido: v => Number.isFinite(v) && v > 0,
       error:
-        'El techo en dólares debe ser un número no negativo, o null para volver a la variable de entorno.',
+        'El freno en dólares tiene que ser mayor a cero. Para no poner un máximo, dejalo vacío. Para apagar la IA, usá el interruptor.',
     },
     {
       valor: perTenantShare,
@@ -206,8 +211,7 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
   for (const campo of cambios) {
     if (campo.valor === null) continue
 
-    const numero = Number(campo.valor)
-    if (!campo.valido(numero)) {
+    if (!campo.valido(campo.normalizar(Number(campo.valor)))) {
       return res.status(400).json({ success: false, message: campo.error })
     }
   }
@@ -228,6 +232,52 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
   // Se devuelve el reporte entero y no un ok: la pantalla tiene que mostrar el
   // efecto del cambio —el porcentaje nuevo, el corte levantado— sin una segunda
   // vuelta que pueda fallar y dejarla mostrando lo viejo.
+  const report = await getPlatformSpendSnapshot()
+
+  return res.status(200).json({ success: true, data: report })
+})
+
+/**
+ * Apaga o prende la IA de toda la plataforma.
+ *
+ * Corta también a quien usa su propia clave: es la palanca para cuando algo anda mal,
+ * no para ahorrar. En otra instancia tarda hasta 30 segundos, lo que dura su caché de
+ * ajustes. Lo que ya estaba en curso termina.
+ */
+export const updateAiSwitch = expressAsyncHandler(async (req, res) => {
+  const { disabled, reason } = req.body || {}
+  const cleanReason = String(reason || '').trim()
+
+  if (typeof disabled !== 'boolean') {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá si la IA se apaga o se prende.',
+    })
+  }
+
+  if (!cleanReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Indicá por qué se apaga o se prende la IA.',
+    })
+  }
+
+  // Un doble clic no deja dos filas en el historial.
+  if (disabled !== isPlatformAiDisabled()) {
+    await setPlatformAiOverride({
+      setting: PLATFORM_AI_SETTINGS.AI_DISABLED,
+      value: disabled ? 1 : null,
+      changedByEmail: req.user?.email,
+      changedByUserId: req.user?._id || null,
+      reason: cleanReason.slice(0, 500),
+    })
+
+    logger.warn(`[PLATAFORMA] IA ${disabled ? 'APAGADA' : 'prendida'} para todos los comercios`, {
+      changedByEmail: req.user?.email,
+      reason: cleanReason.slice(0, 500),
+    })
+  }
+
   const report = await getPlatformSpendSnapshot()
 
   return res.status(200).json({ success: true, data: report })

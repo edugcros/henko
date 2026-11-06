@@ -15,23 +15,11 @@ import asyncHandler from 'express-async-handler'
 import {
   buildBudgetDenialMessage,
   checkAiEntitlement,
-  DENY_REASONS,
+  getAiDenialStatus,
 } from '../services/ai/aiBudgetService.js'
 
 const getTenantId = req =>
   String(req.tenantId || req.user?.tenantId || req.tenant?._id || '').trim()
-
-/**
- * 402 vs 403: el límite de plan es "pagá más y seguís" (Payment Required),
- * mientras que la suscripción caída es un permiso revocado. El frontend los
- * distingue para ofrecer upgrade en un caso y cobranza en el otro.
- */
-const getStatusCode = reason => {
-  if (reason === DENY_REASONS.SUBSCRIPTION) return 403
-  if (reason === DENY_REASONS.NO_API_KEY) return 503
-  if (reason === DENY_REASONS.PLATFORM_BUDGET) return 503
-  return 402
-}
 
 export const requireAiEntitlement = metric =>
   asyncHandler(async (req, res, next) => {
@@ -53,7 +41,7 @@ export const requireAiEntitlement = metric =>
       return next()
     }
 
-    return res.status(getStatusCode(result.reason)).json({
+    return res.status(getAiDenialStatus(result.reason)).json({
       success: false,
       code: 'AI_ENTITLEMENT_DENIED',
       reason: result.reason,

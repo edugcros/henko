@@ -36,13 +36,13 @@ const { default: AiConsumptionLedger, LEDGER_EVENT } =
   await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
 const { getPlatformMarginReport } = await import('../services/platform/platformMarginService.js')
-const { updateTenantStatus, getUsdRate, deleteTenant } = await import(
-  '../controller/platformCtrl.js',
-)
+const { updateTenantStatus, getUsdRate, deleteTenant, updateAiBudget, updateAiSwitch } =
+  await import('../controller/platformCtrl.js')
 const { default: PlatformAiSetting, PLATFORM_AI_SETTINGS } = await import(
   '../models/platformAiSettingModel.js',
 )
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
+const { refreshPlatformAiSettings } = await import('../services/ai/platformAiSettingService.js')
 
 const PERIODO = getCurrentPeriod()
 
@@ -585,5 +585,108 @@ describe('comercio pausado y sin consumo', () => {
     // Sin esto la pantalla le ofrecia acciones a un comercio dado de baja.
     expect(fila.tenantStatus).toBe('deleted')
     expect(fila.tenantGone).toBe(false)
+  })
+})
+
+describe('freno e interruptor de la IA', () => {
+  const llamar = async (ctrl, body) => {
+    const res = {
+      statusCode: 0,
+      body: null,
+      status(code) {
+        this.statusCode = code
+        return this
+      },
+      json(payload) {
+        this.body = payload
+        return this
+      },
+    }
+
+    await ctrl({ body, user: { email: 'dueno@henko.test' } }, res, err => {
+      if (err) throw err
+    })
+
+    return res
+  }
+
+  const filas = setting => PlatformAiSetting.find({ setting }).sort({ createdAt: 1 }).lean()
+
+  beforeEach(async () => {
+    await PlatformAiSetting.deleteMany({})
+    await refreshPlatformAiSettings()
+  })
+
+  afterEach(async () => {
+    await PlatformAiSetting.deleteMany({})
+    await refreshPlatformAiSettings()
+  })
+
+  test.each([
+    ['tokens', 0],
+    ['tokens', '00000'],
+    ['tokens', 0.4],
+    ['tokens', ''],
+    ['usd', 0],
+    ['usd', 0.001],
+  ])('el freno rechaza %s en %s', async (campo, valor) => {
+    const res = await llamar(updateAiBudget, { [campo]: valor, reason: 'prueba' })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.message).toMatch(/mayor a cero/)
+    expect(await PlatformAiSetting.countDocuments({})).toBe(0)
+  })
+
+  test('el freno sigue aceptando un maximo y null', async () => {
+    expect((await llamar(updateAiBudget, { usd: 50, reason: 'prueba' })).statusCode).toBe(200)
+    expect((await llamar(updateAiBudget, { usd: null, reason: 'prueba' })).statusCode).toBe(200)
+
+    expect((await filas(PLATFORM_AI_SETTINGS.MONTHLY_USD_BUDGET)).map(f => f.value)).toEqual([
+      50,
+      null,
+    ])
+  })
+
+  test('apagar la IA queda registrado y lo informa el reporte', async () => {
+    const res = await llamar(updateAiSwitch, { disabled: true, reason: 'fuga de la clave' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.data.aiSwitch).toMatchObject({
+      disabled: true,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'fuga de la clave',
+    })
+    expect(res.body.data.aiSwitch.changedAt).toBeTruthy()
+    expect((await filas(PLATFORM_AI_SETTINGS.AI_DISABLED)).map(f => f.value)).toEqual([1])
+  })
+
+  test('prenderla deja el ajuste sin valor', async () => {
+    await llamar(updateAiSwitch, { disabled: true, reason: 'prueba' })
+
+    const res = await llamar(updateAiSwitch, { disabled: false, reason: 'resuelto' })
+
+    expect(res.body.data.aiSwitch.disabled).toBe(false)
+    expect((await filas(PLATFORM_AI_SETTINGS.AI_DISABLED)).map(f => f.value)).toEqual([1, null])
+  })
+
+  test('un doble clic no deja dos filas', async () => {
+    await llamar(updateAiSwitch, { disabled: true, reason: 'prueba' })
+    await llamar(updateAiSwitch, { disabled: true, reason: 'prueba' })
+
+    expect(await filas(PLATFORM_AI_SETTINGS.AI_DISABLED)).toHaveLength(1)
+  })
+
+  test('sin motivo no cambia nada', async () => {
+    const res = await llamar(updateAiSwitch, { disabled: true, reason: '  ' })
+
+    expect(res.statusCode).toBe(400)
+    expect(await PlatformAiSetting.countDocuments({})).toBe(0)
+  })
+
+  test.each([['true'], [1], [null], [undefined]])('rechaza %s como estado', async disabled => {
+    const res = await llamar(updateAiSwitch, { disabled, reason: 'prueba' })
+
+    expect(res.statusCode).toBe(400)
+    expect(await PlatformAiSetting.countDocuments({})).toBe(0)
   })
 })

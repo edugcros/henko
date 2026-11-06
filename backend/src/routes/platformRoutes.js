@@ -15,6 +15,7 @@ import {
   getAiSpendReport,
   getTenantAiSpendDetail,
   updateAiBudget,
+  updateAiSwitch,
   updateTenantAiPolicy,
   getPlanPrices,
   updatePlanPrice,
@@ -43,6 +44,10 @@ router.get('/ai-spend/tenant/:tenantId', getTenantAiSpendDetail)
 // Mueve un límite de seguridad, así que queda registrada con autor y motivo
 // (ver models/platformAiSettingModel.js).
 router.put('/ai-spend/budget', updateAiBudget)
+
+// Apaga o prende la IA de toda la plataforma. Misma clase de escritura, separada
+// del freno porque es otra decisión: un freno limita, esto corta.
+router.put('/ai-spend/switch', updateAiSwitch)
 
 // Lo mismo pero para UN comercio: acotarlo o apagarlo sin tocar a los demás.
 // El segmento fijo 'tenant' antes del parámetro es lo que mantiene el espacio
