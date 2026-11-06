@@ -556,6 +556,10 @@ const tenantSchema = new Schema(
         reversalReason: { type: String, default: null, trim: true },
         reversedAt: { type: Date, default: null },
 
+        // En qué estado estaba al pausarse: reactivar lo devuelve ahí. Sin esto, una
+        // pausa le borraría la deuda a quien ya venía con el pago pendiente.
+        pausedFromStatus: { type: String, default: null, trim: true },
+
         subscribedAt: { type: Date, default: null },
         updatedAt: { type: Date, default: null },
       },

@@ -72,6 +72,7 @@ const STATUS = {
   active: { label: 'Activa', tone: 'success' },
   trialing: { label: 'En prueba', tone: 'info' },
   past_due: { label: 'Pendiente de pago', tone: 'warning' },
+  paused: { label: 'Pausada', tone: 'warning' },
   cancelled: { label: 'Cancelada', tone: 'error' },
   expired: { label: 'Expirada', tone: 'default' },
 }
@@ -607,10 +608,15 @@ const SubscriptionManagementPage = () => {
   }
 
   const status = subscription.subscriptionStatus
-  const statusConfig = STATUS[status] || { label: 'Sin estado', tone: 'default' }
   const mercadoPago = subscription.mercadoPago || null
   const mode = planChangeMode(subscription)
   const isBilling = BILLING_STATUSES.includes(status)
+  // Una pausa queda en past_due, pero no hay cobro pendiente ni reintento.
+  const isPaused = isBilling && mercadoPago?.status === 'paused'
+  const statusConfig = STATUS[isPaused ? 'paused' : status] || {
+    label: 'Sin estado',
+    tone: 'default',
+  }
   const planName = PLAN_PRESENTATION[subscription.plan]?.name || 'Desconocido'
   const currentPrice = catalog[subscription.plan]?.price ?? null
 
@@ -631,7 +637,9 @@ const SubscriptionManagementPage = () => {
   const lastPaid = invoices.find(invoice => invoiceStatus(invoice.status) === INVOICE_STATUS.paid)
 
   let dateFact = null
-  if (isBilling) {
+  if (isPaused) {
+    dateFact = { label: 'Próximo pago', value: 'Sin cobro programado' }
+  } else if (isBilling) {
     dateFact = {
       label: 'Próximo pago',
       value:
@@ -748,7 +756,14 @@ const SubscriptionManagementPage = () => {
         </Alert>
       )}
 
-      {status === 'past_due' && (
+      {isPaused && (
+        <Alert severity="warning">
+          Tu suscripción está pausada en Mercado Pago, así que no va a haber próximos cobros. Para
+          conservar tu plan, reactivala en tu cuenta de Mercado Pago, en Suscripciones.
+        </Alert>
+      )}
+
+      {status === 'past_due' && !isPaused && (
         <Alert severity="warning">
           {REVERSAL_NOTICES[mercadoPago?.reversalReason]
             ? `${REVERSAL_NOTICES[mercadoPago.reversalReason]}, así que el período quedó pendiente de pago. Se regulariza con el próximo cobro aprobado.`

@@ -79,7 +79,7 @@ jest.unstable_mockModule('../services/subscriptionPaymentService.js', () => ({
   fetchPreapproval: mockFetchPreapproval,
   fetchPlatformPayment: mockFetchPayment,
   mapMercadoPagoSubscriptionStatus: estado =>
-    ({ authorized: 'active', cancelled: 'cancelled' })[estado] || 'pending',
+    ({ authorized: 'active', cancelled: 'cancelled', paused: 'paused' })[estado] || 'pending',
   readProviderBillingDates: () => ({
     nextBillingAt: null,
     currentPeriodEnd: null,
@@ -799,6 +799,48 @@ describe('webhook · el aviso al comercio cuando un cobro se revierte', () => {
   })
 
   test('un correo caído no pide el reintento: la reversión ya quedó', async () => {
+    mockSendEmail.mockRejectedValue(new Error('sin proveedor'))
+
+    expect((await correr(aviso)).statusCode).toBe(200)
+  })
+})
+
+describe('webhook · el aviso al comercio cuando pausa la suscripción', () => {
+  const aviso = {
+    ...pedido(),
+    body: { type: 'subscription_preapproval', data: { id: 'mp-sub-1' } },
+  }
+
+  beforeEach(() => {
+    mockTenantFindOne.mockResolvedValue({ ...TENANT, subscriptionStatus: 'active' })
+    mockResolveTarget.mockResolvedValue({
+      preapprovalId: 'mp-sub-1',
+      preapproval: { id: 'mp-sub-1', status: 'paused' },
+    })
+    mockTenantUpdate.mockResolvedValue({
+      ...TENANT,
+      integrations: { subscriptionMercadoPago: { payerEmail: 'duenio@comercio.com' } },
+    })
+  })
+
+  test('el comercio se entera de cómo reactivarla', async () => {
+    await correr(aviso)
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1)
+    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+      to: 'duenio@comercio.com',
+      template: 'subscription-paused',
+    })
+  })
+
+  test('si ya se había aplicado, no se manda otro correo', async () => {
+    mockTenantUpdate.mockResolvedValue(null)
+
+    expect((await correr(aviso)).statusCode).toBe(200)
+    expect(mockSendEmail).not.toHaveBeenCalled()
+  })
+
+  test('un correo caído no pide el reintento: la pausa ya quedó', async () => {
     mockSendEmail.mockRejectedValue(new Error('sin proveedor'))
 
     expect((await correr(aviso)).statusCode).toBe(200)

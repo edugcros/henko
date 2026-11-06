@@ -526,10 +526,109 @@ const handlePreapprovalChange = async (tenant, preapproval) => {
     return
   }
 
+  if (estado === 'paused' && cobrando) {
+    await handleSubscriptionPaused(tenant, preapproval)
+    return
+  }
+
+  const guardada = tenant.integrations?.subscriptionMercadoPago || {}
+
+  if (estado === 'active' && guardada.status === 'paused') {
+    await handleSubscriptionResumed(tenant, preapproval)
+    return
+  }
+
   const fechas = readProviderBillingDates(preapproval)
 
   await Tenant.findByIdAndUpdate(tenant._id, {
     'integrations.subscriptionMercadoPago.status': preapproval.status,
+    'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+    ...(fechas.nextBillingAt
+      ? {
+          'integrations.subscriptionMercadoPago.nextBillingAt': fechas.nextBillingAt,
+          'integrations.subscriptionMercadoPago.currentPeriodEnd': fechas.currentPeriodEnd,
+        }
+      : {}),
+  })
+}
+
+/**
+ * El comercio pausó la suscripción en Mercado Pago.
+ *
+ * Una suscripción pausada no cobra, y ningún aviso más iba a llegar: el comercio
+ * quedaba activo para siempre, con acceso completo y sin pagar.
+ *
+ * Lo pagado se respeta: la mora arranca cuando termina el período, y recién ahí corre
+ * la gracia. Si ya debía, su fecha no se mueve. Sin fecha del proveedor, o con una
+ * vencida, arranca hoy.
+ *
+ * El filtro por el estado crudo vuelve idempotente la escritura: cada aviso de una
+ * suscripción pausada trae lo mismo, y solo el primero avisa al comercio.
+ */
+const handleSubscriptionPaused = async (tenant, preapproval) => {
+  const guardada = tenant.integrations?.subscriptionMercadoPago || {}
+  const fechas = readProviderBillingDates(preapproval)
+  const pagadoHasta = fechas.nextBillingAt || guardada.nextBillingAt || null
+  const finDelPeriodo = new Date(Math.max(Date.now(), new Date(pagadoHasta || 0).getTime()))
+
+  const updated = await Tenant.findOneAndUpdate(
+    {
+      _id: tenant._id,
+      subscriptionStatus: { $in: ESTADOS_DE_COBRO },
+      'integrations.subscriptionMercadoPago.status': { $ne: 'paused' },
+    },
+    {
+      subscriptionStatus: 'past_due',
+      subscriptionPastDueAt: tenant.subscriptionPastDueAt || finDelPeriodo,
+      'integrations.subscriptionMercadoPago.status': 'paused',
+      'integrations.subscriptionMercadoPago.pausedFromStatus': tenant.subscriptionStatus,
+      'integrations.subscriptionMercadoPago.updatedAt': new Date(),
+    },
+    { new: true },
+  )
+
+  if (!updated) return
+
+  logger.warn('Suscripción pausada en Mercado Pago', {
+    tenantId: String(tenant._id),
+    pagadoHasta,
+  })
+
+  try {
+    const payerEmail = updated.integrations?.subscriptionMercadoPago?.payerEmail
+
+    if (payerEmail) {
+      await sendTemplateEmail({
+        to: payerEmail,
+        template: 'subscription-paused',
+        data: {
+          tenantName: updated.name,
+          paidUntil: finDelPeriodo,
+          actionUrl: `${env.adminUrl}/admin/mi-suscripcion`,
+        },
+      })
+    }
+  } catch (emailError) {
+    logger.warn('Error enviando email de suscripción pausada:', emailError)
+  }
+}
+
+/**
+ * La suscripción pausada se reactivó: el comercio vuelve a como estaba.
+ *
+ * Quien estaba al día queda al día, y quien debía sigue debiendo: una suscripción
+ * autorizada no dice que un cobro haya salido.
+ */
+const handleSubscriptionResumed = async (tenant, preapproval) => {
+  const guardada = tenant.integrations?.subscriptionMercadoPago || {}
+  const fechas = readProviderBillingDates(preapproval)
+
+  await Tenant.findByIdAndUpdate(tenant._id, {
+    ...(guardada.pausedFromStatus === 'active'
+      ? { subscriptionStatus: 'active', subscriptionPastDueAt: null }
+      : {}),
+    'integrations.subscriptionMercadoPago.status': preapproval.status,
+    'integrations.subscriptionMercadoPago.pausedFromStatus': null,
     'integrations.subscriptionMercadoPago.updatedAt': new Date(),
     ...(fechas.nextBillingAt
       ? {
@@ -574,15 +673,24 @@ const handlePaymentAuthorized = async (tenant, data) => {
   // una inventada, que se lee igual de segura y no lo es.
   const ciclo = readProviderBillingDates(data)
 
+  // El aviso de un cobro de antes de la pausa puede llegar después. Lo dejaba activo
+  // con la suscripción pausada: nadie más le iba a cobrar. Lo que devuelve al día es
+  // reactivarla.
+  const pausada = tenant.integrations?.subscriptionMercadoPago?.status === 'paused'
+
   const updated = await Tenant.findByIdAndUpdate(
     tenant._id,
     {
-      subscriptionStatus: 'active',
-      subscriptionPastDueAt: null,
-      // Mismo motivo que en subscriptionCtrl: quien pasa a pagar ya no está en
-      // prueba, y esa fecha la exponen los dos controladores al panel. Dejarla
-      // deja un "tu prueba vence el …" encima de un comercio que paga.
-      trialEndsAt: null,
+      ...(pausada
+        ? {}
+        : {
+            subscriptionStatus: 'active',
+            subscriptionPastDueAt: null,
+            // Mismo motivo que en subscriptionCtrl: quien pasa a pagar ya no está en
+            // prueba, y esa fecha la exponen los dos controladores al panel. Dejarla
+            // deja un "tu prueba vence el …" encima de un comercio que paga.
+            trialEndsAt: null,
+          }),
       'integrations.subscriptionMercadoPago.status': data.status,
       'integrations.subscriptionMercadoPago.lastPaymentAt': new Date(),
       'integrations.subscriptionMercadoPago.updatedAt': new Date(),

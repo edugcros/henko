@@ -1784,6 +1784,15 @@ const SUBSCRIPTION_EMAIL_TEMPLATES = {
     ctaLabel: 'Revisar mi suscripción',
   }),
 
+  'subscription-paused': data => ({
+    subject: 'Tu suscripción está pausada',
+    headline: 'Suscripción pausada',
+    intro: `La suscripción de ${sanitizeString(data.tenantName) || 'tu comercio'} está pausada en Mercado Pago, así que no va a haber próximos cobros. Para conservar tu plan, reactivala en tu cuenta de Mercado Pago, en Suscripciones.`,
+    rows: [['Pagado hasta', formatDate(data.paidUntil)]],
+    ctaUrl: sanitizeString(data.actionUrl),
+    ctaLabel: 'Revisar mi suscripción',
+  }),
+
   'subscription-cancelled': data => ({
     subject: 'Tu suscripción fue cancelada',
     headline: 'Suscripción cancelada',
