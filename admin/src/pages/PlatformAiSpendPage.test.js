@@ -1394,14 +1394,15 @@ describe('evolución del comercio', () => {
 describe('el plan, lo comprometido y el freno', () => {
   const COMPROMISO = {
     tenants: 2,
-    tokens: 25_440_000,
+    credits: 8000,
+    tokens: 60_000_000,
     usd: 106,
     byPlan: { starter: 2 },
     brakeBelowTokens: false,
     brakeBelowUsd: false,
   }
 
-  const conPlan = { ...CON_COMERCIOS.byTenant[0], planTokens: 100_000_000 }
+  const conPlan = { ...CON_COMERCIOS.byTenant[0], planCredits: 4000 }
 
   test('muestra lo que comprometen los planes', async () => {
     load({ commitment: COMPROMISO })
@@ -1426,7 +1427,7 @@ describe('el plan, lo comprometido y el freno', () => {
     },
   )
 
-  test('gobernar dice cuántos tokens le quedan de su plan', async () => {
+  test('gobernar dice cuántos créditos le quedan de su plan', async () => {
     const user = userEvent.setup()
     load({ byTenant: [conPlan] })
 
@@ -1438,7 +1439,7 @@ describe('el plan, lo comprometido y el freno', () => {
 
     await user.type(campo, '25')
 
-    expect(screen.getByText(/25% de su plan = 25\.000\.000 tokens/)).toBeInTheDocument()
+    expect(screen.getByText(/25% de su plan = 1\.000 créditos/)).toBeInTheDocument()
   })
 
   test('un cupo ya bajado se abre en porcentaje y no viaja si no cambió', async () => {

@@ -270,6 +270,53 @@ const getSeverity = (used, limit) => {
   return { level: 'ok', color: 'primary', label: 'En rango' }
 }
 
+/**
+ * La bolsa del mes. Va arriba porque es lo que limita: las barras de abajo dicen en qué
+ * se gastó, y lo que queda en cada función sale de acá.
+ */
+const CreditMeter = ({ credits }) => {
+  const used = Number(credits?.used || 0)
+  const limit = Number(credits?.limit || 0)
+  const severity = getSeverity(used, limit)
+  const percent = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0
+
+  return (
+    <Box>
+      <Stack
+        direction="row"
+        sx={{ justifyContent: 'space-between', alignItems: 'baseline', mb: 0.75 }}
+        spacing={1}
+      >
+        <Typography variant="body2" color="text.primary" sx={{ fontWeight: 600 }}>
+          Créditos de IA
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {`${formatNumber(used)} / ${formatNumber(limit)}`}
+        </Typography>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={percent}
+        color={severity.color}
+        aria-label={`Créditos de IA: ${percent}% usado`}
+        sx={{ height: 8, borderRadius: 4 }}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+        Una sola bolsa para todas las funciones. Te quedan {formatNumber(credits?.remaining)} este
+        mes.
+      </Typography>
+
+      {/* El checkout le prometió el número del plan: sin esto, un tope más bajo se lee
+          como un error de facturación. */}
+      {credits?.contracted > limit && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          Cupo ajustado por HENKO. Tu plan incluye {formatNumber(credits.contracted)}.
+        </Typography>
+      )}
+    </Box>
+  )
+}
+
 const MetricMeter = ({ metric, data }) => {
   const used = Number(data?.used || 0)
   const limit = Number(data?.limit || 0)
@@ -336,10 +383,10 @@ const MetricMeter = ({ metric, data }) => {
         </Typography>
       )}
 
-      {/* Mismo motivo: el checkout le prometió el número del plan. */}
-      {data?.contractedLimit > data?.planLimit && data?.planLimit > 0 && (
+      {data?.creditCost > 0 && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-          Cupo ajustado por HENKO. Tu plan incluye {formatNumber(data.contractedLimit)}.
+          Descuenta {formatNumber(data.creditCost)} {data.creditCost === 1 ? 'crédito' : 'créditos'}{' '}
+          de tu bolsa.
         </Typography>
       )}
     </Box>
@@ -569,6 +616,8 @@ const AiBudgetPanel = () => {
           para que puedas dimensionarlo, pero no tiene tope.
         </Alert>
       ) : null}
+
+      {!usingOwnKey && budget.credits && <CreditMeter credits={budget.credits} />}
 
       <Stack spacing={2.25}>
         {metrics.map(({ metric, data }) => (

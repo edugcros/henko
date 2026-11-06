@@ -39,14 +39,14 @@ export const PLAN_PRESENTATION = Object.freeze({
     icon: CrownOutlined,
     features: [
       'Productos ilimitados',
-      // «Cupos de IA ampliados» y no «Analizador de productos con IA».
+      // «Más créditos de IA» y no «Analizador de productos con IA».
       //
       // Esa línea decía que el análisis de productos era del plan Profesional, y no lo es:
       // los dos planes lo tienen, cada uno con su cupo mensual. Mostrada al lado de los
       // cupos, la pantalla de planes se contradecía a sí misma. Lo que SÍ distingue al
-      // Profesional es cuánto trae: casi el doble de cada función. Los números salen del
+      // Profesional es cuánto trae: más créditos en la misma bolsa. Los números salen del
       // catálogo.
-      'Cupos de IA ampliados',
+      'Más créditos de IA',
       'Múltiples administradores',
       'Reportes avanzados',
       'Soporte prioritario',
@@ -91,7 +91,7 @@ export const formatArs = (value, { sinPrecio = 'A definir' } = {}) => {
  * lo que el medidor aplica de verdad: escribirlos acá volvería a abrir la puerta a que la
  * pantalla diga una cifra y el cobro de cupo aplique otra. Acá solo está cómo se llama
  * cada cupo. Los tokens se omiten a propósito: a quien elige un plan le dicen «cuántos
- * análisis», no «cuántos millones de tokens».
+ * créditos», no «cuántos millones de tokens».
  */
 export const PLAN_QUOTA_LABELS = Object.freeze([
   ['vision', 'análisis de imágenes con IA'],
@@ -102,13 +102,45 @@ export const PLAN_QUOTA_LABELS = Object.freeze([
 
 export const formatCount = value => new Intl.NumberFormat('es-AR').format(Number(value) || 0)
 
-/** Los cupos de un plan, solo los que el catálogo trae con un valor mayor que cero. */
-export const getPlanQuotaLines = limits =>
-  PLAN_QUOTA_LABELS.filter(([key]) => Number(limits?.[key]) > 0).map(([key, label]) => ({
-    key,
-    label,
-    amount: Number(limits[key]),
-  }))
+// Lo que descuenta cada acción de la bolsa. El orden es el mismo de los cupos.
+const CREDIT_COST_LABELS = Object.freeze({
+  vision: 'por análisis de imagen',
+  agentMessages: 'por mensaje del asistente',
+  imageEdits: 'por fondo generado',
+  marketAnalyses: 'por análisis de mercado',
+})
+
+/**
+ * Lo que trae un plan: la bolsa de créditos y lo que descuenta cada acción.
+ *
+ * No se muestran cupos por función porque la bolsa es compartida: «1.333 análisis» y
+ * «4.000 mensajes» se leerían como una suma, y no se pueden tener los dos.
+ */
+export const getPlanQuotaLines = limits => {
+  const credits = Number(limits?.credits)
+
+  if (!(credits > 0)) {
+    return PLAN_QUOTA_LABELS.filter(([key]) => Number(limits?.[key]) > 0).map(([key, label]) => ({
+      key,
+      label,
+      amount: Number(limits[key]),
+    }))
+  }
+
+  const costos = PLAN_QUOTA_LABELS.filter(([key]) => Number(limits.creditCosts?.[key]) > 0).map(
+    ([key]) => {
+      const amount = Number(limits.creditCosts[key])
+
+      return {
+        key,
+        amount,
+        label: `${amount === 1 ? 'crédito' : 'créditos'} ${CREDIT_COST_LABELS[key]}`,
+      }
+    },
+  )
+
+  return [{ key: 'credits', amount: credits, label: 'créditos de IA por mes' }, ...costos]
+}
 
 /**
  * Días que le quedan a la prueba gratis, o null si no está en prueba o ya venció.

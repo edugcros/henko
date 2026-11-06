@@ -21,9 +21,12 @@
 import mongoose from 'mongoose'
 import AiConsumptionLedger, { LEDGER_EVENT } from '../../models/aiConsumptionLedgerModel.js'
 import AiPlatformUsage from '../../models/aiPlatformUsageModel.js'
+import AiUsage from '../../models/aiUsageModel.js'
 import logger from '../../../config/logger.js'
 import {
+  AI_CREDIT_COSTS,
   AI_METRIC_LABELS,
+  computeCreditsUsed,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
   getPlanCommitment,
@@ -550,25 +553,46 @@ const getTenantTrends = async (period, { now = new Date() } = {}) => {
  * después.
  */
 /**
+ * Los créditos que gastó cada comercio en el período.
+ *
+ * Salen de los mismos contadores que usa el medidor. El libro no sirve para esto: dice
+ * cuánto se pagó, y la bolsa se mide por operaciones, no por plata.
+ */
+const getCreditsUsedByTenant = async (period, tenantIds) => {
+  const filas = await AiUsage.find({ period, tenantId: { $in: tenantIds } })
+    .select('tenantId counters')
+    .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+    .lean()
+
+  return new Map(
+    filas.map(fila => [
+      String(fila.tenantId),
+      metrics =>
+        computeCreditsUsed(metric => Number(fila.counters?.[metric] || 0), metrics),
+    ]),
+  )
+}
+
+/**
  * Los topes reales de un comercio, para mostrarlos.
  *
  * Son los del plan, con lo que el dueño de la plataforma le haya bajado: el mismo
  * cálculo que aplica el medidor. Antes se mostraba una fracción del techo que el
  * medidor no aplicaba: la columna decía una cosa y el corte llegaba en otra.
  *
- * `planTokens` es el plan entero, para poder decir de cuánto sale el recorte.
+ * `planCredits` es la bolsa entera del plan, para poder decir de cuánto sale el recorte.
  */
 const topesDelComercio = (tenant, politica) => {
   const plan = tenant?.plan || null
   const compromiso = plan ? getPlanCommitment(plan) : null
-  const planTokens = compromiso && !compromiso.unbounded ? compromiso.tokens : null
+  const planCredits = compromiso && !compromiso.unbounded ? compromiso.credits : null
 
   return {
-    planTokens,
-    tokenCap:
-      planTokens === null
+    planCredits,
+    creditCap:
+      planCredits === null
         ? null
-        : Math.floor(planTokens * getTenantPlanFraction(politica?.share ?? null)),
+        : Math.max(1, Math.floor(planCredits * getTenantPlanFraction(politica?.share ?? null))),
     usdCapEfectivo: getSharedKeyTenantUsdCap({
       plan,
       share: politica?.share ?? null,
@@ -638,7 +662,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
   // La tendencia no tumba la tabla si falla. Es la información que explica un
   // número, no el número: perderla deja la tabla igual de usable que antes de
   // que existiera, y quedarse sin pantalla de gasto no es una opción.
-  const [politicas, tendencias] = await Promise.all([
+  const [politicas, tendencias, creditosPorComercio] = await Promise.all([
     getAllTenantAiPolicies().catch(() => ({})),
     trend
       ? getTenantTrends(period, { now }).catch(error => {
@@ -649,6 +673,16 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
           return new Map()
         })
       : new Map(),
+    getCreditsUsedByTenant(
+      period,
+      filas.map(fila => fila._id),
+    ).catch(error => {
+      logger.warn('[AI CRÉDITOS] No se pudieron leer los créditos gastados', {
+        period,
+        error: error.message,
+      })
+      return new Map()
+    }),
   ])
 
   const filasConPolitica = filas.map(fila => {
@@ -659,7 +693,14 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
     const politica = politicas[tenantId] || null
     const tendencia = tendencias.get(tenantId) || null
 
-    const { planTokens, tokenCap, usdCapEfectivo } = topesDelComercio(tenant, politica)
+    const { planCredits, creditCap, usdCapEfectivo } = topesDelComercio(tenant, politica)
+    const claves = (fila.keySources || []).filter(Boolean)
+
+    // Con clave propia solo descuenta lo que factura HENKO: ver resolveCredits.
+    const creditsUsed =
+      creditosPorComercio.get(tenantId)?.(
+        claves.includes('tenant') ? ['imageEdits'] : Object.keys(AI_CREDIT_COSTS),
+      ) ?? 0
 
     return {
       tenantId,
@@ -695,10 +736,11 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
       platformCostUsd,
       tenantProviderCostUsd: round(fila.tenantProviderCostUsd, 6),
       // Con key propia HENKO no paga, así que el comercio no consume techo.
-      keySources: (fila.keySources || []).filter(Boolean),
-      planTokens,
-      tokenCap,
-      percentOfCap: tokenCap ? round((tokens / tokenCap) * 100, 1) : null,
+      keySources: claves,
+      planCredits,
+      creditCap,
+      creditsUsed,
+      percentOfCap: creditCap ? round((creditsUsed / creditCap) * 100, 1) : null,
 
       /**
        * El techo en PLATA de este comercio, y cuánto lleva usado.
@@ -809,9 +851,10 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
       // Mismos campos que el bloque de arriba: un comercio pausado tiene topes
       // igual, y una bandera que solo existe en uno de los dos caminos deja la
       // pantalla a medias.
-      planTokens: topes.planTokens,
-      tokenCap: topes.tokenCap,
-      percentOfCap: topes.tokenCap ? 0 : null,
+      planCredits: topes.planCredits,
+      creditCap: topes.creditCap,
+      creditsUsed: 0,
+      percentOfCap: topes.creditCap ? 0 : null,
       usdCap: topes.usdCapEfectivo === UNLIMITED ? null : round(topes.usdCapEfectivo, 4),
       percentOfUsdCap: topes.usdCapEfectivo === UNLIMITED ? null : 0,
       usdCapOverride: Number.isFinite(politica.usdCap) ? politica.usdCap : null,
@@ -1381,7 +1424,7 @@ export const getPlatformCommitment = async () => {
     getAllTenantAiPolicies(),
   ])
 
-  const compromiso = { tenants: 0, tokens: 0, usd: 0, byPlan: {} }
+  const compromiso = { tenants: 0, credits: 0, tokens: 0, usd: 0, byPlan: {} }
 
   for (const tenant of tenants) {
     const politica = politicas[String(tenant._id)] || null
@@ -1398,6 +1441,7 @@ export const getPlatformCommitment = async () => {
     const plata = delPlan.usd * fraccion
 
     compromiso.tenants += 1
+    compromiso.credits += Math.floor(delPlan.credits * fraccion)
     compromiso.tokens += Math.floor(delPlan.tokens * fraccion)
     compromiso.usd += manual !== null ? Math.min(manual, plata) : plata
     compromiso.byPlan[tenant.plan] = (compromiso.byPlan[tenant.plan] || 0) + 1

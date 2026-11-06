@@ -308,7 +308,7 @@ describe('PlatformLanding · carga de productos con IA', () => {
     await user.click(screen.getByText('¿Cómo funciona la carga de productos con IA?'))
 
     expect(screen.getByText(/el producto queda como borrador/i)).toBeVisible()
-    expect(screen.getByText(/cupos de análisis de imágenes dependen del plan/i)).toBeVisible()
+    expect(screen.getByText(/créditos de IA dependen del plan/i)).toBeVisible()
   })
 
   it('el hero menciona que la IA completa la ficha de los productos', () => {
@@ -446,6 +446,34 @@ describe('PlatformLanding · planes con precios en vivo', () => {
     expect(screen.getByText(/300 análisis de imágenes con IA por mes/)).toBeInTheDocument()
     expect(screen.getByText(/2\.000 mensajes del asistente de ventas por mes/)).toBeInTheDocument()
     expect(screen.getByText(/10\.000 mensajes del asistente de ventas por mes/)).toBeInTheDocument()
+  })
+
+  it('con bolsa de créditos muestra la bolsa y lo que descuenta cada acción', async () => {
+    const conBolsa = {
+      ...CATALOGO,
+      data: {
+        ...CATALOGO.data,
+        plans: CATALOGO.data.plans.map(item => ({
+          ...item,
+          limits: {
+            ...item.limits,
+            credits: item.plan === 'pro' ? 6500 : 4000,
+            creditCosts: { agentMessages: 1, vision: 3, imageEdits: 5, marketAnalyses: 25 },
+          },
+        })),
+      },
+    }
+
+    global.fetch = jest.fn(() => respuesta(conBolsa))
+
+    render(<PlatformLanding />)
+
+    expect(await screen.findByText(/4\.000 créditos de IA por mes/)).toBeInTheDocument()
+    expect(screen.getByText(/6\.500 créditos de IA por mes/)).toBeInTheDocument()
+    expect(screen.getAllByText(/1 crédito por mensaje del asistente/)).toHaveLength(2)
+    expect(screen.getAllByText(/25 créditos por análisis de mercado/)).toHaveLength(2)
+    // Los cupos por función se leerían como una suma, y la bolsa es compartida.
+    expect(screen.queryByText(/mensajes del asistente de ventas por mes/)).not.toBeInTheDocument()
   })
 
   it('mientras el backend responde muestra un esqueleto y no un número', () => {

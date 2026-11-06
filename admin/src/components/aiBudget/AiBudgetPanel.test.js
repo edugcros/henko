@@ -74,30 +74,59 @@ describe('AiBudgetPanel · tope mostrado', () => {
     expect(screen.queryByText(/Autolímite tuyo/)).not.toBeInTheDocument()
   })
 
-  test('si HENKO le bajó el cupo, lo dice y muestra lo que compró', async () => {
+  const conBolsa = (credits, metricas = {}) => ({ ...snapshotCon(metricas), credits })
+
+  test('muestra la bolsa del mes y lo que queda', async () => {
     mockGetAiBudget.mockResolvedValue(
-      snapshotCon({
-        agentMessages: metrica(3, 1000, { planLimit: 1000, contractedLimit: 2000 }),
-      }),
+      conBolsa({ used: 1300, limit: 4000, remaining: 2700, contracted: 4000 }),
     )
 
     render(<AiBudgetPanel />)
 
-    expect(await screen.findByText('3 / 1.000')).toBeInTheDocument()
-    expect(screen.getByText(/Cupo ajustado por HENKO. Tu plan incluye 2.000/)).toBeInTheDocument()
+    expect(await screen.findByText('1.300 / 4.000')).toBeInTheDocument()
+    expect(screen.getByText(/Te quedan 2.700 este/)).toBeInTheDocument()
+    expect(screen.queryByText(/Cupo ajustado por HENKO/)).not.toBeInTheDocument()
   })
 
-  test('con el plan entero no aclara nada', async () => {
+  test('si HENKO le bajó la bolsa, lo dice y muestra lo que compró', async () => {
     mockGetAiBudget.mockResolvedValue(
-      snapshotCon({
-        agentMessages: metrica(3, 1000, { planLimit: 1000, contractedLimit: 1000 }),
-      }),
+      conBolsa({ used: 3, limit: 2000, remaining: 1997, contracted: 4000 }),
     )
 
     render(<AiBudgetPanel />)
 
-    await screen.findByText('3 / 1.000')
-    expect(screen.queryByText(/Cupo ajustado por HENKO/)).not.toBeInTheDocument()
+    expect(
+      await screen.findByText(/Cupo ajustado por HENKO. Tu plan incluye 4.000/),
+    ).toBeInTheDocument()
+  })
+
+  test('cada función dice cuánto descuenta', async () => {
+    mockGetAiBudget.mockResolvedValue(
+      conBolsa(
+        { used: 3, limit: 4000, remaining: 3997, contracted: 4000 },
+        {
+          agentMessages: metrica(3, 1000, { creditCost: 1 }),
+          vision: metrica(0, 300, { creditCost: 3 }),
+        },
+      ),
+    )
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText(/Descuenta 1 crédito de tu bolsa/)).toBeInTheDocument()
+    expect(screen.getByText(/Descuenta 3 créditos de tu bolsa/)).toBeInTheDocument()
+  })
+
+  test('con clave propia no muestra una bolsa que no aplica', async () => {
+    mockGetAiBudget.mockResolvedValue({
+      ...conBolsa({ used: 0, limit: 6500, remaining: 6500, contracted: 6500 }),
+      credentials: { source: 'tenant', byokEnabled: true, byokAllowed: true, hasTenantKey: true },
+    })
+
+    render(<AiBudgetPanel />)
+
+    await screen.findByText(/corre por tu propia cuenta/)
+    expect(screen.queryByText('Créditos de IA')).not.toBeInTheDocument()
   })
 
   test('con autolímite muestra el tope real, no el del plan', async () => {

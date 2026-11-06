@@ -351,6 +351,14 @@ const QUOTA_LINES = [
   ['marketAnalyses', 'análisis de mercado con IA'],
 ]
 
+// Lo que descuenta cada acción de la bolsa de créditos del plan.
+const CREDIT_COST_LINES = [
+  ['vision', 'por análisis de imagen'],
+  ['agentMessages', 'por mensaje del asistente'],
+  ['imageEdits', 'por fondo generado'],
+  ['marketAnalyses', 'por análisis de mercado'],
+]
+
 const FAQ = [
   {
     question: '¿Necesito saber programación para usar Henkart?',
@@ -938,8 +946,8 @@ const AiProductShowcase = ({ plansUrl }) => (
               Probarlo con mis productos <FiArrowRight aria-hidden="true" />
             </a>
             <span className="hk-aiproduct-note">
-              Los productos quedan como borrador hasta que los publicás. Los cupos de análisis
-              dependen del plan.
+              Los productos quedan como borrador hasta que los publicás. Los créditos de IA dependen
+              del plan.
             </span>
           </div>
         </div>
@@ -1048,6 +1056,10 @@ const FeatureTabs = ({ active, onChange }) => {
 const PlanCard = ({ plan, entry, status, plansUrl }) => {
   const price = entry?.price ?? null
   const quotas = QUOTA_LINES.filter(([key]) => Number(entry?.limits?.[key]) > 0)
+  const credits = Number(entry?.limits?.credits)
+  const creditCosts = CREDIT_COST_LINES.filter(
+    ([key]) => Number(entry?.limits?.creditCosts?.[key]) > 0,
+  )
 
   return (
     <article className={`hk-plan${plan.featured ? ' is-featured' : ''}`}>
@@ -1081,11 +1093,29 @@ const PlanCard = ({ plan, entry, status, plansUrl }) => {
             <FiCheck aria-hidden="true" /> {feature}
           </li>
         ))}
-        {quotas.map(([key, label]) => (
-          <li key={key}>
-            <FiCheck aria-hidden="true" /> {formatCount(entry.limits[key])} {label} por mes
-          </li>
-        ))}
+        {credits > 0 ? (
+          <>
+            <li>
+              <FiCheck aria-hidden="true" /> {formatCount(credits)} créditos de IA por mes
+            </li>
+            {creditCosts.map(([key, label]) => {
+              const costo = entry.limits.creditCosts[key]
+
+              return (
+                <li key={key}>
+                  <FiCheck aria-hidden="true" /> {costo} {costo === 1 ? 'crédito' : 'créditos'}{' '}
+                  {label}
+                </li>
+              )
+            })}
+          </>
+        ) : (
+          quotas.map(([key, label]) => (
+            <li key={key}>
+              <FiCheck aria-hidden="true" /> {formatCount(entry.limits[key])} {label} por mes
+            </li>
+          ))
+        )}
       </ul>
     </article>
   )
@@ -1347,7 +1377,7 @@ const PlatformLanding = () => {
                 </li>
               </ul>
               <p className="hk-assistant-note">
-                Los cupos de uso dependen del plan y se detallan más abajo.
+                El uso se descuenta de los créditos de tu plan, que se detallan más abajo.
               </p>
             </div>
             <AssistantChat />

@@ -5,9 +5,12 @@ import { jest } from '@jest/globals'
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
 const {
+  AI_CREDIT_COSTS,
   AI_METRICS,
   AI_PLANS,
   UNLIMITED,
+  getPlanCatalog,
+  getPlanCredits,
   getPlanLimit,
   getSubscriptionState,
   isByokAllowedForPlan,
@@ -92,12 +95,12 @@ describe('aiPlanPolicy · topes por plan', () => {
   test.each([
     ['starter', 8],
     ['pro', 13],
-  ])('agotar %s con el modelo por defecto no pasa de USD %s', (plan, presupuesto) => {
-    // ESTA ES LA PROPIEDAD. Pro traía cinco veces los cupos de Starter por 30% más de
-    // precio: unos USD 30 de IA sobre unos USD 42 de ingreso bruto.
+  ])('gastar toda la bolsa de %s con el modelo por defecto no pasa de USD %s', (plan, tope) => {
+    // ESTA ES LA PROPIEDAD. El costo de un plan ya no depende de la mezcla: alcanza con
+    // que ninguna acción cueste más por crédito que lo que el presupuesto le da a uno.
     //
-    // Sale del catálogo vigente, así que un cupo más alto o una tarifa nueva no pueden
-    // dejar al plan fuera de su presupuesto sin que este test lo diga.
+    // Sale del catálogo vigente, así que una tarifa nueva o un cambio en lo que descuenta
+    // una acción no pueden dejar al plan fuera de su presupuesto sin que este test lo diga.
     const MODELO = 'gemini-3.1-flash-lite'
     const { input, output } = getModelPrice(MODELO)
 
@@ -108,18 +111,33 @@ describe('aiPlanPolicy · topes por plan', () => {
     }
 
     // Lo medido por análisis de imagen y los cuatro créditos por análisis de mercado.
-    const costoVision = (8440 * input + 1368 * output) / 1_000_000
-    const credito = getToolPrice('tavily_search').unitCostUsd
-    const fondo = getImagePrice(new Date(), 'cloudflare').perImage
+    const costoPorAccion = {
+      [AI_METRICS.AGENT_MESSAGES]: tokens(7500, 'agentTokens'),
+      [AI_METRICS.VISION]: (8440 * input + 1368 * output) / 1_000_000,
+      [AI_METRICS.MARKET_ANALYSES]:
+        tokens(25_000, 'marketTokens') + 4 * getToolPrice('tavily_search').unitCostUsd,
+      [AI_METRICS.IMAGE_EDITS]: getImagePrice(new Date(), 'cloudflare').perImage,
+    }
 
-    const total =
-      tokens(getPlanLimit(plan, AI_METRICS.AGENT_TOKENS), 'agentTokens') +
-      tokens(getPlanLimit(plan, AI_METRICS.MARKET_TOKENS), 'marketTokens') +
-      getPlanLimit(plan, AI_METRICS.VISION) * costoVision +
-      getPlanLimit(plan, AI_METRICS.MARKET_ANALYSES) * 4 * credito +
-      getPlanLimit(plan, AI_METRICS.IMAGE_EDITS) * fondo
+    for (const [metric, costo] of Object.entries(costoPorAccion)) {
+      const acciones = Math.floor(getPlanCredits(plan) / AI_CREDIT_COSTS[metric])
 
-    expect(total).toBeLessThanOrEqual(presupuesto)
+      expect(acciones * costo).toBeLessThanOrEqual(tope)
+    }
+  })
+
+  test('los créditos del plan se mueven por entorno', () => {
+    setEnv('AI_CREDITS_STARTER', '100')
+
+    expect(getPlanCredits('starter')).toBe(100)
+    expect(getPlanCredits('pro')).toBe(6500)
+  })
+
+  test('el catálogo vende la bolsa y lo que cuesta cada acción', () => {
+    const [starter] = getPlanCatalog()
+
+    expect(starter.limits.credits).toBe(4000)
+    expect(starter.limits.creditCosts[AI_METRICS.MARKET_ANALYSES]).toBe(25)
   })
 
   test('un plan desconocido cae al MÁS CHICO, no al mayor', () => {
@@ -135,7 +153,7 @@ describe('aiPlanPolicy · topes por plan', () => {
     // AI_MONTHLY_LIMIT_PRO=1500 dejaba a Pro con el triple de análisis que su
     // presupuesto, sin que nada lo mostrara.
     setEnv('AI_MONTHLY_LIMIT_PRO', '1500')
-    expect(getPlanLimit('pro', AI_METRICS.VISION)).toBe(500)
+    expect(getPlanLimit('pro', AI_METRICS.VISION)).toBe(2166)
   })
 
   test('el cupo se sigue pudiendo mover por entorno, con la variable de hoy', () => {
@@ -655,7 +673,8 @@ describe('aiBudgetService · reserva', () => {
     })
 
     expect(result.allowed).toBe(false)
-    expect(result.reason).toBe(DENY_REASONS.METRIC_LIMIT)
+    // Un mensaje por crédito: llegar al cupo es haberse quedado sin bolsa.
+    expect(result.reason).toBe(DENY_REASONS.CREDITS)
     expect(result.used).toBe(limit)
   })
 
