@@ -1903,7 +1903,8 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     error.code =
       usageReservation.reason === DENY_REASONS.SUBSCRIPTION
         ? 'AI_SUBSCRIPTION_INACTIVE'
-        : usageReservation.reason === DENY_REASONS.NO_API_KEY
+        : usageReservation.reason === DENY_REASONS.NO_API_KEY ||
+            usageReservation.reason === DENY_REASONS.PLATFORM_DISABLED
           ? 'AI_PROVIDER_DISABLED'
           : 'AI_USAGE_LIMIT_EXCEEDED'
     error.retryable = false

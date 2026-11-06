@@ -63,6 +63,16 @@ export const updatePlatformAiBudget = async ({ tokens, usd, perTenantShare, reas
 }
 
 /**
+ * Apaga o prende la IA de toda la plataforma. Es aparte del freno: en un freno, cero
+ * significa sin límite.
+ */
+export const setPlatformAiSwitch = async ({ disabled, reason }) => {
+  const response = await api.put('/platform/ai-spend/switch', { disabled, reason })
+
+  return unwrap(response)
+}
+
+/**
  * Acota o apaga la IA de UN comercio.
  *
  * Las otras tres palancas son globales: para frenar a uno había que bajarle el
@@ -119,6 +129,7 @@ export default {
   getPlatformAiSpend,
   getTenantAiSpendDetail,
   updatePlatformAiBudget,
+  setPlatformAiSwitch,
   updateTenantAiPolicy,
   getPlanPrices,
   updatePlanPrice,

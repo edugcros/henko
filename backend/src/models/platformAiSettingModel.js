@@ -41,6 +41,16 @@ export const PLATFORM_AI_SETTINGS = Object.freeze({
   PER_TENANT_SHARE: 'perTenantShare',
 
   /**
+   * El interruptor general: 1 = IA apagada para todos, null = prendida.
+   *
+   * Es un ajuste aparte y no un freno en cero porque en los frenos el cero
+   * significa "sin límite" (UNLIMITED). Apagar y no limitar son opuestos, y
+   * compartir un número entre los dos fue lo que dejó a la plataforma sin freno
+   * creyendo que había apagado la IA.
+   */
+  AI_DISABLED: 'aiDisabled',
+
+  /**
    * El freno de VELOCIDAD: cuantas operaciones de IA por ventana y comercio.
    *
    * Los dos techos de arriba miden acumulado y por eso no protegen contra un

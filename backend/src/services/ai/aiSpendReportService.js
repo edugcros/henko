@@ -36,12 +36,18 @@ import {
   setPlatformCommitmentSnapshot,
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
+  isPlatformAiDisabled,
   UNLIMITED,
   degradationLevelFor,
   DEGRADATION_ECONOMY_PERCENT,
   DEGRADATION_ESSENTIAL_PERCENT,
 } from './aiPlanPolicy.js'
-import { getPlatformAiSettingHistory, getAllTenantAiPolicies } from './platformAiSettingService.js'
+import {
+  getPlatformAiSettingHistory,
+  getAllTenantAiPolicies,
+  getLatestPlatformAiSetting,
+  PLATFORM_AI_SETTINGS,
+} from './platformAiSettingService.js'
 import Tenant from '../../models/tenantModel.js'
 import { getCurrentPeriod, getPreviousPeriod } from './aiPeriod.js'
 // La contabilidad vive aparte: este archivo REPORTA, aquel RECONCILIA.
@@ -1498,6 +1504,7 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     settingHistory,
     reconciliation,
     commitment,
+    ultimoInterruptor,
   ] = await Promise.all([
     AiPlatformUsage.findOne({ period }).lean(),
     getPeriodSpendByMetric(period),
@@ -1539,6 +1546,8 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       })
       return null
     }),
+    // Quién lo tocó es contexto: sin ese dato la pantalla igual dice si está apagada.
+    getLatestPlatformAiSetting(PLATFORM_AI_SETTINGS.AI_DISABLED).catch(() => null),
   ])
 
   const tokens = Number(usage?.tokens || 0)
@@ -1592,6 +1601,14 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       usdSource: getPlatformUsdBudgetSource(),
       // Los máximos a mano, para editarlos: `tokens` y `usd` son los que rigen.
       overrides: getPlatformBrakeOverrides(),
+    },
+    // El interruptor general, con quién lo tocó y por qué: viendo "apagada" lo primero
+    // que hace falta saber es si se puede prender.
+    aiSwitch: {
+      disabled: isPlatformAiDisabled(),
+      changedByEmail: ultimoInterruptor?.changedByEmail || null,
+      reason: ultimoInterruptor?.reason || null,
+      changedAt: ultimoInterruptor?.createdAt || null,
     },
     // Lo vendido por plan, y si el freno manual quedó por debajo. El freno corta
     // para todos: si es menor a lo vendido, puede dejar sin IA a quien pagó.

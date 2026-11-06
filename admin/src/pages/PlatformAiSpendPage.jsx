@@ -40,6 +40,7 @@ import {
   getPlatformAiSpend,
   getTenantAiSpendDetail,
   updatePlatformAiBudget,
+  setPlatformAiSwitch,
   updateTenantAiPolicy,
   getUsdRate,
   updateUsdRate,
@@ -207,6 +208,9 @@ const BUDGET_SOURCE_LABEL = {
   none: 'sin freno configurado',
 }
 
+const MENSAJE_FRENO_INVALIDO =
+  'Tiene que ser mayor a cero. Dejalo vacío para no poner un máximo. Para apagar la IA, usá «Apagar la IA».'
+
 /**
  * Cambiar el techo mueve un límite de seguridad, así que no es un campo suelto
  * en la pantalla: es un diálogo que pide el motivo y muestra qué implica.
@@ -219,6 +223,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   const { rate } = useDinero()
   // Lo que se edita es el máximo a mano, no el freno que rige: ese se calcula solo.
   const manual = budget.overrides || budget
+  const hayMaximoAMano = budget.source === 'panel' || budget.usdSource === 'panel'
   const [tokens, setTokens] = useState('')
   const [usd, setUsd] = useState('')
   const [reason, setReason] = useState('')
@@ -237,13 +242,16 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   }, [open, manual.tokens, manual.usd])
 
   /**
-   * Un campo vacío significa "volver a la variable de entorno", no cero.
+   * Un campo vacío significa "sin máximo": manda el freno automático.
    *
-   * La diferencia importa: un techo en cero apaga la IA, y ninguno la deja
-   * gobernada por Render. Son dos decisiones distintas y la pantalla no puede
-   * confundirlas.
+   * Cero no se acepta. En un freno, cero significa sin límite, y escrito acá se lee
+   * como lo contrario: que la IA se apaga. `00000` da lo mismo, y es lo que queda al
+   * borrar a medias. Para apagarla está el interruptor.
    */
   const valorDe = texto => (String(texto).trim() === '' ? null : Number(texto))
+  const noEsMaximo = texto => String(texto).trim() !== '' && !(Number(texto) > 0)
+  const tokensInvalido = noEsMaximo(tokens)
+  const usdInvalido = noEsMaximo(usd)
 
   const submit = async ({ remove = false } = {}) => {
     setSaving(true)
@@ -280,6 +288,8 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   // el caso que evitaría: si no se cambió nada, el backend contesta «No se
   // indicó ningún freno para cambiar», que dice exactamente qué pasó.
   const canSubmit = reason.trim().length > 0 && !saving
+  // Liberar no lee los campos, así que un valor inválido no lo traba.
+  const canSave = canSubmit && !tokensInvalido && !usdInvalido
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -297,7 +307,12 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           value={tokens}
           onChange={event => setTokens(event.target.value)}
           sx={{ mb: 2 }}
-          helperText="Vacío = sin máximo: manda el freno automático."
+          error={tokensInvalido}
+          helperText={
+            tokensInvalido
+              ? MENSAJE_FRENO_INVALIDO
+              : 'Vacío = sin máximo: manda el freno automático.'
+          }
         />
 
         {/* El techo en PLATA, que es el que importa de verdad: el mismo tope de
@@ -312,13 +327,16 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           value={usd}
           onChange={event => setUsd(event.target.value)}
           sx={{ mb: 2 }}
+          error={usdInvalido}
           helperText={
             // El equivalente aparece MIENTRAS se escribe, que es cuando sirve
             // para decidir. Solo si hay cotización: sin ella, inventar una
             // conversión sería peor que no mostrarla.
-            Number(usd) > 0 && rate
-              ? `Equivale a ${formatArs(Number(usd) * rate)} al cambio de hoy. Corta cuando el gasto del mes llega acá, aunque sobren tokens.`
-              : 'Vacío = sin máximo: manda el freno automático.'
+            usdInvalido
+              ? MENSAJE_FRENO_INVALIDO
+              : Number(usd) > 0 && rate
+                ? `Equivale a ${formatArs(Number(usd) * rate)} al cambio de hoy. Corta cuando el gasto del mes llega acá, aunque sobren tokens.`
+                : 'Vacío = sin máximo: manda el freno automático.'
           }
         />
 
@@ -333,11 +351,10 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
           helperText="Obligatorio. Dentro de tres meses el número solo no explica nada."
         />
 
-        {budget.source === 'panel' && (
+        {hayMaximoAMano && (
           <Alert severity="info" sx={{ mt: 2 }}>
-            Hoy manda un valor fijado desde el panel, así que cambiar la variable de entorno en
-            Render no tiene efecto. Podés devolverle el mando con «Volver a la variable», que suelta
-            los tres frenos a la vez.
+            Hoy manda un máximo fijado desde el panel. «Usar el freno automático» quita todos los
+            máximos a la vez, sin tener que vaciar los campos.
           </Alert>
         )}
 
@@ -351,13 +368,84 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
         <Button onClick={onClose} disabled={saving}>
           Cancelar
         </Button>
-        {budget.source === 'panel' && (
+        {hayMaximoAMano && (
           <Button onClick={() => submit({ remove: true })} disabled={!canSubmit}>
-            Volver a la variable
+            Usar el freno automático
           </Button>
         )}
-        <Button variant="contained" onClick={() => submit()} disabled={!canSubmit}>
+        <Button variant="contained" onClick={() => submit()} disabled={!canSave}>
           Guardar
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+/**
+ * Apaga o prende la IA de todos los comercios.
+ *
+ * Es un diálogo propio y no un campo del freno porque es otra decisión: un freno
+ * limita, esto corta. Tenerlos juntos fue lo que hizo que un cero pareciera apagar la
+ * IA cuando en realidad la dejaba sin límite.
+ */
+function AiSwitchDialog({ disabled, onClose, onSaved }) {
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    setSaving(true)
+    setError('')
+
+    try {
+      onSaved(await setPlatformAiSwitch({ disabled: !disabled, reason }))
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.message || 'No se pudo cambiar el estado de la IA.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>
+        {disabled ? 'Prender la IA' : 'Apagar la IA para todos los comercios'}
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {disabled
+            ? 'La IA vuelve a funcionar para todos los comercios, con sus cupos y frenos de siempre.'
+            : 'Se corta toda la IA, también para quienes usan su propia clave: asistentes, análisis de imagen, fondos y análisis de mercado. El resto de la tienda sigue funcionando. Lo que ya estaba en curso termina, y sigue apagada hasta que alguien la prenda.'}
+        </Typography>
+
+        <TextField
+          label="Motivo"
+          fullWidth
+          multiline
+          minRows={2}
+          value={reason}
+          onChange={event => setReason(event.target.value)}
+          helperText="Obligatorio. Queda registrado con tu email."
+        />
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button
+          variant="contained"
+          color={disabled ? 'primary' : 'error'}
+          onClick={submit}
+          disabled={!reason.trim() || saving}
+        >
+          {disabled ? 'Prender la IA' : 'Apagar la IA'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -1407,6 +1495,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
   const [error, setError] = useState('')
   const [report, setReport] = useState(null)
   const [editing, setEditing] = useState(false)
+  const [switching, setSwitching] = useState(false)
   // El comercio cuya política se está editando, o null. Se guarda la fila
   // entera y no el id: el diálogo muestra su consumo para poder decidir con el
   // número a la vista, y volver a buscarlo en el reporte sería reconstruir algo
@@ -1490,6 +1579,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
     byTenant,
     forecast,
     degradation,
+    aiSwitch,
     anomalies,
     // Contra qué se comparó cada comercio. Sin esto, el porcentaje de la
     // columna «vs anterior» no se puede leer: «+180%» significa una cosa si
@@ -1559,6 +1649,15 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
 
           Solo aparece cuando hay degradación: en modo normal no hay nada que
           contar. */}
+      {aiSwitch?.disabled && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <strong>La IA está apagada para todos los comercios.</strong>
+          {aiSwitch.changedByEmail &&
+            ` La apagó ${aiSwitch.changedByEmail}${aiSwitch.changedAt ? ` el ${formatDate(aiSwitch.changedAt)}` : ''}.`}
+          {aiSwitch.reason && ` Motivo: ${aiSwitch.reason}`}
+        </Alert>
+      )}
+
       {degradation && degradation.level !== 'normal' && !breaker.tripped && (
         <Alert severity={degradation.level === 'essential' ? 'error' : 'warning'} sx={{ mb: 2 }}>
           <strong>
@@ -1693,9 +1792,18 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
               </>
             )}
           </Typography>
-          <Button size="small" onClick={() => setEditing(true)}>
-            Cambiar freno
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button size="small" onClick={() => setEditing(true)}>
+              Cambiar freno
+            </Button>
+            <Button
+              size="small"
+              color={aiSwitch?.disabled ? 'primary' : 'error'}
+              onClick={() => setSwitching(true)}
+            >
+              {aiSwitch?.disabled ? 'Prender la IA' : 'Apagar la IA'}
+            </Button>
+          </Stack>
         </Stack>
       </Paper>
 
@@ -1705,6 +1813,15 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
         onClose={() => setEditing(false)}
         onSaved={setReport}
       />
+
+      {/* Se monta al abrirlo para que el motivo nazca vacío cada vez. */}
+      {switching && (
+        <AiSwitchDialog
+          disabled={Boolean(aiSwitch?.disabled)}
+          onClose={() => setSwitching(false)}
+          onSaved={setReport}
+        />
+      )}
 
       {/* Se MONTA solo cuando hay comercio elegido, en vez de estar siempre
           montado con un `open`. Así el formulario nace limpio en cada apertura

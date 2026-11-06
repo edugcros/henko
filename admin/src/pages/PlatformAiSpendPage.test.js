@@ -19,6 +19,7 @@ process.env.REACT_APP_API_BASE_URL = 'http://localhost:5000/api'
 const mockGetAiSpend = jest.fn()
 const mockGetTenantDetail = jest.fn()
 const mockUpdateBudget = jest.fn()
+const mockSetSwitch = jest.fn()
 const mockUpdateTenantPolicy = jest.fn()
 const mockGetUsdRate = jest.fn()
 const mockUpdateUsdRate = jest.fn()
@@ -44,6 +45,7 @@ jest.unstable_mockModule('../services/platformService', () => ({
   // mirar el total.
   getTenantAiSpendDetail: mockGetTenantDetail,
   updatePlatformAiBudget: mockUpdateBudget,
+  setPlatformAiSwitch: mockSetSwitch,
   // Acotar o pausar a UN comercio. El mock tiene que declarar todos los
   // exports que la pantalla importa: con uno de menos, el módulo entero no
   // resuelve y la suite no corre ningún test — que es lo que pasó al agregarlo.
@@ -315,18 +317,15 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   expect(mockGetAiSpend).toHaveBeenCalledTimes(1)
 })
 
-test('avisa que la variable de entorno no manda cuando hay override', async () => {
-  // Sin esto, "ya lo cambié en Render y no pasa nada" es media hora perdida.
+test('avisa que manda un máximo del panel y ofrece quitarlo', async () => {
   const user = userEvent.setup()
   load({ budget: { ...REPORT.budget, source: 'panel' } })
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
-  expect(
-    screen.getByText(/cambiar la variable de entorno en Render no tiene efecto/i),
-  ).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /volver a la variable/i })).toBeInTheDocument()
+  expect(screen.getByText(/hoy manda un máximo fijado desde el panel/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /usar el freno automático/i })).toBeInTheDocument()
 })
 
 test('muestra quién movió el techo y por qué', async () => {
@@ -467,9 +466,7 @@ test('manda SOLO el freno que se movió', async () => {
   expect(enviado.reason).toMatch(/campañas/)
 })
 
-test('un campo vacío suelta el freno, y no es lo mismo que cero', async () => {
-  // Un techo en cero apaga la IA; ninguno la deja gobernada por Render. Son
-  // dos decisiones distintas y la pantalla no puede confundirlas.
+test('un campo vacío suelta el freno', async () => {
   const user = userEvent.setup()
   mockUpdateBudget.mockResolvedValue(REPORT)
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
@@ -483,6 +480,127 @@ test('un campo vacío suelta el freno, y no es lo mismo que cero', async () => {
 
   await waitFor(() => expect(mockUpdateBudget).toHaveBeenCalled())
   expect(mockUpdateBudget.mock.calls[0][0].usd).toBeNull()
+})
+
+test.each([['0'], ['00000']])('no deja guardar %s como freno', async valor => {
+  // En un freno, cero significa sin límite. `00000` es lo que queda al borrar a medias.
+  const user = userEvent.setup()
+  load({ budget: { ...REPORT.budget, overrides: { tokens: 400000, usd: null } } })
+
+  await user.click(await screen.findByRole('button', { name: /cambiar freno/i }))
+
+  const campo = screen.getByLabelText(/freno en tokens/i)
+  await user.clear(campo)
+  await user.type(campo, valor)
+  await user.type(screen.getByLabelText(/motivo/i), 'lo quiero vaciar')
+
+  expect(screen.getByRole('button', { name: /^guardar$/i })).toBeDisabled()
+  expect(screen.getByText(/tiene que ser mayor a cero/i)).toBeInTheDocument()
+})
+
+test('el freno automático quita los máximos aunque un campo esté mal', async () => {
+  const user = userEvent.setup()
+  mockUpdateBudget.mockResolvedValue(REPORT)
+  load({
+    budget: {
+      ...REPORT.budget,
+      source: 'auto',
+      usdSource: 'panel',
+      overrides: { tokens: null, usd: 5 },
+    },
+  })
+
+  await user.click(await screen.findByRole('button', { name: /cambiar freno/i }))
+
+  const campo = screen.getByLabelText(/freno en dólares/i)
+  await user.clear(campo)
+  await user.type(campo, '0')
+  await user.type(screen.getByLabelText(/motivo/i), 'manda el automático')
+  await user.click(screen.getByRole('button', { name: /usar el freno automático/i }))
+
+  await waitFor(() =>
+    expect(mockUpdateBudget).toHaveBeenCalledWith({
+      tokens: null,
+      usd: null,
+      perTenantShare: null,
+      reason: 'manda el automático',
+    }),
+  )
+})
+
+describe('el interruptor de la IA', () => {
+  test('apagarla pide motivo y avisa que corta a todos', async () => {
+    const user = userEvent.setup()
+    mockSetSwitch.mockResolvedValue({
+      ...REPORT,
+      aiSwitch: {
+        disabled: true,
+        changedByEmail: 'dueno@henko.test',
+        reason: 'fuga de la clave',
+        changedAt: '2026-11-06T22:00:00.000Z',
+      },
+    })
+    load()
+
+    await user.click(await screen.findByRole('button', { name: /^apagar la ia$/i }))
+
+    const dialogo = screen.getByRole('dialog')
+    const confirmar = within(dialogo).getByRole('button', { name: /^apagar la ia$/i })
+
+    expect(within(dialogo).getByText(/también para quienes usan su propia clave/i)).toBeVisible()
+    expect(confirmar).toBeDisabled()
+
+    await user.type(within(dialogo).getByLabelText(/motivo/i), 'fuga de la clave')
+    await user.click(confirmar)
+
+    await waitFor(() =>
+      expect(mockSetSwitch).toHaveBeenCalledWith({ disabled: true, reason: 'fuga de la clave' }),
+    )
+
+    // La respuesta ya trae el estado nuevo: la pantalla no depende de otra vuelta.
+    expect(await screen.findByText(/la ia está apagada para todos/i)).toBeInTheDocument()
+    expect(screen.getByText(/fuga de la clave/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^prender la ia$/i })).toBeInTheDocument()
+  })
+
+  test('prendida no muestra el aviso', async () => {
+    load({ aiSwitch: { disabled: false } })
+
+    expect(await screen.findByRole('button', { name: /^apagar la ia$/i })).toBeInTheDocument()
+    expect(screen.queryByText(/la ia está apagada/i)).not.toBeInTheDocument()
+  })
+
+  test('apagada se ofrece prenderla', async () => {
+    const user = userEvent.setup()
+    mockSetSwitch.mockResolvedValue({ ...REPORT, aiSwitch: { disabled: false } })
+    load({ aiSwitch: { disabled: true, changedByEmail: null, reason: null, changedAt: null } })
+
+    await user.click(await screen.findByRole('button', { name: /^prender la ia$/i }))
+
+    const dialogo = screen.getByRole('dialog')
+
+    await user.type(within(dialogo).getByLabelText(/motivo/i), 'ya está resuelto')
+    await user.click(within(dialogo).getByRole('button', { name: /^prender la ia$/i }))
+
+    await waitFor(() =>
+      expect(mockSetSwitch).toHaveBeenCalledWith({ disabled: false, reason: 'ya está resuelto' }),
+    )
+  })
+
+  test('si falla, lo dice y no cierra', async () => {
+    const user = userEvent.setup()
+    mockSetSwitch.mockRejectedValue({ response: { data: { message: 'Sesión vencida' } } })
+    load()
+
+    await user.click(await screen.findByRole('button', { name: /^apagar la ia$/i }))
+
+    const dialogo = screen.getByRole('dialog')
+
+    await user.type(within(dialogo).getByLabelText(/motivo/i), 'prueba')
+    await user.click(within(dialogo).getByRole('button', { name: /^apagar la ia$/i }))
+
+    expect(await within(dialogo).findByText('Sesión vencida')).toBeInTheDocument()
+  })
 })
 
 // ─── GOBIERNO POR COMERCIO ───────────────────────────────────────────────────

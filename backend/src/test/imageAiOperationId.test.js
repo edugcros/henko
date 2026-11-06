@@ -16,6 +16,7 @@ jest.unstable_mockModule('../services/ai/aiBudgetService.js', () => ({
   AI_FEATURES: { IMAGE_AI: 'imageAi' },
   AI_PROVIDERS: { GEMINI: 'gemini' },
   buildBudgetDenialMessage: () => 'sin cupo',
+  getAiDenialStatus: () => 402,
   refundAiBudget: mockRefund,
   reserveAiBudget: mockReserve,
   recordImageProviderCall: mockRecordImageCall,

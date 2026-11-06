@@ -105,6 +105,11 @@ El freno de la plataforma es lo comprometido por planes más un 25%
 solo puede bajarlo. `AI_PLATFORM_MONTHLY_TOKEN_BUDGET` y `AI_PLATFORM_MONTHLY_USD_BUDGET`
 quedan como respaldo para cuando la suma no se pudo hacer.
 
+Un freno no apaga la IA. En el código, 0 significa sin límite (`UNLIMITED`), así que el
+panel rechaza el cero y una fila vieja en cero se ignora. Para apagarla está el
+interruptor **Apagar la IA** del panel: corta a todos los comercios, también a los que
+usan su propia clave, queda registrado con autor y motivo, y solo lo levanta una persona.
+
 Cada comercio tiene un tope duro en dólares: dos veces lo que cuesta su bolsa con el
 modelo por defecto (USD 16 en Starter y 26 en Pro). Queda por debajo del neto de cada
 plan, así que ninguno puede costar más de lo que deja.
