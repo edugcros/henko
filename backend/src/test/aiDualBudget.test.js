@@ -846,23 +846,23 @@ describe('el cupo de cada comercio sale de su plan', () => {
   test('el freno de la plataforma no cambia el cupo de nadie', async () => {
     process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '400000'
 
-    expect((await reservarTokens('pro')).limit).toBe(50_000_000)
+    expect((await reservarTokens('pro')).limit).toBe(26_250_000)
   })
 
   test('gobernarlo le baja el cupo de verdad', async () => {
-    // ESTA ES LA PROPIEDAD. Con el 1% seguia en 10.000.000.
+    // ESTA ES LA PROPIEDAD. Con el 1% seguia con el plan entero.
     await acotar({ share: 0.01 })
 
-    expect((await reservarTokens('starter')).limit).toBe(100_000)
+    expect((await reservarTokens('starter')).limit).toBe(150_000)
   })
 
   test('y deja de entrar lo que supera ese cupo', async () => {
     await acotar({ share: 0.01 })
 
-    const resultado = await reservarTokens('starter', 150_000)
+    const resultado = await reservarTokens('starter', 200_000)
 
     expect(resultado.allowed).toBe(false)
-    expect(resultado.limit).toBe(100_000)
+    expect(resultado.limit).toBe(150_000)
   })
 
   test('baja todas las metricas, no solo los tokens', async () => {
@@ -912,7 +912,7 @@ describe('el cupo de cada comercio sale de su plan', () => {
     const { credentials, metrics } = await getAiBudgetSnapshot(CON_CLAVE)
 
     expect(credentials.source).toBe('tenant')
-    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(50_000_000)
+    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(26_250_000)
   })
 
   test.each([
@@ -928,14 +928,14 @@ describe('el cupo de cada comercio sale de su plan', () => {
   test('acotar a uno no toca a los demas', async () => {
     await acotar({ share: 0.01 }, '64b7f0000000000000000002')
 
-    expect((await reservarTokens('starter')).limit).toBe(10_000_000)
+    expect((await reservarTokens('starter')).limit).toBe(15_000_000)
   })
 
   test('volver a null le devuelve el plan entero', async () => {
     await acotar({ share: 0.01 })
     await acotar({ share: null })
 
-    expect((await reservarTokens('starter')).limit).toBe(10_000_000)
+    expect((await reservarTokens('starter')).limit).toBe(15_000_000)
   })
 
   test('el panel del comercio muestra lo que se le aplica y lo que compro', async () => {
@@ -955,8 +955,8 @@ describe('el cupo de cada comercio sale de su plan', () => {
     const { metrics } = await getAiBudgetSnapshot(ACOTADO)
     const tokens = metrics[AI_METRICS.AGENT_TOKENS]
 
-    expect(tokens.limit).toBe(5_000_000)
-    expect(tokens.contractedLimit).toBe(10_000_000)
+    expect(tokens.limit).toBe(7_500_000)
+    expect(tokens.contractedLimit).toBe(15_000_000)
   })
 
   describe('en dolares', () => {
@@ -971,7 +971,7 @@ describe('el cupo de cada comercio sale de su plan', () => {
       const pro = getSharedKeyTenantUsdCap({ plan: 'pro' })
 
       expect(starter).toBe(getPlanCommitment('starter').usd)
-      expect(pro).toBeGreaterThan(starter * 4)
+      expect(pro).toBeGreaterThan(starter * 1.5)
 
       process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '5000'
       expect(getSharedKeyTenantUsdCap({ plan: 'starter' })).toBe(starter)
@@ -1002,9 +1002,9 @@ describe('el cupo de cada comercio sale de su plan', () => {
 
   describe('lo que compromete un plan', () => {
     test('suma todo lo que gasta tokens', () => {
-      // 10.000.000 del asistente, 1.250.000 de mercado y 300 analisis de 4.900.
-      expect(getPlanCommitment('starter').tokens).toBe(12_720_000)
-      expect(getPlanCommitment('pro').tokens).toBe(63_600_000)
+      // 15.000.000 del asistente, 1.250.000 de mercado y 300 analisis de 4.900.
+      expect(getPlanCommitment('starter').tokens).toBe(17_720_000)
+      expect(getPlanCommitment('pro').tokens).toBe(30_950_000)
     })
 
     test('ningun modelo de la cadena cuesta mas que el de referencia', () => {

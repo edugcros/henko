@@ -42,10 +42,10 @@ export const PLAN_PRESENTATION = Object.freeze({
       // «Cupos de IA ampliados» y no «Analizador de productos con IA».
       //
       // Esa línea decía que el análisis de productos era del plan Profesional, y no lo es:
-      // los dos planes lo tienen, cada uno con su cupo mensual (300 análisis de imágenes el
-      // Emprendedor, 1.500 el Profesional). Mostrada al lado de los cupos, la pantalla de
-      // planes se contradecía a sí misma. Lo que SÍ distingue al Profesional es cuánto trae:
-      // alrededor de cinco veces los cupos de cada función. Los números salen del catálogo.
+      // los dos planes lo tienen, cada uno con su cupo mensual. Mostrada al lado de los
+      // cupos, la pantalla de planes se contradecía a sí misma. Lo que SÍ distingue al
+      // Profesional es cuánto trae: casi el doble de cada función. Los números salen del
+      // catálogo.
       'Cupos de IA ampliados',
       'Múltiples administradores',
       'Reportes avanzados',
