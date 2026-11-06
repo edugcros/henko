@@ -335,6 +335,13 @@ const MetricMeter = ({ metric, data }) => {
           Cuotas.
         </Typography>
       )}
+
+      {/* Mismo motivo: el checkout le prometió el número del plan. */}
+      {data?.contractedLimit > data?.planLimit && data?.planLimit > 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          Cupo ajustado por HENKO. Tu plan incluye {formatNumber(data.contractedLimit)}.
+        </Typography>
+      )}
     </Box>
   )
 }

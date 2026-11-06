@@ -339,7 +339,7 @@ export const getTenantAiPolicy = async tenantId => {
 /**
  * Cambia la política de un comercio. Solo los campos que vengan.
  *
- * `share: null` explícito lo devuelve a la fracción global, que es distinto de
+ * `share: null` explícito le devuelve el plan entero, que es distinto de
  * no mandar el campo (dejarlo como está). Por eso se mira si la clave EXISTE y
  * no si el valor es falsy.
  *

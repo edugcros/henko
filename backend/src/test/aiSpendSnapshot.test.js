@@ -31,7 +31,8 @@ const { default: AiTenantPolicy } = await import('../models/aiTenantPolicyModel.
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 const { default: AiConsumptionLedger, LEDGER_EVENT } =
   await import('../models/aiConsumptionLedgerModel.js')
-const { getPlatformSpendSnapshot } = await import('../services/ai/aiSpendReportService.js')
+const { getPlatformCommitment, getPlatformSpendSnapshot } =
+  await import('../services/ai/aiSpendReportService.js')
 const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
 
@@ -209,8 +210,150 @@ describe('el snapshot del panel de gasto', () => {
     expect(fila.name).toBe('Comercio Activo')
     expect(fila.share).toBe(0.1)
     expect(fila.suspended).toBe(false)
-    // Y el tope mostrado es el SUYO, no el global: 1.000.000 × 0,1.
-    expect(fila.tokenCap).toBe(100000)
+    // Y el tope mostrado es el que se le aplica: el 10% de su plan Pro.
+    expect(fila.planTokens).toBe(63_600_000)
+    expect(fila.tokenCap).toBe(6_360_000)
+  })
+
+  test('sin acotar, el tope mostrado es el plan entero', async () => {
+    await crearComercio(ACTIVO, 'Comercio Activo', 'starter')
+    await asentar({ tenantId: ACTIVO, day: 1, costUsd: 2, tokens: 127_200 })
+
+    const { byTenant } = await getPlatformSpendSnapshot()
+    const fila = byTenant.find(t => t.tenantId === String(ACTIVO))
+
+    expect(fila.tokenCap).toBe(12_720_000)
+    expect(fila.percentOfCap).toBe(1)
+  })
+
+  test('un comercio pausado sin consumo igual muestra sus topes', async () => {
+    await crearComercio(PAUSADO, 'Comercio Pausado', 'starter')
+    await setTenantAiPolicy({
+      tenantId: String(PAUSADO),
+      suspended: true,
+      changedByEmail: 'duenio@henko.com',
+      reason: 'mora',
+    })
+
+    const { byTenant } = await getPlatformSpendSnapshot()
+    const fila = byTenant.find(t => t.tenantId === String(PAUSADO))
+
+    expect(fila.tokenCap).toBe(12_720_000)
+    expect(fila.percentOfCap).toBe(0)
+  })
+
+  describe('lo comprometido por planes', () => {
+    const insertar = (doc = {}) => {
+      const _id = new mongoose.Types.ObjectId()
+
+      return Tenant.collection
+        .insertOne({
+          _id,
+          name: `Comercio ${_id}`,
+          slug: String(_id),
+          plan: 'starter',
+          status: 'active',
+          subscriptionStatus: 'active',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...doc,
+        })
+        .then(() => _id)
+    }
+
+    const politica = (tenantId, cambios) =>
+      setTenantAiPolicy({
+        tenantId: String(tenantId),
+        ...cambios,
+        changedByEmail: 'duenio@henko.com',
+        reason: 'prueba',
+      })
+
+    test('crece con cada comercio segun su plan', async () => {
+      await insertar()
+      await insertar({ plan: 'pro' })
+
+      const compromiso = await getPlatformCommitment()
+
+      expect(compromiso.tenants).toBe(2)
+      expect(compromiso.tokens).toBe(12_720_000 + 63_600_000)
+      expect(compromiso.byPlan).toEqual({ starter: 1, pro: 1 })
+      expect(compromiso.usd).toBeGreaterThan(0)
+
+      await insertar()
+
+      expect((await getPlatformCommitment()).tokens).toBe(25_440_000 + 63_600_000)
+    })
+
+    test('cuenta las pruebas vigentes y a los que van en gracia', async () => {
+      await insertar({ subscriptionStatus: 'trialing', trialEndsAt: new Date(Date.now() + 864e5) })
+      await insertar({ subscriptionStatus: 'past_due', subscriptionPastDueAt: new Date() })
+
+      expect((await getPlatformCommitment()).tenants).toBe(2)
+    })
+
+    test('no cuenta a quien no le cuesta a HENKO', async () => {
+      const pausado = await insertar()
+
+      await politica(pausado, { suspended: true })
+      await insertar({ status: 'suspended' })
+      await insertar({ subscriptionStatus: 'cancelled' })
+      await insertar({ subscriptionStatus: 'trialing', trialEndsAt: new Date(Date.now() - 864e5) })
+      await insertar({
+        subscriptionStatus: 'past_due',
+        subscriptionPastDueAt: new Date(Date.now() - 30 * 864e5),
+      })
+
+      expect((await getPlatformCommitment()).tenants).toBe(0)
+    })
+
+    test('no cuenta a quien usa su propia clave', async () => {
+      await insertar({ plan: 'pro', ai: { byokEnabled: true, geminiApiKey: 'cifrada' } })
+
+      expect((await getPlatformCommitment()).tenants).toBe(0)
+    })
+
+    test('un comercio acotado compromete lo que se le dejo', async () => {
+      const acotado = await insertar()
+
+      await politica(acotado, { share: 0.5 })
+
+      expect((await getPlatformCommitment()).tokens).toBe(6_360_000)
+    })
+
+    test('avisa si el freno manual quedo por debajo de lo vendido', async () => {
+      await insertar()
+
+      // El freno de esta suite es de 1.000.000 de tokens, y un Starter vende 12.720.000.
+      const { commitment } = await getPlatformSpendSnapshot()
+
+      expect(commitment.brakeBelowTokens).toBe(true)
+      expect(commitment.brakeBelowUsd).toBe(false)
+    })
+
+    test('con el freno por encima no avisa', async () => {
+      await insertar()
+
+      process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '200000000'
+
+      try {
+        expect((await getPlatformSpendSnapshot()).commitment.brakeBelowTokens).toBe(false)
+      } finally {
+        process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '1000000'
+      }
+    })
+
+    test('avisa tambien por el freno en dolares', async () => {
+      await insertar({ plan: 'pro' })
+
+      process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '1'
+
+      try {
+        expect((await getPlatformSpendSnapshot()).commitment.brakeBelowUsd).toBe(true)
+      } finally {
+        process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '100'
+      }
+    })
   })
 
   test('un comercio pausado aparece aunque no tenga consumo', async () => {

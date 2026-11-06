@@ -74,6 +74,32 @@ describe('AiBudgetPanel · tope mostrado', () => {
     expect(screen.queryByText(/Autolímite tuyo/)).not.toBeInTheDocument()
   })
 
+  test('si HENKO le bajó el cupo, lo dice y muestra lo que compró', async () => {
+    mockGetAiBudget.mockResolvedValue(
+      snapshotCon({
+        agentMessages: metrica(3, 1000, { planLimit: 1000, contractedLimit: 2000 }),
+      }),
+    )
+
+    render(<AiBudgetPanel />)
+
+    expect(await screen.findByText('3 / 1.000')).toBeInTheDocument()
+    expect(screen.getByText(/Cupo ajustado por HENKO. Tu plan incluye 2.000/)).toBeInTheDocument()
+  })
+
+  test('con el plan entero no aclara nada', async () => {
+    mockGetAiBudget.mockResolvedValue(
+      snapshotCon({
+        agentMessages: metrica(3, 1000, { planLimit: 1000, contractedLimit: 1000 }),
+      }),
+    )
+
+    render(<AiBudgetPanel />)
+
+    await screen.findByText('3 / 1.000')
+    expect(screen.queryByText(/Cupo ajustado por HENKO/)).not.toBeInTheDocument()
+  })
+
   test('con autolímite muestra el tope real, no el del plan', async () => {
     mockGetAiBudget.mockResolvedValue(
       snapshotCon({

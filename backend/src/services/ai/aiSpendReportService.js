@@ -26,8 +26,11 @@ import {
   AI_METRIC_LABELS,
   getPlatformMonthlyTokenBudget,
   getPlatformMonthlyUsdBudget,
-  getPerTenantShare,
+  getPlanCommitment,
   getSharedKeyTenantUsdCap,
+  getSubscriptionState,
+  getTenantPlanFraction,
+  isByokAllowedForPlan,
   getPlatformBudgetSource,
   getPlatformUsdBudgetSource,
   UNLIMITED,
@@ -546,6 +549,34 @@ const getTenantTrends = async (period, { now = new Date() } = {}) => {
  * se tiraría. Un costo que se paga sin pedirlo es el que nadie encuentra
  * después.
  */
+/**
+ * Los topes reales de un comercio, para mostrarlos.
+ *
+ * Son los del plan, con lo que el dueño de la plataforma le haya bajado: el mismo
+ * cálculo que aplica el medidor. Antes se mostraba una fracción del techo que el
+ * medidor no aplicaba: la columna decía una cosa y el corte llegaba en otra.
+ *
+ * `planTokens` es el plan entero, para poder decir de cuánto sale el recorte.
+ */
+const topesDelComercio = (tenant, politica) => {
+  const plan = tenant?.plan || null
+  const compromiso = plan ? getPlanCommitment(plan) : null
+  const planTokens = compromiso && !compromiso.unbounded ? compromiso.tokens : null
+
+  return {
+    planTokens,
+    tokenCap:
+      planTokens === null
+        ? null
+        : Math.floor(planTokens * getTenantPlanFraction(politica?.share ?? null)),
+    usdCapEfectivo: getSharedKeyTenantUsdCap({
+      plan,
+      share: politica?.share ?? null,
+      usdCap: politica?.usdCap ?? null,
+    }),
+  }
+}
+
 export const getPeriodSpendByTenant = async (period, { now = new Date(), trend = false } = {}) => {
   const esDevolucion = { $eq: ['$event', LEDGER_EVENT.REFUNDED] }
   const conSigno = campo => ({ $cond: [esDevolucion, { $multiply: [campo, -1] }, campo] })
@@ -598,9 +629,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
     },
   ]).option({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
 
-  const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
-  const shareGlobal = getPerTenantShare()
 
   // Lo que el dueño de la plataforma decidió sobre cada comercio, y cuánto
   // cambió cada uno contra el mes anterior. Una consulta para todos y no una
@@ -630,24 +659,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
     const politica = politicas[tenantId] || null
     const tendencia = tendencias.get(tenantId) || null
 
-    // El tope por comercio es una FRACCIÓN del techo global (ver
-    // resolveEffectiveLimit en aiPlanPolicy.js). Mostrar cuánto de ESE tope
-    // lleva usado es lo que convierte la tabla en algo accionable: un comercio
-    // al 90% de su parte va a quedarse sin IA aunque la plataforma vaya al 30%.
-    //
-    // Y tiene que ser la fracción de ESTE comercio, no la global: si se le bajó
-    // a la mitad, su tope real es la mitad y la columna estaría mintiendo justo
-    // sobre el comercio que alguien decidió vigilar.
-    const share = Number.isFinite(politica?.share) ? politica.share : shareGlobal
-    const tokenCap = budget === UNLIMITED ? null : Math.floor(budget * share)
-
-    // El mismo cálculo que aplica el disyuntor, no una copia: si la pantalla
-    // mostrara un techo distinto del que corta, el número serviría para
-    // confundir y no para decidir.
-    const usdCapEfectivo = getSharedKeyTenantUsdCap({
-      share: politica?.share ?? null,
-      usdCap: politica?.usdCap ?? null,
-    })
+    const { planTokens, tokenCap, usdCapEfectivo } = topesDelComercio(tenant, politica)
 
     return {
       tenantId,
@@ -684,6 +696,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
       tenantProviderCostUsd: round(fila.tenantProviderCostUsd, 6),
       // Con key propia HENKO no paga, así que el comercio no consume techo.
       keySources: (fila.keySources || []).filter(Boolean),
+      planTokens,
       tokenCap,
       percentOfCap: tokenCap ? round((tokens / tokenCap) * 100, 1) : null,
 
@@ -771,6 +784,7 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
     // qué está en cero: gastaba y dejó de gastar. Sin esto la fila mostraría
     // guiones donde la respuesta ya estaba calculada.
     const tendencia = tendencias.get(tenantId) || null
+    const topes = topesDelComercio(tenant, politica)
 
     return {
       tenantId,
@@ -792,13 +806,14 @@ export const getPeriodSpendByTenant = async (period, { now = new Date(), trend =
       platformCostUsd: 0,
       tenantProviderCostUsd: 0,
       keySources: [],
-      tokenCap: null,
-      percentOfCap: null,
-      // Mismos campos que el bloque de arriba: un comercio pausado tiene techo
+      // Mismos campos que el bloque de arriba: un comercio pausado tiene topes
       // igual, y una bandera que solo existe en uno de los dos caminos deja la
       // pantalla a medias.
-      usdCap: null,
-      percentOfUsdCap: null,
+      planTokens: topes.planTokens,
+      tokenCap: topes.tokenCap,
+      percentOfCap: topes.tokenCap ? 0 : null,
+      usdCap: topes.usdCapEfectivo === UNLIMITED ? null : round(topes.usdCapEfectivo, 4),
+      percentOfUsdCap: topes.usdCapEfectivo === UNLIMITED ? null : 0,
       usdCapOverride: Number.isFinite(politica.usdCap) ? politica.usdCap : null,
       percentOfPlatformUsd: null,
       share: Number.isFinite(politica.share) ? politica.share : null,
@@ -1341,6 +1356,56 @@ export const getTenantSpendDetail = async (tenantId, period, { now = new Date() 
   }
 }
 
+/**
+ * Lo que HENKO vendió sobre la key compartida: la suma de los planes vigentes.
+ *
+ * Es el techo que crece solo con cada comercio. No corta nada: lo que limita a cada
+ * uno es su plan, así que esta suma es lo máximo que la plataforma puede tener que
+ * pagar. Contra ella se mide el freno manual, que sí corta para todos: por debajo de
+ * este número, el freno puede dejar sin IA a comercios dentro de lo que compraron.
+ *
+ * Cuentan los que hoy tienen derecho a la IA, incluidas las pruebas vigentes. No
+ * cuentan los que usan su propia clave ni los pausados: a HENKO no le cuestan.
+ */
+export const getPlatformCommitment = async () => {
+  const [tenants, politicas] = await Promise.all([
+    Tenant.find({
+      status: 'active',
+      subscriptionStatus: { $in: ['trialing', 'active', 'past_due'] },
+    })
+      .select(
+        'plan subscriptionStatus trialEndsAt subscriptionPastDueAt updatedAt ai.byokEnabled +ai.geminiApiKey',
+      )
+      .setOptions({ ignoreTenant: true, platformScope: 'platform:reporte-de-gasto-ia' })
+      .lean(),
+    getAllTenantAiPolicies(),
+  ])
+
+  const compromiso = { tenants: 0, tokens: 0, usd: 0, byPlan: {} }
+
+  for (const tenant of tenants) {
+    const politica = politicas[String(tenant._id)] || null
+    const usaSuClave =
+      Boolean(tenant.ai?.byokEnabled) &&
+      Boolean(tenant.ai?.geminiApiKey) &&
+      isByokAllowedForPlan(tenant.plan)
+
+    if (politica?.suspended || usaSuClave || !getSubscriptionState(tenant).entitled) continue
+
+    const delPlan = getPlanCommitment(tenant.plan)
+    const fraccion = getTenantPlanFraction(politica?.share ?? null)
+    const manual = Number.isFinite(politica?.usdCap) ? politica.usdCap : null
+    const plata = delPlan.usd * fraccion
+
+    compromiso.tenants += 1
+    compromiso.tokens += Math.floor(delPlan.tokens * fraccion)
+    compromiso.usd += manual !== null ? Math.min(manual, plata) : plata
+    compromiso.byPlan[tenant.plan] = (compromiso.byPlan[tenant.plan] || 0) + 1
+  }
+
+  return { ...compromiso, usd: round(compromiso.usd, 2) }
+}
+
 export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
   const budget = getPlatformMonthlyTokenBudget()
   const usdBudget = getPlatformMonthlyUsdBudget()
@@ -1362,6 +1427,7 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     anomalies,
     settingHistory,
     reconciliation,
+    commitment,
   ] = await Promise.all([
     AiPlatformUsage.findOne({ period }).lean(),
     getPeriodSpendByMetric(period),
@@ -1392,6 +1458,13 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
     rebuildPlatformProjection({ period }).catch(error => {
       logger.warn('[AI RECONCILE] No se pudo calcular la diferencia', {
         period,
+        error: error.message,
+      })
+      return null
+    }),
+    // Tampoco tumba la pantalla: sin este número se sigue viendo todo el gasto.
+    getPlatformCommitment().catch(error => {
+      logger.warn('[AI COMPROMISO] No se pudo sumar lo vendido por plan', {
         error: error.message,
       })
       return null
@@ -1447,18 +1520,13 @@ export const getPlatformSpendSnapshot = async (period = getCurrentPeriod()) => {
       usd: usdBudget === UNLIMITED ? null : usdBudget,
       usdConfigured: usdBudget !== UNLIMITED,
       usdSource: getPlatformUsdBudgetSource(),
-
-      // Que fraccion del techo puede llevarse UN comercio.
-      //
-      // Va en el mismo objeto que los dos techos porque es el tercer freno y
-      // se decide junto con ellos: subir el techo global sin mirar el reparto
-      // le da mas margen a todos por igual, incluido el que se estaba
-      // comiendo el presupuesto.
-      //
-      // Hasta ahora solo existia como variable de entorno y no se veia en
-      // ningun lado, asi que era un limite que cortaba sin que nadie supiera
-      // que estaba puesto.
-      perTenantShare: getPerTenantShare(),
+    },
+    // Lo vendido por plan, y si el freno manual quedó por debajo. El freno corta
+    // para todos: si es menor a lo vendido, puede dejar sin IA a quien pagó.
+    commitment: commitment && {
+      ...commitment,
+      brakeBelowTokens: hasBudget && budget < commitment.tokens,
+      brakeBelowUsd: usdBudget !== UNLIMITED && usdBudget < commitment.usd,
     },
     consumption: {
       tokens,

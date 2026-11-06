@@ -80,6 +80,25 @@ de que ninguna otra cuenta esté bien puesta.
 Los tenants con key propia (BYOK) no se ven afectados por el disyuntor: su
 gasto no toca la factura de la plataforma.
 
+### Plan, freno y gobierno por comercio
+
+Desde el 06/11/2026 las tres piezas se relacionan así:
+
+- **Cada comercio tiene el 100% de su plan.** Es su límite real, en todas las
+  métricas, y también su tope en dólares: lo máximo que puede costar el plan,
+  con cada token a la tarifa de salida del modelo más caro de la cadena.
+- **Gobernar solo baja.** `AiTenantPolicy.share` es la parte de SU PLAN que
+  recibe (1% a 100%), y `usdCap` un tope en dólares que no puede superar el del
+  plan. Lo extra se vende con un plan superior.
+- **Lo comprometido se calcula solo:** la suma de los planes con derecho a la IA
+  sobre la key compartida. Crece con cada comercio y no corta nada.
+- **El techo manual es un freno de emergencia.** Corta para todos, así que tiene
+  que estar por encima de lo comprometido. El panel avisa si queda por debajo.
+
+La fracción global `AI_PLATFORM_PER_TENANT_SHARE` solo se usa si un plan se
+fuerza a ilimitado por variable de entorno, que es el caso de la sección
+siguiente. Ningún plan que se vende hoy es ilimitado.
+
 ### El techo por tenant sobre la key compartida
 
 El disyuntor solo tiene sentido acompañado de esta regla, porque **corta para
@@ -153,7 +172,7 @@ AI_LIMIT_FREE_IMAGE_EDITS=10
 AI_PLATFORM_MONTHLY_TOKEN_BUDGET=20000000
 
 # Fracción máxima del presupuesto que puede consumir un solo tenant sobre la
-# key compartida. Solo aplica a planes con tope ilimitado.
+# key compartida. Solo aplica a planes forzados a ilimitado por entorno.
 AI_PLATFORM_PER_TENANT_SHARE=0.5
 
 # Corte por suscripción. DEFAULT: apagado — ver "Compatibilidad".

@@ -19,8 +19,8 @@
 //
 // QUÉ GUARDA
 //
-//   share       la fracción del techo que puede llevarse ESTE comercio, en vez
-//               de la global. Bajarla lo acota sin tocar a nadie más.
+//   share       qué parte de SU PLAN recibe este comercio. Bajarla lo acota sin
+//               tocar a nadie más.
 //   suspended   el interruptor. Apaga la IA de este comercio y solo de este.
 //
 // POR QUÉ NO ENTRA EN PlatformAiSetting
@@ -43,30 +43,28 @@ import { tenantPlugin } from './tenantPlugin.js'
 const aiTenantPolicySchema = new mongoose.Schema(
   {
     /**
-     * Fracción del techo global que puede llevarse este comercio.
+     * Qué parte de su plan recibe este comercio, sobre la key de la plataforma.
      *
-     * null = usa la global (getPerTenantShare). Es lo normal: solo se carga un
-     * valor acá cuando hay un motivo para tratarlo distinto.
+     * null = el plan entero. Es lo normal: solo se carga un valor acá cuando hay
+     * un motivo para acotarlo.
      *
-     * Se acota entre 1% y 100% igual que la global, por el mismo motivo: en
-     * cero lo dejaría sin nada y arriba de uno le permitiría llevarse más que
-     * el techo entero.
+     * Se acota entre 1% y 100%: en cero lo dejaría sin nada, y lo que supera el
+     * plan se vende con un plan superior, no se regala desde acá.
      */
     share: { type: Number, default: null, min: 0.01, max: 1 },
 
     /**
-     * Techo en DÓLARES del mes para este comercio. `null` = usa su fracción.
+     * Techo en DÓLARES del mes para este comercio. `null` = el de su plan.
      *
      * POR QUÉ EXISTE ADEMÁS DEL share
      *
-     * El share reparte el techo de tokens, y el mismo tope de tokens puede
-     * costar 5x más o menos según qué modelo de la cadena conteste. Cuando lo
-     * que se quiere acotar es exactamente el GASTO —"este comercio no me puede
-     * costar más de veinte dólares este mes"— la fracción no lo expresa: hay
-     * que poder decir el número.
+     * El share acota cantidades, y la misma cantidad de tokens puede costar 5x
+     * más o menos según qué modelo de la cadena conteste. Cuando lo que se quiere
+     * acotar es exactamente el GASTO —"este comercio no me puede costar más de
+     * veinte dólares este mes"— la fracción no lo expresa: hay que poder decir el
+     * número.
      *
-     * Gana sobre el share cuando está puesto. Sin mínimo ni máximo porque el
-     * rango razonable depende del techo de la plataforma, que se mueve.
+     * Solo puede bajar el tope del plan: ver getSharedKeyTenantUsdCap.
      */
     usdCap: { type: Number, default: null, min: 0 },
 

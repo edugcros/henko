@@ -181,7 +181,7 @@ test('sin techo configurado avisa que nada detiene el gasto', async () => {
     consumption: { ...REPORT.consumption, percentUsed: null, remainingTokens: null },
   })
 
-  await waitFor(() => expect(screen.getByText(/nada lo detiene/i)).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(/nada corta el gasto total/i)).toBeInTheDocument())
 })
 
 test('si el disyuntor cortó, lo dice arriba de todo', async () => {
@@ -277,7 +277,7 @@ test('no deja guardar un techo nuevo sin motivo', async () => {
   load()
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
   expect(screen.getByRole('button', { name: /^guardar$/i })).toBeDisabled()
 
@@ -296,7 +296,7 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   load()
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
   await user.type(screen.getByLabelText(/motivo/i), 'cortó por un bulk import')
   await user.click(screen.getByRole('button', { name: /^guardar$/i }))
 
@@ -309,7 +309,7 @@ test('guarda el techo con el motivo y muestra el reporte actualizado', async () 
   // La respuesta del PUT ya trae el reporte nuevo: la pantalla no vuelve a
   // pedirlo, así que no puede quedar mostrando lo viejo si esa segunda vuelta
   // fallara.
-  await waitFor(() => expect(screen.getByText(/techo fijado desde el panel/i)).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText(/freno fijado desde el panel/i)).toBeInTheDocument())
   expect(mockGetAiSpend).toHaveBeenCalledTimes(1)
 })
 
@@ -319,7 +319,7 @@ test('avisa que la variable de entorno no manda cuando hay override', async () =
   load({ budget: { ...REPORT.budget, source: 'panel' } })
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
   expect(
     screen.getByText(/cambiar la variable de entorno en Render no tiene efecto/i),
@@ -432,11 +432,12 @@ test('el diálogo maneja los TRES frenos, no solo el de tokens', async () => {
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
-  expect(screen.getByLabelText(/techo en tokens/i)).toBeInTheDocument()
-  expect(screen.getByLabelText(/techo en dólares/i)).toBeInTheDocument()
-  expect(screen.getByLabelText(/reparto por comercio/i)).toBeInTheDocument()
+  expect(screen.getByLabelText(/freno en tokens/i)).toBeInTheDocument()
+  expect(screen.getByLabelText(/freno en dólares/i)).toBeInTheDocument()
+  // El reparto del techo ya no existe: cada comercio tiene su plan.
+  expect(screen.queryByLabelText(/reparto por comercio/i)).not.toBeInTheDocument()
 })
 
 test('manda SOLO el freno que se movió', async () => {
@@ -447,9 +448,9 @@ test('manda SOLO el freno que se movió', async () => {
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
-  const campoUsd = screen.getByLabelText(/techo en dólares/i)
+  const campoUsd = screen.getByLabelText(/freno en dólares/i)
   await user.clear(campoUsd)
   await user.type(campoUsd, '80')
   await user.type(screen.getByLabelText(/motivo/i), 'subimos por el mes de campañas')
@@ -472,9 +473,9 @@ test('un campo vacío suelta el freno, y no es lo mismo que cero', async () => {
   load({ budget: { ...REPORT.budget, usd: 50, perTenantShare: 0.5 } })
 
   await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /cambiar techo/i }))
+  await user.click(screen.getByRole('button', { name: /cambiar freno/i }))
 
-  await user.clear(screen.getByLabelText(/techo en dólares/i))
+  await user.clear(screen.getByLabelText(/freno en dólares/i))
   await user.type(screen.getByLabelText(/motivo/i), 'que lo decida la variable')
   await user.click(screen.getByRole('button', { name: /^guardar$/i }))
 
@@ -527,7 +528,8 @@ test('acotar a un comercio manda solo su fracción', async () => {
   await waitFor(() => expect(screen.getByText('Tienda Grande')).toBeInTheDocument())
   await user.click(screen.getByRole('button', { name: /gobernar/i }))
 
-  await user.type(screen.getByLabelText(/su parte del techo/i), '0.1')
+  // Se escribe en porcentaje de su plan, y viaja como fracción.
+  await user.type(screen.getByLabelText(/su cupo del plan/i), '10')
   await user.type(screen.getByLabelText(/^motivo$/i), 'se comió el 60% en tres días')
   await user.click(screen.getByRole('button', { name: /^guardar$/i }))
 
@@ -613,7 +615,9 @@ test('avisa el día en que se agota el techo al ritmo actual', async () => {
     },
   })
 
-  await waitFor(() => expect(screen.getByText(/el techo se agota el día 18/i)).toBeInTheDocument())
+  await waitFor(() =>
+    expect(screen.getByText(/el freno se alcanza el día 18/i)).toBeInTheDocument(),
+  )
   // Y con cuál de los dos ritmos se proyectó: que el reciente venga más alto
   // que el del mes es una información distinta de la proyección misma.
   expect(screen.getByText(/últimos 7 días/i)).toBeInTheDocument()
@@ -651,7 +655,7 @@ test('muestra en qué escalón de servicio está la plataforma', async () => {
   })
 
   await waitFor(() => expect(screen.getByText(/modo economía/i)).toBeInTheDocument())
-  expect(screen.getByText(/83.4% del techo/i)).toBeInTheDocument()
+  expect(screen.getByText(/83.4% del freno/i)).toBeInTheDocument()
 })
 
 test('en modo normal no muestra ningún escalón', async () => {
@@ -1194,19 +1198,19 @@ describe('techo en plata por comercio', () => {
 
 describe('límites de los campos numéricos', () => {
   // En MUI 9 `inputProps` se ignora sin avisar, así que min, max y step tienen que estar en el
-  // <input> real. Los rangos son los que valida platformCtrl: la fracción entre 0.01 y 1, y el
+  // <input> real. Los rangos son los que valida platformCtrl: la fracción entre 0.01 y 1 (acá, 1% a 100%), y el
   // techo en dólares cualquier número mayor a cero (admite decimales, por eso step "any").
-  test('la parte del techo y el techo en dólares llevan el rango del backend', async () => {
+  test('el cupo del plan y el techo en dólares llevan el rango del backend', async () => {
     const user = userEvent.setup()
     load({ byTenant: [{ ...UN_COMERCIO[0], usdCap: 20, percentOfUsdCap: 62.5 }] })
 
     await waitFor(() => expect(screen.getByText('62.5%')).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /gobernar/i }))
 
-    const parte = screen.getByLabelText(/su parte del techo/i)
-    expect(parte.getAttribute('min')).toBe('0.01')
-    expect(parte.getAttribute('max')).toBe('1')
-    expect(parte.getAttribute('step')).toBe('0.01')
+    const parte = screen.getByLabelText(/su cupo del plan/i)
+    expect(parte.getAttribute('min')).toBe('1')
+    expect(parte.getAttribute('max')).toBe('100')
+    expect(parte.getAttribute('step')).toBe('1')
 
     const techo = screen.getByLabelText(/techo en dólares/i)
     expect(techo.getAttribute('min')).toBe('0.01')
@@ -1384,5 +1388,87 @@ describe('evolución del comercio', () => {
     await user.click(screen.getByRole('button', { name: /gobernar/i }))
 
     expect(await screen.findByText(/dejó de consumir/)).toBeInTheDocument()
+  })
+})
+
+describe('el plan, lo comprometido y el freno', () => {
+  const COMPROMISO = {
+    tenants: 2,
+    tokens: 25_440_000,
+    usd: 106,
+    byPlan: { starter: 2 },
+    brakeBelowTokens: false,
+    brakeBelowUsd: false,
+  }
+
+  const conPlan = { ...CON_COMERCIOS.byTenant[0], planTokens: 100_000_000 }
+
+  test('muestra lo que comprometen los planes', async () => {
+    load({ commitment: COMPROMISO })
+
+    expect(await screen.findByText(/comprometido por planes/i)).toHaveTextContent(/en 2 comercios/)
+    expect(screen.queryByText(/por debajo de lo vendido/i)).not.toBeInTheDocument()
+  })
+
+  test('sin ese dato, la pantalla sigue funcionando', async () => {
+    load({ commitment: null })
+
+    await waitFor(() => expect(screen.getByText(pesos(GASTO_DEL_MES))).toBeInTheDocument())
+    expect(screen.queryByText(/comprometido por planes/i)).not.toBeInTheDocument()
+  })
+
+  test.each([['brakeBelowTokens'], ['brakeBelowUsd']])(
+    'avisa cuando el freno queda por debajo de lo vendido: %s',
+    async campo => {
+      load({ commitment: { ...COMPROMISO, [campo]: true } })
+
+      expect(await screen.findByText(/por debajo de lo vendido/i)).toBeInTheDocument()
+    },
+  )
+
+  test('gobernar dice cuántos tokens le quedan de su plan', async () => {
+    const user = userEvent.setup()
+    load({ byTenant: [conPlan] })
+
+    await user.click(await screen.findByRole('button', { name: /gobernar/i }))
+
+    const campo = screen.getByLabelText(/su cupo del plan/i)
+
+    expect(screen.getByText(/100% de su plan/)).toBeInTheDocument()
+
+    await user.type(campo, '25')
+
+    expect(screen.getByText(/25% de su plan = 25\.000\.000 tokens/)).toBeInTheDocument()
+  })
+
+  test('un cupo ya bajado se abre en porcentaje y no viaja si no cambió', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantPolicy.mockResolvedValue(REPORT)
+    load({ byTenant: [{ ...conPlan, share: 0.25 }] })
+
+    await user.click(await screen.findByRole('button', { name: /gobernar/i }))
+
+    expect(screen.getByLabelText(/su cupo del plan/i).value).toBe('25')
+
+    await user.type(screen.getByLabelText(/techo en dólares/i), '5')
+    await user.type(screen.getByLabelText(/^motivo$/i), 'bajarle la plata')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() => expect(mockUpdateTenantPolicy).toHaveBeenCalled())
+    expect(mockUpdateTenantPolicy.mock.calls[0][0]).not.toHaveProperty('share')
+  })
+
+  test('dejarlo vacío le devuelve el plan entero', async () => {
+    const user = userEvent.setup()
+    mockUpdateTenantPolicy.mockResolvedValue(REPORT)
+    load({ byTenant: [{ ...conPlan, share: 0.25 }] })
+
+    await user.click(await screen.findByRole('button', { name: /gobernar/i }))
+    await user.clear(screen.getByLabelText(/su cupo del plan/i))
+    await user.type(screen.getByLabelText(/^motivo$/i), 'ya se normalizó')
+    await user.click(screen.getByRole('button', { name: /^guardar$/i }))
+
+    await waitFor(() => expect(mockUpdateTenantPolicy).toHaveBeenCalled())
+    expect(mockUpdateTenantPolicy.mock.calls[0][0].share).toBeNull()
   })
 })

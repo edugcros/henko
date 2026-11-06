@@ -36,6 +36,7 @@ import {
   getEstimatedCostUsd,
   getSharedKeyTenantCap,
   getSharedKeyTenantUsdCap,
+  getTenantPlanFraction,
   getSubscriptionState,
   getUsdToArsRate,
   normalizeMetric,
@@ -1460,18 +1461,27 @@ const applyReservation = async ({
  * aflojarlo: si se aceptara un valor más alto, cualquier admin de tenant se
  * subiría la cuota desde su propio panel.
  *
- * `tenantShare` es la fracción que el DUEÑO DE LA PLATAFORMA le asignó a este
- * comercio, cuando le asignó una. No se lee acá adentro porque esto es
- * síncrono y se llama desde cuatro lugares: la lee quien puede (reserveAiBudget
- * y compañía, que ya son asíncronos) y la baja como dato.
+ * `tenantShare` es la parte de SU PLAN que el DUEÑO DE LA PLATAFORMA le dejó a
+ * este comercio, cuando lo acotó. Sin acotar recibe el plan entero. No se lee acá
+ * adentro porque esto es síncrono y se llama desde cuatro lugares: la lee quien
+ * puede (reserveAiBudget y compañía, que ya son asíncronos) y la baja como dato.
+ *
+ * ANTES ESTA FRACCIÓN NO HACÍA NADA.
+ *
+ * Solo se usaba con planes ilimitados, y desde que se sacaron free y enterprise no
+ * queda ninguno. Gobernar a un comercio mostraba un tope nuevo y seguía aplicando el
+ * del plan.
  */
 const resolveEffectiveLimit = ({ plan, metric, keySource, tenantShare = null }) => {
   const planLimit = getPlanLimit(plan, metric)
 
   if (keySource !== KEY_SOURCE.PLATFORM) return planLimit
-  if (planLimit !== UNLIMITED) return planLimit
 
-  return getSharedKeyTenantCap(metric, { share: tenantShare })
+  if (planLimit === UNLIMITED) return getSharedKeyTenantCap(metric, { share: tenantShare })
+
+  const fraction = getTenantPlanFraction(tenantShare)
+
+  return fraction < 1 ? Math.max(1, Math.floor(planLimit * fraction)) : planLimit
 }
 
 /**
@@ -2128,6 +2138,7 @@ export const reserveAiBudget = async ({
   // se conoce después de la respuesta, así que comprobar-y-después-gastar deja
   // pasar cien pedidos simultáneos.
   const tenantUsdCap = getSharedKeyTenantUsdCap({
+    plan: aiProfile.plan,
     share: tenantPolicy?.share ?? null,
     usdCap: tenantPolicy?.usdCap ?? null,
   })
@@ -3609,6 +3620,9 @@ export const getAiBudgetSnapshot = async tenantId => {
       // como un error de facturación.
       planLimit,
       selfLimited: limit !== planLimit,
+      // Lo que incluye el plan contratado. Si HENKO se lo bajó, el comercio tiene
+      // que poder leerlo: su checkout le prometió el número de acá.
+      contractedLimit: getPlanLimit(profile.plan, metric),
     }
 
     return acc
