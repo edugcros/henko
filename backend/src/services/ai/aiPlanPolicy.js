@@ -29,6 +29,7 @@ import {
   PLATFORM_AI_SETTINGS,
 } from './platformAiSettingService.js'
 import { getBcraUsdArsQuote } from './aiExchangeRateService.js'
+import { computeMaxTokenCostUsd, getImagePrice, getToolPrice } from './aiModelPricing.js'
 
 const clean = value => String(value || '').trim()
 
@@ -909,8 +910,9 @@ const getVisionTokensPerCall = () => Math.max(1, readEnvNumber('AI_VISION_TOKENS
  *
  * Solo toca las métricas que traducen a dinero contra el presupuesto de la
  * plataforma: los tokens, y visión, que se mide en unidades pero gasta tokens
- * igual. Los topes finitos de un plan no se tocan — son deliberados; esto
- * aplica únicamente donde el plan dice "ilimitado".
+ * igual. Aplica únicamente donde el plan dice "ilimitado", algo que solo pasa
+ * forzándolo por entorno: los dos planes que se venden tienen topes finitos, y a
+ * esos los gobierna getTenantPlanFraction.
  *
  * Lo que queda deliberadamente afuera: las ediciones de imagen se pagan por
  * imagen a otro proveedor y no consumen tokens, así que derivarles un techo de
@@ -918,49 +920,114 @@ const getVisionTokensPerCall = () => Math.max(1, readEnvNumber('AI_VISION_TOKENS
  * cuotas por plan.
  */
 /**
+ * Con qué se calcula lo máximo que puede costar un plan.
+ *
+ * Son los más caros de lo que puede responder: el último escalón de la cadena de
+ * respaldo y el modelo de imagen de mayor tarifa. Un test comprueba que ningún
+ * modelo de la cadena cueste más que el de referencia.
+ *
+ * Los cuatro créditos por análisis de mercado son el consumo medido en producción:
+ * ver la nota de Tavily en aiModelPricing.js.
+ */
+const PLAN_COST_REFERENCE_MODEL = 'gemini-3.8-flash'
+const PLAN_COST_REFERENCE_IMAGE_MODEL = 'gemini-3.1-flash-image'
+const MARKET_CREDITS_PER_ANALYSIS = 4
+
+/**
+ * Lo que HENKO se comprometió a entregar con un plan: tokens y plata del mes.
+ *
+ * POR QUÉ LA PLATA ES UN MÁXIMO Y NO UN PROMEDIO
+ *
+ * Es el tope en dólares de cada comercio, y tiene una sola condición: nadie puede
+ * quedarse sin IA por plata estando dentro de lo que compró. Por eso cada token se
+ * cuenta a la tarifa de SALIDA del modelo más caro, que es un techo sin supuestos: un
+ * promedio dependería de la proporción entre entrada y salida, y con esa proporción
+ * mal medida se le cortaría el servicio a un comercio al día.
+ *
+ * Se apoya en el catálogo con la fecha pedida, así que el aumento del 1/1/2027 entra
+ * solo. Los precios siguen sin estar escritos acá.
+ *
+ * `unbounded` avisa que el plan tiene alguna métrica de costo sin tope, algo que solo
+ * pasa si se fuerza por variable de entorno: ahí no hay máximo que calcular.
+ */
+export const getPlanCommitment = (plan, at = new Date()) => {
+  const tope = metric => getPlanLimit(plan, metric)
+
+  const agentTokens = tope(AI_METRICS.AGENT_TOKENS)
+  const marketTokens = tope(AI_METRICS.MARKET_TOKENS)
+  const vision = tope(AI_METRICS.VISION)
+  const imageEdits = tope(AI_METRICS.IMAGE_EDITS)
+  const marketAnalyses = tope(AI_METRICS.MARKET_ANALYSES)
+
+  const unbounded = [agentTokens, marketTokens, vision, imageEdits, marketAnalyses].includes(
+    UNLIMITED,
+  )
+
+  const tokens = agentTokens + marketTokens + vision * getVisionTokensPerCall()
+
+  const usd =
+    computeMaxTokenCostUsd(tokens, PLAN_COST_REFERENCE_MODEL, at) +
+    imageEdits * getImagePrice(at, 'gemini', PLAN_COST_REFERENCE_IMAGE_MODEL).perImage +
+    marketAnalyses * MARKET_CREDITS_PER_ANALYSIS * getToolPrice('tavily_search', at).unitCostUsd
+
+  return { tokens, usd, unbounded }
+}
+
+/**
+ * Qué parte de SU PLAN recibe un comercio.
+ *
+ * Por defecto todo: `share` en null quiere decir que nadie lo acotó. El dueño de la
+ * plataforma solo puede bajarla, por eso el resultado nunca pasa de 1. Lo extra se
+ * vende con un plan superior.
+ */
+export const getTenantPlanFraction = share =>
+  Number.isFinite(share) && share !== null ? Math.min(Math.max(share, 0.01), 1) : 1
+
+/**
  * El techo en PLATA de un comercio sobre la key compartida, en dólares del mes.
  *
- * POR QUÉ EL TOPE EN TOKENS NO ALCANZABA
+ * Sale de SU PLAN, y no del techo de la plataforma. Antes era una fracción de ese
+ * techo: el mismo número para un Starter y para un Pro, y un número que no decía nada
+ * sobre lo que cada uno compró.
  *
- * Lo dice el comentario de MONTHLY_USD_BUDGET: entre gemini-3.6-flash y
- * 3.1-flash-lite hay 5x de diferencia de tarifa, así que el mismo tope de
- * tokens puede costar veinte dólares o cien según qué modelo esté respondiendo
- * — y eso lo decide la cadena de respaldo, no nosotros.
+ * `usdCapOverride` permite acotarlo en dólares directo, y solo puede bajarlo: gobernar
+ * a un comercio no le da más de lo que compró. Sin techo en dólares en la plataforma
+ * no se mide plata por comercio, salvo a quien se le puso un número a mano.
  *
- * O sea que un comercio podía estar perfectamente dentro de su cupo de tokens y
- * costar cinco veces lo previsto. El techo en plata existía SOLO a nivel
- * plataforma, así que cuando uno se desbocaba el disyuntor cortaba para TODOS:
- * el control existía, pero en la unidad equivocada y repartiendo el daño entre
- * comercios que no habían hecho nada.
- *
- * CÓMO SE DERIVA
- *
- * La misma fracción que el tope de tokens, aplicada al techo en dólares. Así
- * las dos palancas se mueven juntas y no hay que mantener dos reparticiones que
- * se contradigan: bajarle el share a un comercio le baja los tokens Y la plata.
- *
- * `usdCapOverride` permite ponerle un número en dólares directo, para el caso
- * en que lo que se quiere acotar es exactamente el gasto y no la proporción.
- * Gana sobre la fracción.
+ * Con un plan sin tope, forzado por entorno, se vuelve a la fracción del techo: es el
+ * único caso donde sigue habiendo que derivar un límite del presupuesto.
  */
 export const getSharedKeyTenantUsdCap = ({
+  plan = null,
   share: shareOverride = null,
   usdCap: usdCapOverride = null,
 } = {}) => {
-  // El tope explícito en dólares manda: es el más específico de los dos.
-  if (Number.isFinite(usdCapOverride) && usdCapOverride > 0) return usdCapOverride
+  const manual = Number.isFinite(usdCapOverride) && usdCapOverride > 0 ? usdCapOverride : null
 
-  const usdBudget = getPlatformMonthlyUsdBudget()
-  if (usdBudget === UNLIMITED) return UNLIMITED
+  // Un comercio que ya no existe no tiene plan del que derivar nada.
+  if (!plan) return manual ?? UNLIMITED
 
-  const share =
-    Number.isFinite(shareOverride) && shareOverride !== null
-      ? Math.min(Math.max(shareOverride, 0.01), 1)
-      : getPerTenantShare()
+  const compromiso = getPlanCommitment(plan)
 
-  // Sin piso artificial: si la fracción da centavos, el comercio tiene centavos.
-  // Inventarle un mínimo seria regalarle techo a quien el dueño decidió acotar.
-  return usdBudget * share
+  if (compromiso.unbounded) {
+    if (manual !== null) return manual
+
+    const usdBudget = getPlatformMonthlyUsdBudget()
+    if (usdBudget === UNLIMITED) return UNLIMITED
+
+    return (
+      usdBudget *
+      (Number.isFinite(shareOverride) && shareOverride !== null
+        ? Math.min(Math.max(shareOverride, 0.01), 1)
+        : getPerTenantShare())
+    )
+  }
+
+  const delPlan = compromiso.usd * getTenantPlanFraction(shareOverride)
+
+  if (manual !== null) return Math.min(manual, delPlan)
+
+  return getPlatformMonthlyUsdBudget() === UNLIMITED ? UNLIMITED : delPlan
 }
 
 export const getSharedKeyTenantCap = (metric, { share: shareOverride = null } = {}) => {
@@ -1023,6 +1090,8 @@ export default {
   getPlanCatalog,
   getUsdToArsQuote,
   getPlatformMonthlyTokenBudget,
+  getPlanCommitment,
+  getTenantPlanFraction,
   getSharedKeyTenantCap,
   getPlatformMonthlyInfraCostUsd,
   getPlatformMonthlyStorageCostUsd,

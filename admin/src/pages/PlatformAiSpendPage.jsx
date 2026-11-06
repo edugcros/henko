@@ -201,9 +201,9 @@ const usageColor = percent => {
 // silencio a la variable de entorno convierte "ya lo cambié en Render y no pasa
 // nada" en un misterio que cuesta media hora.
 const BUDGET_SOURCE_LABEL = {
-  panel: 'techo fijado desde el panel',
-  env: 'techo tomado de la variable de entorno',
-  none: 'sin techo configurado',
+  panel: 'freno fijado desde el panel',
+  env: 'freno tomado de la variable de entorno',
+  none: 'sin freno configurado',
 }
 
 /**
@@ -218,26 +218,20 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
   const { rate } = useDinero()
   const [tokens, setTokens] = useState('')
   const [usd, setUsd] = useState('')
-  const [share, setShare] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   // Los valores vigentes al abrir, para poder comparar y mandar SOLO lo que
-  // cambió. Sin esto, abrir el diálogo y guardar reescribiría los tres frenos
+  // cambió. Sin esto, abrir el diálogo y guardar reescribiría los dos frenos
   // con el mismo motivo, ensuciando el historial con cambios que no ocurrieron.
   useEffect(() => {
     if (!open) return
     setTokens(budget.tokens === null ? '' : String(budget.tokens))
     setUsd(budget.usd === null || budget.usd === undefined ? '' : String(budget.usd))
-    setShare(
-      budget.perTenantShare === null || budget.perTenantShare === undefined
-        ? ''
-        : String(budget.perTenantShare),
-    )
     setReason('')
     setError('')
-  }, [open, budget.tokens, budget.usd, budget.perTenantShare])
+  }, [open, budget.tokens, budget.usd])
 
   /**
    * Un campo vacío significa "volver a la variable de entorno", no cero.
@@ -263,16 +257,13 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
                 ? { tokens: valorDe(tokens) }
                 : {}),
               ...(String(usd) !== String(budget.usd ?? '') ? { usd: valorDe(usd) } : {}),
-              ...(String(share) !== String(budget.perTenantShare ?? '')
-                ? { perTenantShare: valorDe(share) }
-                : {}),
               reason,
             },
       )
       onSaved(data)
       onClose()
     } catch (err) {
-      setError(err?.response?.data?.message || 'No se pudo cambiar el techo.')
+      setError(err?.response?.data?.message || 'No se pudo cambiar el freno.')
     } finally {
       setSaving(false)
     }
@@ -289,7 +280,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Cambiar el techo de gasto</DialogTitle>
+      <DialogTitle>Cambiar el freno de emergencia</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           El valor rige de inmediato y no necesita reiniciar el servicio. Queda registrado con tu
@@ -297,7 +288,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
         </Typography>
 
         <TextField
-          label="Techo en tokens"
+          label="Freno en tokens"
           type="number"
           fullWidth
           value={tokens}
@@ -312,7 +303,7 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
             solo se podía tocar por variable de entorno en Render, sin motivo
             ni historial. */}
         <TextField
-          label="Techo en dólares (USD)"
+          label="Freno en dólares (USD)"
           type="number"
           fullWidth
           value={usd}
@@ -325,24 +316,6 @@ function BudgetDialog({ open, budget, onClose, onSaved }) {
             Number(usd) > 0 && rate
               ? `Equivale a ${formatArs(Number(usd) * rate)} al cambio de hoy. Corta cuando el gasto del mes llega acá, aunque sobren tokens.`
               : 'Vacío = lo decide la variable de entorno. Corta cuando el gasto del mes llega acá, aunque sobren tokens.'
-          }
-        />
-
-        {/* El reparto por comercio: qué fracción del techo puede llevarse UNO.
-            Es lo único que impide que un solo comercio se coma el presupuesto
-            de todos. */}
-        <TextField
-          label="Reparto por comercio"
-          type="number"
-          fullWidth
-          value={share}
-          onChange={event => setShare(event.target.value)}
-          sx={{ mb: 2 }}
-          slotProps={{ htmlInput: { step: 0.01, min: 0.01, max: 1 } }}
-          helperText={
-            share && Number(share) > 0
-              ? `Cada comercio puede usar hasta el ${Math.round(Number(share) * 100)}% del techo. Vacío = variable de entorno.`
-              : 'Entre 0.01 y 1. Es el tope que impide que un solo comercio se lleve todo el presupuesto.'
           }
         />
 
@@ -1199,7 +1172,11 @@ function EvolucionDelComercio({ tenantId, period }) {
   )
 }
 
-function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
+// Lo que el diálogo muestra al abrir: la fracción guardada, en porcentaje.
+const porcentajeInicial = row =>
+  row.share === null || row.share === undefined ? '' : String(Math.round(row.share * 10000) / 100)
+
+function TenantPolicyDialog({ row, period, onClose, onSaved }) {
   const { dinero } = useDinero()
   const [share, setShare] = useState('')
   const [usdCap, setUsdCap] = useState('')
@@ -1213,7 +1190,7 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
   // cambió — mismo criterio que el diálogo del techo.
   useEffect(() => {
     if (!row) return
-    setShare(row.share === null || row.share === undefined ? '' : String(row.share))
+    setShare(porcentajeInicial(row))
     setUsdCap(
       row.usdCapOverride === null || row.usdCapOverride === undefined
         ? ''
@@ -1230,19 +1207,17 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
   // cambiaría la cantidad de hooks entre renders y rompe el orden.
   if (!row) return null
 
-  // Vacío significa "usá la fracción global", no cero. La diferencia importa:
-  // el backend distingue null (volver a la global) de no mandar el campo.
-  const shareValue = String(share).trim() === '' ? null : Number(share)
-  const shareEfectiva = shareValue ?? budget.perTenantShare ?? null
+  // Se escribe en porcentaje y viaja como fracción. Vacío significa "el plan
+  // entero", no cero: el backend distingue null de no mandar el campo.
+  const shareValue = String(share).trim() === '' ? null : Math.round(Number(share) * 100) / 10000
 
-  // El tope que resulta, en tokens. Una fracción sola no le dice nada a nadie:
-  // "0,1" es abstracto y "20.000.000 de tokens" es una decisión que se puede
-  // comparar contra lo que el comercio ya consumió, que está en la misma fila.
-  const topeResultante =
-    budget.tokens && shareEfectiva ? Math.floor(budget.tokens * shareEfectiva) : null
+  // El tope que resulta, en tokens: es lo que se compara contra lo que el comercio
+  // ya consumió, que está en la misma fila.
+  const porcentajeDelPlan = shareValue === null ? 100 : Math.round(shareValue * 10000) / 100
+  const topeResultante = row.planTokens ? Math.floor(row.planTokens * (shareValue ?? 1)) : null
 
-  // Vacio = usa su fraccion. Igual que el share, el backend distingue null
-  // (volver a la fraccion) de no mandar el campo.
+  // Vacío = el tope de su plan. Igual que el cupo, el backend distingue null de no
+  // mandar el campo.
   const usdCapValue = String(usdCap).trim() === '' ? null : Number(usdCap)
 
   const submit = async () => {
@@ -1252,7 +1227,7 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
     try {
       const data = await updateTenantAiPolicy({
         tenantId: row.tenantId,
-        ...(String(share) !== String(row.share ?? '') ? { share: shareValue } : {}),
+        ...(String(share) !== porcentajeInicial(row) ? { share: shareValue } : {}),
         ...(String(usdCap) !== String(row.usdCapOverride ?? '') ? { usdCap: usdCapValue } : {}),
         ...(suspended !== row.suspended
           ? { suspended, suspendedReason }
@@ -1294,30 +1269,30 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
         <EvolucionDelComercio tenantId={row.tenantId} period={period} />
 
         <TextField
-          label="Su parte del techo"
+          label="Su cupo del plan (%)"
           type="number"
           fullWidth
           value={share}
           onChange={event => setShare(event.target.value)}
           sx={{ mb: 2 }}
-          slotProps={{ htmlInput: { step: 0.01, min: 0.01, max: 1 } }}
+          slotProps={{ htmlInput: { step: 1, min: 1, max: 100 } }}
           helperText={
             topeResultante
-              ? `${Math.round(shareEfectiva * 100)}% del techo = ${formatTokens(topeResultante)} tokens para este comercio. Vacío = usa el reparto global.`
-              : 'Entre 0.01 y 1. Vacío = usa el reparto global de la plataforma.'
+              ? `${porcentajeDelPlan}% de su plan = ${formatTokens(topeResultante)} tokens al mes. Solo se puede bajar. Vacío = el plan entero.`
+              : 'Entre 1 y 100. Solo se puede bajar. Vacío = el plan entero.'
           }
         />
 
         {/* EL TECHO EN PLATA, al lado del de tokens y no en su lugar.
 
-            El de arriba reparte TOKENS, y el catálogo de precios explica por qué
+            El de arriba acota CANTIDADES, y el catálogo de precios explica por qué
             eso no controla el gasto: entre un modelo y otro de la cadena hay 5x
             de diferencia de tarifa, así que el mismo tope de tokens puede costar
             veinte dólares o cien según quién conteste — y eso lo decide la
             cadena de respaldo, no una política.
 
-            Van los dos porque miden cosas distintas y las dos sirven: la
-            fracción reparte proporcionalmente, esto pone un número. */}
+            Van los dos porque miden cosas distintas y las dos sirven: el cupo baja
+            todo en proporción, esto pone un número. */}
         <TextField
           label="Su techo en dólares del mes"
           type="number"
@@ -1328,8 +1303,8 @@ function TenantPolicyDialog({ row, budget, period, onClose, onSaved }) {
           slotProps={{ htmlInput: { step: 'any', min: 0.01 } }}
           helperText={
             usdCapValue
-              ? `Este comercio no va a costar más de USD ${usdCapValue} este mes. Gana sobre la fracción de arriba.`
-              : `Vacío = usa su fracción, hoy ${row.usdCap === null ? 'sin techo' : `USD ${row.usdCap}`}. Poné un número para acotar el gasto directamente.`
+              ? `Este comercio no va a costar más de USD ${usdCapValue} este mes. No puede superar el tope de su plan.`
+              : `Vacío = el tope de su plan, hoy ${row.usdCap === null ? 'sin tope' : `USD ${row.usdCap}`}. Poné un número para bajarlo.`
           }
         />
 
@@ -1503,6 +1478,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
 
   const {
     budget,
+    commitment,
     consumption,
     breaker,
     byMetric,
@@ -1585,7 +1561,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
           <strong>
             {degradation.level === 'essential' ? 'Solo lo esencial.' : 'Modo economía.'}
           </strong>{' '}
-          El gasto va por el {degradation.percentUsed}% del techo, así que se está respondiendo con
+          El gasto va por el {degradation.percentUsed}% del freno, así que se está respondiendo con
           el modelo más barato de la cadena.
           {degradation.level === 'essential'
             ? ' Además están pospuestos el análisis de mercado y las ediciones de imagen. El asistente de las tiendas sigue contestando.'
@@ -1607,10 +1583,10 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
         <Alert severity="warning" sx={{ mb: 2 }}>
           <strong>
             {forecast.exhaustionDay
-              ? `Al ritmo actual, el techo se agota el día ${forecast.exhaustionDay}.`
-              : 'Al ritmo actual, el mes cierra por encima del techo.'}
+              ? `Al ritmo actual, el freno se alcanza el día ${forecast.exhaustionDay}.`
+              : 'Al ritmo actual, el mes cierra por encima del freno.'}
           </strong>{' '}
-          Proyección: {dinero(forecast.projectedUsd)} sobre un techo de {dinero(budget.usd)} (
+          Proyección: {dinero(forecast.projectedUsd)} sobre un freno de {dinero(budget.usd)} (
           {forecast.projectedPercent}%).{' '}
           {forecast.basis === 'recent'
             ? `Calculado con el ritmo de los últimos ${forecast.recentWindowDays} días (${dinero(forecast.recentAvgUsd)} por día), que viene más alto que el promedio del mes (${dinero(forecast.dailyAvgUsd)}).`
@@ -1623,8 +1599,18 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
           poder distinguirlas acá. */}
       {!budget.configured && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          No hay disyuntor configurado (<code>AI_PLATFORM_MONTHLY_TOKEN_BUDGET</code>). El gasto se
-          registra, pero <strong>nada lo detiene</strong>.
+          No hay freno de emergencia configurado (<code>AI_PLATFORM_MONTHLY_TOKEN_BUDGET</code>).
+          Cada comercio sigue limitado por su plan, pero <strong>nada corta el gasto total</strong>.
+        </Alert>
+      )}
+
+      {/* El freno corta para TODOS. Por debajo de lo vendido, puede dejar sin IA a un
+          comercio con cupo disponible: es el único caso en que frena a quien pagó. */}
+      {(commitment?.brakeBelowTokens || commitment?.brakeBelowUsd) && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <strong>El freno está por debajo de lo vendido.</strong> Los planes comprometen{' '}
+          {formatTokens(commitment.tokens)} tokens y hasta {dinero(commitment.usd)} al mes. Al
+          llegar al freno la IA se corta para todos, aunque tengan cupo disponible.
         </Alert>
       )}
 
@@ -1657,7 +1643,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
             />
             <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
               <Typography variant="caption" color="text.secondary">
-                {percent}% del techo
+                {percent}% del freno
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Avisos al 50% y al 80%
@@ -1667,6 +1653,16 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
               </Typography>
             </Stack>
           </Box>
+        )}
+
+        {/* Lo que crece solo con cada comercio. No corta nada: lo que limita a cada uno
+            es su plan. */}
+        {commitment && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Comprometido por planes: {formatTokens(commitment.tokens)} tokens y hasta{' '}
+            {dinero(commitment.usd)} al mes, en {commitment.tenants}{' '}
+            {commitment.tenants === 1 ? 'comercio' : 'comercios'}.
+          </Typography>
         )}
 
         <Stack
@@ -1695,7 +1691,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
             )}
           </Typography>
           <Button size="small" onClick={() => setEditing(true)}>
-            Cambiar techo
+            Cambiar freno
           </Button>
         </Stack>
       </Paper>
@@ -1728,7 +1724,6 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
             tenantStatus:
               governing.tenantStatus || margenPorComercio.get(governing.tenantId)?.status || null,
           }}
-          budget={budget}
           // El período que se está mirando, para que la evolución del comercio
           // sea la del mismo mes que la tabla y no la del mes actual.
           period={report.period}
@@ -1851,7 +1846,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
                       distintas, y titularla con una sola es lo que hacía
                       invisible a la otra. */}
                   <TableCell align="right">Consumo</TableCell>
-                  <TableCell align="right">De su parte</TableCell>
+                  <TableCell align="right">De su plan</TableCell>
                   <TableCell align="right">Operaciones</TableCell>
                   <TableCell align="right" />
                 </TableRow>
@@ -1960,7 +1955,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
                       ) : (
                         <Tooltip
                           title={`${dinero(row.platformCostUsd)} de un techo de ${dinero(row.usdCap)}${
-                            row.usdCapOverride ? ' (puesto a mano)' : ' (su fracción)'
+                            row.usdCapOverride ? ' (puesto a mano)' : ' (su plan)'
                           }`}
                         >
                           <Typography
@@ -2045,13 +2040,9 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
             color="text.secondary"
             sx={{ display: 'block', mb: 3, mt: -2 }}
           >
-            «De su parte» es contra el tope de CADA comercio
-            {budget.perTenantShare
-              ? ` (${Math.round(budget.perTenantShare * 100)}% del techo salvo a los que tengan uno propio)`
-              : ''}
-            , no contra el techo total: un comercio puede quedarse sin IA con la plataforma al 30%.
-            Con «Gobernar» se le baja el tope a uno solo, o se le pausa la IA, sin tocar a los
-            demás.
+            «De su plan» es contra lo que compró CADA comercio: un comercio puede quedarse sin IA
+            aunque la plataforma vaya al 30%. Con «Gobernar» se le baja el cupo a uno solo, o se le
+            pausa la IA, sin tocar a los demás.
           </Typography>
         </>
       )}
@@ -2249,9 +2240,9 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
       )}
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 3 }}>
-        El techo se cambia desde acá y rige de inmediato. Los límites por plan y la fracción por
-        comercio siguen en variables de entorno de Render, que requieren reiniciar el servicio — son
-        decisiones de producto, no maniobras de urgencia.
+        El freno y el cupo de cada comercio se cambian desde acá y rigen de inmediato. Los límites
+        de cada plan siguen en variables de entorno de Render, que requieren reiniciar el servicio —
+        son decisiones de producto, no maniobras de urgencia.
       </Typography>
     </Box>
   )

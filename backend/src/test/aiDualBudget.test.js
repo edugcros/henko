@@ -21,12 +21,15 @@ import mongoose from 'mongoose'
 import { crearMongoEnMemoria, esperarA } from './testDB.js'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
+// El panel del comercio resuelve su clave: sin la de plataforma no habria tope que mostrar.
+process.env.GEMINI_API_KEY = 'AIzaTEST'
 
 const { default: AiOperation } = await import('../models/aiOperationModel.js')
 const { default: AiProviderCall } = await import('../models/aiProviderCallModel.js')
 const { default: AiConsumptionLedger } = await import('../models/aiConsumptionLedgerModel.js')
 const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageModel.js')
 const { default: AiUsage } = await import('../models/aiUsageModel.js')
+const { default: AiTenantPolicy } = await import('../models/aiTenantPolicyModel.js')
 const {
   reserveAiBudget,
   refundAiBudget,
@@ -35,7 +38,13 @@ const {
   AI_METRICS,
   DENY_REASONS,
 } = await import('../services/ai/aiBudgetService.js')
+const { getAiBudgetSnapshot } = await import('../services/ai/aiBudgetService.js')
 const { getCurrentPeriod } = await import('../services/ai/aiPeriod.js')
+const { getPlanCommitment, getPlanLimit, getSharedKeyTenantUsdCap, getTenantPlanFraction } =
+  await import('../services/ai/aiPlanPolicy.js')
+const { getModelChain } = await import('../services/ai/geminiModels.js')
+const { getModelPrice } = await import('../services/ai/aiModelPricing.js')
+const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
 const { cacheDel } = await import('../utils/cache.js')
 
 const TENANT = '64b7f0000000000000000001'
@@ -90,6 +99,9 @@ beforeEach(async () => {
   // reserva se deniega por cuota cuando el test creía estar midiendo el techo
   // de plataforma.
   await AiUsage.deleteMany({ period: PERIODO_REAL }).setOptions({ ignoreTenant: true })
+
+  // Lo que un caso le decidió al comercio no puede llegar al siguiente.
+  await AiTenantPolicy.collection.deleteMany({})
 })
 
 /** Una clave de operación distinta por caso; el período es siempre el real. */
@@ -622,13 +634,19 @@ describe('liquidación · se devuelve la diferencia', () => {
 describe('techo en plata por comercio', () => {
   const PLATA = 0.01 // lo que se compromete por operacion de agentMessages
 
+  const acotarEnPlata = usdCap =>
+    setTenantAiPolicy({
+      tenantId: TENANT,
+      usdCap,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+
   test('corta a este comercio y no a la plataforma entera', async () => {
-    // Techo global holgado, fraccion chica: lo que tiene que morder es el tope
+    // Techo global holgado, tope del comercio chico: lo que tiene que morder es el
     // del comercio, no el global.
-    // getPerTenantShare acota con piso de 0,01, asi que una fraccion mas chica
-    // que eso no existe: USD 2 x 0,05 = USD 0,10 para este comercio.
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '2'
-    process.env.AI_PLATFORM_PER_TENANT_SHARE = '0.05'
+    await acotarEnPlata(0.1)
 
     const resultados = await Promise.all(
       Array.from({ length: 30 }, (_, i) => reservar(`plata-tenant-${i}`)),
@@ -653,7 +671,7 @@ describe('techo en plata por comercio', () => {
 
   test('lo comprometido del comercio no se pasa de su techo', async () => {
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '2'
-    process.env.AI_PLATFORM_PER_TENANT_SHARE = '0.05'
+    await acotarEnPlata(0.1)
 
     await Promise.all(Array.from({ length: 30 }, (_, i) => reservar(`plata-tope-${i}`)))
 
@@ -667,9 +685,9 @@ describe('techo en plata por comercio', () => {
     expect(usage.reservedCostUsd).toBeLessThanOrEqual(0.1 + 1e-9)
   }, 60000)
 
-  test('con la fraccion por defecto el comercio entra igual que antes', async () => {
+  test('sin acotar, el comercio entra igual que antes', async () => {
     // La regresion que importa: el tope nuevo no puede apretar a quien ya
-    // funcionaba. Con 0,5 de 100 son USD 50 y diez operaciones son USD 0,10.
+    // funcionaba. Diez operaciones son USD 0,10, lejos de lo que cuesta su plan.
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '100'
 
     const resultados = await Promise.all(
@@ -681,7 +699,7 @@ describe('techo en plata por comercio', () => {
 
   test('una denegacion no se come la plata del comercio', async () => {
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '2'
-    process.env.AI_PLATFORM_PER_TENANT_SHARE = '0.05'
+    await acotarEnPlata(0.1)
 
     // Se llena el techo del comercio y despues se insiste.
     await Promise.all(Array.from({ length: 10 }, (_, i) => reservar(`plata-llena-${i}`)))
@@ -704,16 +722,12 @@ describe('techo en plata por comercio', () => {
 
 // El tope en dolares puesto a mano sobre UN comercio.
 //
-// La fraccion reparte proporcionalmente y tiene piso de 1%, asi que no sirve
-// para decir "este comercio no me puede costar mas de veinte dolares este mes".
-// Para eso esta el usdCap, y gana sobre la fraccion.
+// La fraccion acota cantidades y tiene piso de 1%, asi que no sirve para decir
+// "este comercio no me puede costar mas de veinte dolares este mes". Para eso esta
+// el usdCap, que manda mientras no supere lo que cuesta su plan.
 describe('tope en dolares puesto a mano', () => {
   test('el usdCap le gana a la fraccion', async () => {
-    const { setTenantAiPolicy } = await import('../services/ai/platformAiSettingService.js')
-
-    // Fraccion holgada: si mandara la fraccion, las 30 entrarian.
     process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '100'
-    process.env.AI_PLATFORM_PER_TENANT_SHARE = '1'
 
     await setTenantAiPolicy({
       tenantId: TENANT,
@@ -728,7 +742,7 @@ describe('tope en dolares puesto a mano', () => {
 
     const permitidas = resultados.filter(r => r.allowed).length
 
-    // USD 0,05 / USD 0,01 = 5 exactas, aunque la fraccion diera 100.
+    // USD 0,05 / USD 0,01 = 5 exactas, aunque su plan cueste mucho mas.
     expect(permitidas).toBeLessThanOrEqual(5)
     expect(resultados.some(r => r.reason === DENY_REASONS.TENANT_USD_BUDGET)).toBe(true)
   }, 60000)
@@ -792,4 +806,232 @@ describe('liberacion sin techo global', () => {
     // Y al liquidar vuelve. Sin esto el comercio se bloqueaba solo.
     expect(despues.reservedCostUsd).toBe(0)
   }, 60000)
+})
+
+// Cada comercio tiene por defecto lo que compró, y gobernarlo solo lo baja.
+//
+// ANTES LA FRACCION NO HACIA NADA.
+//
+// Solo se aplicaba a planes ilimitados, y desde que se sacaron free y enterprise no
+// queda ninguno. El panel decia "1% del techo = 2.000.000 tokens para este comercio" y
+// el medidor seguia aplicando los 10.000.000 del plan. Los tests no lo veian porque
+// usaban un plan ilimitado inventado.
+describe('el cupo de cada comercio sale de su plan', () => {
+  const reservarTokens = (plan, amount = 1000, extra = {}) =>
+    reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_TOKENS,
+      amount,
+      profile: { ...PERFIL, plan },
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      ...extra,
+    })
+
+  const acotar = (cambios, tenantId = TENANT) =>
+    setTenantAiPolicy({
+      tenantId,
+      ...cambios,
+      changedByEmail: 'dueno@henko.test',
+      reason: 'prueba',
+    })
+
+  test.each(['starter', 'pro'])('sin tocar nada, %s tiene el plan entero', async plan => {
+    const resultado = await reservarTokens(plan)
+
+    expect(resultado.allowed).toBe(true)
+    expect(resultado.limit).toBe(getPlanLimit(plan, AI_METRICS.AGENT_TOKENS))
+  })
+
+  test('el freno de la plataforma no cambia el cupo de nadie', async () => {
+    process.env.AI_PLATFORM_MONTHLY_TOKEN_BUDGET = '400000'
+
+    expect((await reservarTokens('pro')).limit).toBe(50_000_000)
+  })
+
+  test('gobernarlo le baja el cupo de verdad', async () => {
+    // ESTA ES LA PROPIEDAD. Con el 1% seguia en 10.000.000.
+    await acotar({ share: 0.01 })
+
+    expect((await reservarTokens('starter')).limit).toBe(100_000)
+  })
+
+  test('y deja de entrar lo que supera ese cupo', async () => {
+    await acotar({ share: 0.01 })
+
+    const resultado = await reservarTokens('starter', 150_000)
+
+    expect(resultado.allowed).toBe(false)
+    expect(resultado.limit).toBe(100_000)
+  })
+
+  test('baja todas las metricas, no solo los tokens', async () => {
+    await acotar({ share: 0.5 })
+
+    const mensajes = await reserveAiBudget({
+      tenantId: TENANT,
+      metric: AI_METRICS.AGENT_MESSAGES,
+      profile: PERFIL,
+      period: PERIODO_REAL,
+      operationId: nuevaClave(),
+      guards: [AI_METRICS.AGENT_TOKENS],
+    })
+
+    expect(mensajes.limit).toBe(1000)
+  })
+
+  test('un comercio con clave propia no se ve afectado', async () => {
+    await acotar({ share: 0.01 })
+
+    const resultado = await reservarTokens('starter', 1000, {
+      profile: { ...PERFIL, keySource: 'tenant' },
+    })
+
+    expect(resultado.allowed).toBe(true)
+    expect(resultado.byok).toBe(true)
+  })
+
+  test('el panel de un comercio con clave propia sigue mostrando su plan', async () => {
+    // Un comercio propio: el perfil se cachea por id y contaminaria al resto.
+    const CON_CLAVE = '64b7f00000000000000000b1'
+    const _id = new mongoose.Types.ObjectId(CON_CLAVE)
+    const { encryptSecret } = await import('../services/aiAgent/secretCryptoService.js')
+
+    await mongoose.connection.collection('tenants').deleteMany({ _id })
+    await mongoose.connection.collection('tenants').insertOne({
+      _id,
+      name: 'Comercio',
+      slug: 'comercio',
+      plan: 'pro',
+      status: 'active',
+      subscriptionStatus: 'active',
+      ai: { byokEnabled: true, geminiApiKey: encryptSecret('AIzaDELCOMERCIO') },
+    })
+    await acotar({ share: 0.01 }, CON_CLAVE)
+
+    const { credentials, metrics } = await getAiBudgetSnapshot(CON_CLAVE)
+
+    expect(credentials.source).toBe('tenant')
+    expect(metrics[AI_METRICS.AGENT_TOKENS].limit).toBe(50_000_000)
+  })
+
+  test.each([
+    [null, 1],
+    [0.25, 0.25],
+    // Gobernar solo baja: lo que llegue de mas no le da mas que su plan.
+    [5, 1],
+    [0, 0.01],
+  ])('la parte del plan de %s es %s', (share, esperada) => {
+    expect(getTenantPlanFraction(share)).toBe(esperada)
+  })
+
+  test('acotar a uno no toca a los demas', async () => {
+    await acotar({ share: 0.01 }, '64b7f0000000000000000002')
+
+    expect((await reservarTokens('starter')).limit).toBe(10_000_000)
+  })
+
+  test('volver a null le devuelve el plan entero', async () => {
+    await acotar({ share: 0.01 })
+    await acotar({ share: null })
+
+    expect((await reservarTokens('starter')).limit).toBe(10_000_000)
+  })
+
+  test('el panel del comercio muestra lo que se le aplica y lo que compro', async () => {
+    // Un comercio propio: el perfil se cachea por id y otro caso ya dejo el de TENANT.
+    const ACOTADO = '64b7f00000000000000000b2'
+
+    await mongoose.connection.collection('tenants').insertOne({
+      _id: new mongoose.Types.ObjectId(ACOTADO),
+      name: 'Comercio acotado',
+      slug: 'comercio-acotado',
+      plan: 'starter',
+      status: 'active',
+      subscriptionStatus: 'active',
+    })
+    await acotar({ share: 0.5 }, ACOTADO)
+
+    const { metrics } = await getAiBudgetSnapshot(ACOTADO)
+    const tokens = metrics[AI_METRICS.AGENT_TOKENS]
+
+    expect(tokens.limit).toBe(5_000_000)
+    expect(tokens.contractedLimit).toBe(10_000_000)
+  })
+
+  describe('en dolares', () => {
+    const ACOTADO = { plan: 'starter', share: 0.5 }
+
+    beforeEach(() => {
+      process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '270'
+    })
+
+    test('depende del plan, y no del freno de la plataforma', () => {
+      const starter = getSharedKeyTenantUsdCap({ plan: 'starter' })
+      const pro = getSharedKeyTenantUsdCap({ plan: 'pro' })
+
+      expect(starter).toBe(getPlanCommitment('starter').usd)
+      expect(pro).toBeGreaterThan(starter * 4)
+
+      process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '5000'
+      expect(getSharedKeyTenantUsdCap({ plan: 'starter' })).toBe(starter)
+    })
+
+    test('gobernarlo lo baja en la misma proporcion', () => {
+      expect(getSharedKeyTenantUsdCap(ACOTADO)).toBe(getPlanCommitment('starter').usd * 0.5)
+    })
+
+    test('un numero a mano baja el tope, pero no lo sube', () => {
+      const delPlan = getPlanCommitment('starter').usd
+
+      expect(getSharedKeyTenantUsdCap({ plan: 'starter', usdCap: 5 })).toBe(5)
+      expect(getSharedKeyTenantUsdCap({ plan: 'starter', usdCap: delPlan * 10 })).toBe(delPlan)
+    })
+
+    test('sin freno en dolares no se mide plata, salvo a quien se la acoto', () => {
+      delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+
+      expect(getSharedKeyTenantUsdCap({ plan: 'starter' })).toBe(0)
+      expect(getSharedKeyTenantUsdCap({ plan: 'starter', usdCap: 5 })).toBe(5)
+    })
+
+    test('un comercio que ya no existe no tiene tope', () => {
+      expect(getSharedKeyTenantUsdCap({ plan: null })).toBe(0)
+    })
+  })
+
+  describe('lo que compromete un plan', () => {
+    test('suma todo lo que gasta tokens', () => {
+      // 10.000.000 del asistente, 1.250.000 de mercado y 300 analisis de 4.900.
+      expect(getPlanCommitment('starter').tokens).toBe(12_720_000)
+      expect(getPlanCommitment('pro').tokens).toBe(63_600_000)
+    })
+
+    test('ningun modelo de la cadena cuesta mas que el de referencia', () => {
+      // El tope en plata solo garantiza que nadie se corte dentro de su plan si la
+      // tarifa de referencia es la mas alta de lo que puede responder.
+      const referencia = getModelPrice('gemini-3.8-flash').output
+
+      for (const modelo of getModelChain()) {
+        expect(getModelPrice(modelo).output).toBeLessThanOrEqual(referencia)
+      }
+    })
+
+    test('entra solo el aumento de tarifas de 2027', () => {
+      const hoy = getPlanCommitment('starter', new Date('2026-12-31T00:00:00Z')).usd
+      const despues = getPlanCommitment('starter', new Date('2027-01-02T00:00:00Z')).usd
+
+      expect(despues).toBeGreaterThan(hoy)
+    })
+
+    test('un plan forzado a ilimitado no promete un maximo', () => {
+      process.env.AI_LIMIT_STARTER_VISION = '0'
+
+      try {
+        expect(getPlanCommitment('starter').unbounded).toBe(true)
+      } finally {
+        delete process.env.AI_LIMIT_STARTER_VISION
+      }
+    })
+  })
 })

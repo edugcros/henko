@@ -249,14 +249,13 @@ export const updateAiBudget = expressAsyncHandler(async (req, res) => {
  *
  * DOS COSAS DISTINTAS, EL MISMO ENDPOINT
  *
- * `share` ACOTA: el comercio sigue trabajando con menos techo. `suspended`
+ * `share` ACOTA: el comercio sigue trabajando con una parte de su plan. `suspended`
  * APAGA. Van juntas porque son la misma decisión sobre el mismo comercio y
  * quien la toma elige cuál de las dos: separarlas en dos endpoints obligaría a
  * dos viajes para "bajale el tope y si sigue, apagalo".
  *
  * Cada campo es opcional y se distingue ausente de null, igual que en los
- * techos: `share: null` lo devuelve a la fracción global, no mandarlo lo deja
- * como está.
+ * techos: `share: null` le devuelve el plan entero, no mandarlo lo deja como está.
  */
 export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
   const { tenantId } = req.params
@@ -297,15 +296,15 @@ export const updateTenantAiPolicy = expressAsyncHandler(async (req, res) => {
     if (!Number.isFinite(numero) || numero < 0.01 || numero > 1) {
       return res.status(400).json({
         success: false,
-        message: 'La fracción del comercio debe estar entre 0.01 y 1, o null para usar la global.',
+        message: 'El cupo del comercio debe estar entre el 1% y el 100% de su plan.',
       })
     }
   }
 
   // El techo en PLATA de este comercio, en dolares del mes.
   //
-  // Se valida aparte del share porque son cosas distintas: el share reparte
-  // proporcionalmente y tiene piso de 1%, asi que no puede expresar "este
+  // Se valida aparte del share porque son cosas distintas: el share baja todo en
+  // proporcion y tiene piso de 1%, asi que no puede expresar "este
   // comercio no me puede costar mas de veinte dolares". El cero se rechaza en
   // lugar de guardarse: dejaria al comercio sin IA, y para eso esta el
   // interruptor, que lo dice con esas palabras y se ve en la pantalla.
