@@ -30,6 +30,11 @@ const M = 1_000_000
  */
 const CATALOG = [
   // Familia 3.x — la tarifa vigente hasta fin de 2026.
+  //
+  // gemini-3.7-flash no figura en la página de precios de Google: se le asume la de sus
+  // vecinos 3.6 y 3.8. Sigue acá porque lo ya registrado con ese modelo se costea con
+  // este catálogo, y sacarlo lo pasaría a la tarifa conservadora. Ya no sale de la
+  // cadena de respaldo: ver FALLBACK_MODELS.
   {
     models: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'],
     from: null,
