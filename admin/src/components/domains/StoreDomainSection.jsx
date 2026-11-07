@@ -304,7 +304,12 @@ export default function StoreDomainSection() {
 
           {panelPropio ? (
             <Stack spacing={1.5}>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                sx={{ alignItems: 'center', flexWrap: 'wrap' }}
+              >
                 <Typography variant="body2">
                   <strong>{panelPropio.hostname}</strong>
                 </Typography>
