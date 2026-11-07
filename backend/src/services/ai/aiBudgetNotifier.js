@@ -67,18 +67,42 @@ const renderSpendRows = topSpend => {
 }
 
 /**
+ * Los dos controles, primero el que motivó el aviso.
+ *
+ * Mostrar solo tokens daba un corte por dólares que decía "50 de 1.000 tokens": parecía
+ * que sobraba margen, y el número que cortó no figuraba. Un techo en cero es sin límite
+ * (UNLIMITED), así que ahí se muestra lo consumido y nada más.
+ */
+const describeConsumption = ({ control, tokens, budget, estimatedCostUsd, usdBudget }) => {
+  const volumen =
+    budget > 0
+      ? `${formatNumber(tokens)} de ${formatNumber(budget)} tokens`
+      : `${formatNumber(tokens)} tokens`
+  const plata =
+    usdBudget > 0
+      ? `${money(estimatedCostUsd)} de ${money(usdBudget)}`
+      : `${money(estimatedCostUsd)} gastados`
+
+  return control === 'usd' ? [plata, volumen] : [volumen, plata]
+}
+
+/**
  * Avisa al dueño de la plataforma. Nunca lanza.
  *
  * Se espera su resultado en vez de dispararlo y seguir: pasa como mucho dos
  * veces por mes, y si el proceso se apaga —el plan free de Render apaga el
  * servicio por inactividad— un envío no esperado se pierde justo cuando más
  * importaba.
+ *
+ * `control` dice cuál de los dos techos motivó el aviso: 'usd' o 'tokens'.
  */
 export const notifyBudgetPressure = async ({
   period,
+  control,
   percent,
   tokens,
   budget,
+  usdBudget = 0,
   estimatedCostUsd,
   topSpend = [],
   tripped = false,
@@ -101,15 +125,16 @@ export const notifyBudgetPressure = async ({
       : `[HENKO] Presupuesto de IA al ${percent}% (${period})`
 
     const headline = tripped
-      ? 'El disyuntor cortó. La IA está detenida para todos los comercios que usan la key de la plataforma.'
-      : `El consumo del mes va por el ${percent}% del techo.`
+      ? `El disyuntor cortó por ${control === 'usd' ? 'el gasto en dólares' : 'el volumen de tokens'}. La IA está detenida para todos los comercios que usan la key de la plataforma.`
+      : `El consumo del mes va por el ${percent}% del techo ${control === 'usd' ? 'en dólares' : 'de tokens'}.`
+
+    const consumo = describeConsumption({ control, tokens, budget, estimatedCostUsd, usdBudget })
 
     const html = `
       <div style="font-family:system-ui,sans-serif;color:#111;max-width:560px">
         <p style="font-size:16px"><strong>${headline}</strong></p>
         <p style="font-size:14px">
-          ${formatNumber(tokens)} de ${formatNumber(budget)} tokens &middot;
-          ${money(estimatedCostUsd)} gastados en ${period}.
+          ${consumo.join(' &middot; ')} en ${period}.
         </p>
         <p style="font-size:14px;margin-bottom:4px"><strong>Qué lo está consumiendo</strong></p>
         ${renderSpendRows(topSpend)}
@@ -126,7 +151,7 @@ export const notifyBudgetPressure = async ({
 
     const text = [
       headline,
-      `${formatNumber(tokens)} de ${formatNumber(budget)} tokens. ${money(estimatedCostUsd)} en ${period}.`,
+      `${consumo.join('. ')} en ${period}.`,
       ...topSpend.map(row => `- ${row.metric}: ${money(row.costUsd)}`),
     ].join('\n')
 
