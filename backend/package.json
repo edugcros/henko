@@ -59,7 +59,7 @@
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1158.0",
     "@google/generative-ai": "^0.24.1",
-    "@tavily/core": "^0.7.14",
+    "@tavily/core": "^1.0.0",
     "axios": "^1.21.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.11.0",
