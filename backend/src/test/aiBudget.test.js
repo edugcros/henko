@@ -1786,7 +1786,42 @@ describe('aiBudgetService · aviso de presupuesto', () => {
     await consume(100)
 
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ tripped: true, percent: '100' }),
+      expect.objectContaining({ tripped: true, percent: '100', control: 'tokens' }),
+    )
+  })
+
+  test('si corta por dólares, el aviso lo dice y lleva el techo en dólares', async () => {
+    process.env.AI_PLATFORM_MONTHLY_USD_BUDGET = '25'
+    mockPlatformUsage.findOneAndUpdate
+      .mockReturnValueOnce({
+        lean: () =>
+          Promise.resolve({
+            tokens: 50,
+            alertedThreshold: 80,
+            estimatedCostUsd: 30,
+            breakerTrippedAt: null,
+          }),
+      })
+      .mockReturnValueOnce({
+        lean: () => Promise.resolve({ tokens: 50, estimatedCostUsd: 30 }),
+      })
+    mockPlatformUsage.updateOne = jest.fn().mockResolvedValue({})
+
+    try {
+      await consume(100)
+    } finally {
+      delete process.env.AI_PLATFORM_MONTHLY_USD_BUDGET
+    }
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripped: true,
+        control: 'usd',
+        tokens: 50,
+        budget: 1000,
+        usdBudget: 25,
+        estimatedCostUsd: 30,
+      }),
     )
   })
 })

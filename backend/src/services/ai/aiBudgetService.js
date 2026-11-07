@@ -1336,9 +1336,11 @@ const registerPlatformConsumption = async ({ tokens, costUsd, period: requestedP
 
       await notifyBudgetPressure({
         period,
+        control: breakerReason,
         percent: '100',
         tokens: claimed.tokens,
         budget,
+        usdBudget,
         estimatedCostUsd: Number(claimed.estimatedCostUsd || 0),
         topSpend: topSpend.slice(0, 3),
         tripped: true,
