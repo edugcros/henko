@@ -770,7 +770,7 @@ const PricingPage = () => {
                     recomendación que pasó entera y una que llegó ajustada. */}
                 {decision.adjustments?.length > 0 && (
                   <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
                       Tu política ajustó la propuesta de la IA
                     </Typography>
                     <Stack component="ul" sx={{ m: 0, pl: 2.5 }}>

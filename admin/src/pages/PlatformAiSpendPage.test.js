@@ -1615,3 +1615,21 @@ describe('el plan, lo comprometido y el freno', () => {
     expect(mockUpdateTenantPolicy.mock.calls[0][0].share).toBeNull()
   })
 })
+
+// MUI 9 dejó de aplicar las props de sistema en Stack y Typography: llegan al DOM y no hacen
+// nada. Se mira el estilo calculado porque el texto está aunque la disposición no.
+describe('disposición del panel', () => {
+  test('el porcentaje del freno y los avisos van en extremos opuestos', async () => {
+    load()
+
+    const freno = await screen.findByText(/% del freno/i)
+
+    expect(getComputedStyle(freno.parentElement).justifyContent).toBe('space-between')
+  })
+
+  test('las llamadas van en su propia línea, debajo del consumo', async () => {
+    load({ byTenant: UN_COMERCIO })
+
+    expect(getComputedStyle(await screen.findByText(/\+ \d+ llamadas/i)).display).toBe('block')
+  })
+})

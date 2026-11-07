@@ -1228,7 +1228,7 @@ function EvolucionDelComercio({ tenantId, period }) {
 
       {/* La referencia va en texto y no solo como línea: una línea punteada sin
           leyenda es decoración. */}
-      <Stack direction="row" justifyContent="space-between">
+      <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
         <Typography variant="caption" color="text.secondary">
           Día 1
         </Typography>
@@ -1248,7 +1248,7 @@ function EvolucionDelComercio({ tenantId, period }) {
       {byMetric.length > 0 && (
         <Stack spacing={0.25} sx={{ mt: 1.5 }}>
           {byMetric.slice(0, 4).map(fila => (
-            <Stack key={fila.metric} direction="row" justifyContent="space-between">
+            <Stack key={fila.metric} direction="row" sx={{ justifyContent: 'space-between' }}>
               <Typography variant="caption" color="text.secondary">
                 {metricLabel(fila.metric)}
               </Typography>
@@ -1719,9 +1719,11 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
       <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'flex-start', sm: 'baseline' }}
           spacing={1}
+          sx={{
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'baseline' },
+          }}
         >
           <Typography variant="h4" sx={{ fontWeight: 600 }}>
             {dinero(consumption.estimatedCostUsd)}
@@ -1743,7 +1745,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
               color={usageColor(percent)}
               sx={{ height: 10, borderRadius: 5 }}
             />
-            <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', mt: 0.75 }}>
               <Typography variant="caption" color="text.secondary">
                 {percent}% del freno
               </Typography>
@@ -1769,11 +1771,14 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
 
         <Stack
           direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-          flexWrap="wrap"
           useFlexGap
-          sx={{ mt: 2 }}
+          sx={{
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            rowGap: 1,
+            mt: 2,
+          }}
         >
           <Typography variant="caption" color="text.secondary">
             Última actividad: {formatDate(consumption.lastActivityAt)}
@@ -1792,7 +1797,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
               </>
             )}
           </Typography>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{ ml: 'auto' }}>
             <Button size="small" onClick={() => setEditing(true)}>
               Cambiar freno
             </Button>
@@ -2105,7 +2110,11 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
                           columna visible. */}
                       {row.toolCalls > 0 && (
                         <Tooltip title="Búsquedas y extracciones web. Se cobran por llamada y suelen pesar más que los tokens.">
-                          <Typography variant="caption" color="text.secondary" display="block">
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block' }}
+                          >
                             + {formatTokens(row.toolCalls)} llamadas
                           </Typography>
                         </Tooltip>
@@ -2276,7 +2285,7 @@ function ContenidoDelGasto({ fx, fxEstado, onFxSaved }) {
         {/* Las cuatro clases son EXCLUYENTES y suman el total, así que la
             columna de plata se puede leer como un reparto y no como cuatro
             números sueltos que se pisan. */}
-        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
             {formatTokens(quality.measured ?? quality.rows)} medidos
             {quality.measuredCostUsd !== undefined && ` · ${dinero(quality.measuredCostUsd)}`}
