@@ -71,11 +71,10 @@ memoria del contenedor, no la factura.
 
 ### El disyuntor
 
-`AI_PLATFORM_MONTHLY_TOKEN_BUDGET` es el techo duro de la plataforma. Sin él,
-el máximo gasto posible es la *suma* de las cuotas de todos los tenants:
-alcanza un plan mal cargado, un tenant enterprise o un bug de aprovisionamiento
-para que no haya techo real. Con él, la factura tiene un límite que no depende
-de que ninguna otra cuenta esté bien puesta.
+El disyuntor es el techo duro de la plataforma: al llegar, corta la IA para todos.
+Su valor se calcula solo desde lo comprometido por planes (ver *Freno automático y
+clave propia*), y no depende de que cada tope por comercio haya funcionado: si un
+error deja pasar consumo de más, el total igual se corta.
 
 Los tenants con key propia (BYOK) no se ven afectados por el disyuntor: su
 gasto no toca la factura de la plataforma.
@@ -211,14 +210,19 @@ AI_LIMIT_FREE_VISION=50
 AI_LIMIT_FREE_IMAGE_EDITS=10
 # ...ídem STARTER, PRO, ENTERPRISE
 
-# Disyuntor global (sin definir = sin disyuntor, no recomendado en prod).
+# Margen del freno automático sobre lo comprometido por planes. Mínimo 1.
+AI_BRAKE_MARGIN=1.25
+
+# Respaldo del freno automático: rige solo cuando no hay suma de lo comprometido
+# (sin definir = sin respaldo, no recomendado en prod). Valores de producción
+# desde el 07/11/2026. Alcanzan para unos 77 a 125 comercios gastando todo su
+# presupuesto: revisarlos al crecer.
 # render.yaml lo declaraba, pero ese archivo no está enlazado como Blueprint
 # activo en Render — commitearlo ahí NO lo aplica al servicio real (mismo
 # incidente documentado en EMAIL_PRODUCTION.md con EMAIL_FROM/EMAIL_PASS).
 # HAY QUE CARGARLO A MANO en el dashboard de Render → Environment.
-# Confirmado el 25/08/2026: no aparece en la lista real de variables del
-# servicio — el disyuntor global probablemente NO está activo hoy.
-AI_PLATFORM_MONTHLY_TOKEN_BUDGET=20000000
+AI_PLATFORM_MONTHLY_TOKEN_BUDGET=4000000000
+AI_PLATFORM_MONTHLY_USD_BUDGET=1000
 
 # Fracción máxima del presupuesto que puede consumir un solo tenant sobre la
 # key compartida. Solo aplica a planes forzados a ilimitado por entorno.
@@ -306,12 +310,12 @@ configurada.
 
 ## Checklist de deploy
 
-1. El disyuntor y la fracción por tenant NO se aplican solos — `render.yaml`
-   no está enlazado como Blueprint activo en Render (confirmado, mismo
-   problema que ya afectó a `EMAIL_FROM`/`EMAIL_PASS`). Hay que cargar
-   `AI_PLATFORM_MONTHLY_TOKEN_BUDGET` y `AI_PLATFORM_PER_TENANT_SHARE` a mano
-   en el dashboard de Render → Environment antes de confiar en que el freno
-   de gasto está activo.
+1. Los respaldos del freno y la fracción por tenant NO se aplican solos —
+   `render.yaml` no está enlazado como Blueprint activo en Render (confirmado,
+   mismo problema que ya afectó a `EMAIL_FROM`/`EMAIL_PASS`). Hay que cargar
+   `AI_PLATFORM_MONTHLY_TOKEN_BUDGET`, `AI_PLATFORM_MONTHLY_USD_BUDGET` y
+   `AI_PLATFORM_PER_TENANT_SHARE` a mano en el dashboard de Render → Environment.
+   Sin los respaldos, si no se puede sumar lo comprometido, no hay techo total.
 2. Revisar los topes por plan contra el precio real de cada plan, y el
    presupuesto contra la suma esperada de cuotas (ver arriba).
 3. Desplegar. No hay migración que correr.

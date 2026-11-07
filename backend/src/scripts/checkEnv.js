@@ -269,13 +269,14 @@ const CATALOGO = [
     grupo: 'Gasto de IA',
     nombres: ['AI_PLATFORM_MONTHLY_USD_BUDGET'],
     gravedad: 'seria',
-    rompe: 'no hay disyuntor EN PLATA: el gasto en dólares no tiene techo y nada lo corta',
+    rompe: 'no hay respaldo EN PLATA: si no se puede sumar lo comprometido, nada corta el gasto',
   },
   {
     grupo: 'Gasto de IA',
     nombres: ['AI_PLATFORM_MONTHLY_TOKEN_BUDGET'],
     gravedad: 'seria',
-    rompe: 'no hay disyuntor en volumen: el consumo no tiene techo',
+    rompe:
+      'no hay respaldo en volumen: si no se puede sumar lo comprometido, nada corta el consumo',
   },
   {
     grupo: 'Gasto de IA',

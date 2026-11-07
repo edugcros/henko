@@ -114,9 +114,13 @@ export const notifyBudgetPressure = async ({
         <p style="font-size:14px;margin-bottom:4px"><strong>Qué lo está consumiendo</strong></p>
         ${renderSpendRows(topSpend)}
         <p style="font-size:13px;color:#555;margin-top:20px">
-          El techo se mueve con AI_PLATFORM_MONTHLY_TOKEN_BUDGET en Render, y el
-          servicio necesita reiniciarse para tomarlo. El detalle completo está en
-          el panel, en Plataforma &rarr; Gasto de IA.
+          El freno se calcula solo: lo comprometido por planes más un margen. En
+          el panel, en Plataforma &rarr; Gasto de IA, se puede poner un máximo más
+          bajo o quitarlo, y ahí está el detalle completo. Por encima del cálculo
+          automático, el freno solo sube cambiando AI_BRAKE_MARGIN en Render, y el
+          servicio necesita reiniciarse para tomarlo.
+          AI_PLATFORM_MONTHLY_TOKEN_BUDGET y AI_PLATFORM_MONTHLY_USD_BUDGET son
+          solo el respaldo para cuando esa suma no se pudo hacer.
         </p>
       </div>`
 
