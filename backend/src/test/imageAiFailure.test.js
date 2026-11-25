@@ -12,8 +12,11 @@ jest.unstable_mockModule('../services/ai/backgroundRemoval.js', () => ({
   isLocalBackgroundRemovalEnabled: () => false,
 }))
 
-const { buildGeminiImageError, describeGeminiImageFailure } =
-  await import('../services/imageAiService.js')
+const {
+  buildGeminiImageError,
+  describeGeminiImageFailure,
+  buildPromptOptimizationRequest,
+} = await import('../services/imageAiService.js')
 
 describe('imageAiService · fallas de la key de plataforma', () => {
   test.each([429, 401, 403])('un %i no le pide al comercio que revise la facturación', status => {
@@ -48,5 +51,20 @@ describe('imageAiService · el mensaje viaja marcado para el comercio', () => {
     expect(error.statusCode).toBe(503)
     expect(error.code).toBe('IMAGE_GENERATION_UNAVAILABLE')
     expect(error.message).toBe(describeGeminiImageFailure(429).message)
+  })
+})
+
+
+describe('imageAiService · límite de salida de la optimización', () => {
+  test('envía un máximo explícito de tokens al optimizar el prompt', () => {
+    const request = buildPromptOptimizationRequest('Create a neutral studio background')
+
+    expect(request.generationConfig).toEqual({ maxOutputTokens: 128 })
+    expect(request.contents).toEqual([
+      {
+        role: 'user',
+        parts: [{ text: 'Create a neutral studio background' }],
+      },
+    ])
   })
 })
