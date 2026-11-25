@@ -3406,6 +3406,7 @@ const STALE_BATCH = envPositiveInt('AI_STALE_OPERATION_BATCH', 200)
 export const sweepStaleOperations = async ({
   olderThanMs = STALE_AFTER_MS,
   limit = STALE_BATCH,
+  logger: log = logger,
 } = {}) => {
   const corte = new Date(Date.now() - olderThanMs)
 
@@ -3419,7 +3420,15 @@ export const sweepStaleOperations = async ({
     .setOptions({ ignoreTenant: true, platformScope: 'platform:barrido-reservas-colgadas' })
     .lean()
 
-  if (colgadas.length === 0) return { found: 0, swept: 0 }
+  if (colgadas.length === 0) {
+    log.info?.('[AI SWEEP] Barrido completado', {
+      found: 0,
+      swept: 0,
+      olderThanMinutes: Math.round(olderThanMs / 60000),
+      limit,
+    })
+    return { found: 0, swept: 0 }
+  }
 
   let swept = 0
 
@@ -3445,10 +3454,11 @@ export const sweepStaleOperations = async ({
 
   // Nivel warn y no info: que haya reservas colgadas significa que algo se
   // murió a mitad de camino. El barrido arregla la plata, no la causa.
-  logger.warn('[AI SWEEP] Reservas colgadas devueltas', {
+  log.warn?.('[AI SWEEP] Reservas colgadas devueltas', {
     found: colgadas.length,
     swept,
     olderThanMinutes: Math.round(olderThanMs / 60000),
+    limit,
     features: [...new Set(colgadas.map(o => o.feature).filter(Boolean))],
   })
 
