@@ -27,10 +27,11 @@ name: Trabajos periódicos
 
 on:
   schedule:
-    # Cada hora, para los que miran cosas que cambian durante el día.
+    # Libera reservas de IA colgadas aunque Render haya dormido o reiniciado.
+    - cron: '*/15 * * * *'
+    # Cada hora: recuperación de carritos, certificados y conciliación de IA.
     - cron: '17 * * * *'
-    # Una vez por día, 06:40 UTC (03:40 en Argentina), para las auditorías.
-    # Fuera de horario de compras: son consultas pesadas contra Mercado Pago.
+    # Una vez por día, 06:40 UTC (03:40 en Argentina), para auditorías de pagos.
     - cron: '40 6 * * *'
   # Para poder correr cualquiera a mano sin esperar al reloj.
   workflow_dispatch:
@@ -61,15 +62,17 @@ jobs:
         run: |
           if [ -n "$TRABAJO_MANUAL" ]; then
             echo "trabajos=$TRABAJO_MANUAL" >> "$GITHUB_OUTPUT"
+          elif [ "$CRON" = '*/15 * * * *' ]; then
+            # El barrido es barato y protege el cupo de operaciones que murieron
+            # a mitad de una llamada. Corre separado de las tareas pesadas.
+            echo "trabajos=operaciones-colgadas" >> "$GITHUB_OUTPUT"
           elif [ "$CRON" = '17 * * * *' ]; then
             # Horarios: atienden cosas que no pueden esperar al día siguiente.
-            # Un carrito abandonado se recupera hoy o no se recupera, y un
-            # dominio recién agregado no puede quedar sin certificado 24 horas.
-            echo "trabajos=recuperacion-de-carritos certificados operaciones-colgadas" >> "$GITHUB_OUTPUT"
+            # La conciliación de IA corre cada hora; el resto mantiene su ritmo.
+            echo "trabajos=recuperacion-de-carritos certificados contabilidad-ia" >> "$GITHUB_OUTPUT"
           else
-            # Diarios: auditorías. Reportan, no corrigen, y consultar al
-            # proveedor cuesta una llamada por orden.
-            echo "trabajos=ordenes suscripciones historial-de-precios contabilidad-ia insights" >> "$GITHUB_OUTPUT"
+            # Diarios: auditorías de pagos y análisis que consultan proveedores.
+            echo "trabajos=ordenes suscripciones historial-de-precios insights" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Ejecutar
