@@ -87,6 +87,15 @@ const describe = err => {
 
 // ─── Gemini: prompt engineering ──────────────────────────
 
+// La instrucción pide menos de 50 palabras. Este límite del proveedor es
+// la última defensa si el modelo ignora el formato solicitado.
+const PROMPT_OPTIMIZATION_MAX_OUTPUT_TOKENS = 128
+
+export const buildPromptOptimizationRequest = prompt => ({
+  contents: [{ role: 'user', parts: [{ text: prompt }] }],
+  generationConfig: { maxOutputTokens: PROMPT_OPTIMIZATION_MAX_OUTPUT_TOKENS },
+})
+
 const askGemini = async (key, model, prompt) => {
   // La key va en el header, nunca en la URL: una URL queda escrita en los logs
   // de cualquier proxy o balanceador que la vea pasar.
@@ -94,7 +103,7 @@ const askGemini = async (key, model, prompt) => {
     method: 'POST',
     signal: AbortSignal.timeout(15000),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
+    body: JSON.stringify(buildPromptOptimizationRequest(prompt)),
   })
 
   if (!res.ok) {
