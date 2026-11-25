@@ -289,6 +289,24 @@ La key se persiste cifrada con el mismo AES-256-GCM que ya usan los tokens de
 WhatsApp y Mercado Pago, y nunca se devuelve: el snapshot solo dice si hay una
 configurada.
 
+## Ejecución periódica en Render Free
+
+Los temporizadores internos siguen siendo útiles cuando el proceso está activo,
+pero no garantizan trabajo durante la suspensión del servicio. El workflow
+`.github/workflows/trabajos-periodicos.yml` es el programador externo: dispara
+`POST /api/internal/jobs/:nombre` con `JOBS_TRIGGER_SECRET`, sin exponer
+credenciales de base de datos.
+
+La programación operativa es:
+- Barrido de reservas colgadas: cada 15 minutos.
+- Conciliación contable de IA: cada hora.
+- Otras tareas: conservan su frecuencia horaria o diaria.
+
+El endpoint valida el secreto en tiempo constante y evita ejecuciones duplicadas
+de una misma tarea por el propio disparador. El workflow informa el código HTTP
+y el resultado devuelto por el backend. Mantener configurado el mismo
+`JOBS_TRIGGER_SECRET` en Render y en los secretos de GitHub Actions.
+
 ## Qué NO cubre
 
 - **La UI del panel.** El backend expone el presupuesto y el alta de BYOK, pero
@@ -297,25 +315,25 @@ configurada.
 - **El costo de WhatsApp.** `aiCartRecoveryWorkerService` manda mensajes
   salientes por plantilla, que Meta cobra por conversación. No pasa por Gemini,
   así que no lo mide este medidor.
-- **Replicate.** `AI_METRICS.IMAGE_EDITS` cuenta generaciones, no distingue si
-  las resolvió Replicate (pago) o HuggingFace (gratis).
-- **Facturación real.** El costo ya se calcula por modelo separando entrada de
-  salida (`services/ai/aiModelPricing.js`), y las rutas de visión, agente y
-  pricing pasan el desglose medido de `usageMetadata`. Las que todavía no
-  —market intelligence, insights, recuperación de carrito— colapsan a un total
-  antes de registrar, así que su costo se reparte con una proporción supuesta.
-  No hay que adivinar cuáles son: las filas del ledger lo declaran en
-  `costEstimated`, y `priceFallback` marca las que se cobraron con la tarifa
-  conservadora por no tener el modelo en el catálogo.
+- **Cargos externos no-token.** El costo de WhatsApp sigue fuera del
+  medidor de tokens de Gemini: Meta cobra sus mensajes por separado. Los costos
+  de herramientas y proveedores de imagen se registran según el catálogo
+  disponible (`aiModelPricing.js`), pero deben cotejarse con las facturas reales
+  de cada proveedor.
+- **Factura del proveedor.** La auditoría automática compara el ledger con las
+  proyecciones internas (`AiUsage` y `AiPlatformUsage`); no importa ni concilia
+  automáticamente las facturas de Google, Meta, Replicate o proveedores de
+  herramientas. Esa comparación externa sigue siendo un control contable
+  mensual.
 
 ## Checklist de deploy
 
-1. Los respaldos del freno y la fracción por tenant NO se aplican solos —
-   `render.yaml` no está enlazado como Blueprint activo en Render (confirmado,
-   mismo problema que ya afectó a `EMAIL_FROM`/`EMAIL_PASS`). Hay que cargar
-   `AI_PLATFORM_MONTHLY_TOKEN_BUDGET`, `AI_PLATFORM_MONTHLY_USD_BUDGET` y
-   `AI_PLATFORM_PER_TENANT_SHARE` a mano en el dashboard de Render → Environment.
-   Sin los respaldos, si no se puede sumar lo comprometido, no hay techo total.
+1. **Respaldos del freno:** los logs de arranque de producción del 25/11/2026
+   confirmaron el disyuntor armado, con un techo efectivo de 4.000.000.000 tokens
+   y USD 1.000 mensuales. Ese log confirma los valores vigentes, pero no distingue
+   si provienen de variables de entorno o de overrides guardados en el panel.
+   Antes de modificarlos, comprobar ambas fuentes y mantener la coherencia con
+   el presupuesto comprometido por los planes.
 2. Revisar los topes por plan contra el precio real de cada plan, y el
    presupuesto contra la suma esperada de cuotas (ver arriba).
 3. Desplegar. No hay migración que correr.
