@@ -577,6 +577,22 @@ describe('reservas colgadas · el cupo vuelve solo', () => {
     ).setOptions({ tenantId: TENANT })
   }
 
+  test('registra también un barrido correcto cuando no encuentra reservas', async () => {
+    const log = { info: jest.fn(), warn: jest.fn() }
+
+    const resultado = await sweepStaleOperations({
+      olderThanMs: 10 * 365 * 24 * 60 * 60 * 1000,
+      logger: log,
+    })
+
+    expect(resultado).toEqual({ found: 0, swept: 0 })
+    expect(log.info).toHaveBeenCalledWith(
+      '[AI SWEEP] Barrido completado',
+      expect.objectContaining({ found: 0, swept: 0 }),
+    )
+    expect(log.warn).not.toHaveBeenCalled()
+  })
+
   test('devuelve el cupo de una operación que quedó corriendo', async () => {
     const period = '2051-01'
     await vieja('murio-a-mitad', period)
