@@ -2317,11 +2317,11 @@ export const reserveAiBudget = async ({
         operationId,
         rollbackErrors: rollbackErrors.map(error => error.message),
       })
-      throw new AggregateError(
-        [operationError, ...rollbackErrors],
-        'No se pudo abrir la operación ni revertir todas las reservas financieras',
-        { cause: operationError },
-      )
+    throw new AggregateError(
+      [operationError, ...rollbackErrors],
+      'No se pudo abrir la operación ni revertir todas las reservas financieras',
+      { cause: operationError },
+    )
     }
 
     throw operationError
