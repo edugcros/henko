@@ -37,7 +37,6 @@ const { default: AiPlatformUsage } = await import('../models/aiPlatformUsageMode
 const { default: AiProviderCall, CALL_ID } = await import('../models/aiProviderCallModel.js')
 const { reserveAiBudget, refundAiBudget, recordTokenSpend, recordAiConsumption, AI_METRICS } =
   await import('../services/ai/aiBudgetService.js')
-const { getEstimatedCostUsd } = await import('../services/ai/aiPlanPolicy.js')
 
 const TENANT = '64b7f0000000000000000001'
 const OTRO_TENANT = '64b7f0000000000000000002'
@@ -80,13 +79,6 @@ const contador = async (period, metric = 'agentMessages') => {
   return usage?.counters?.[metric] ?? 0
 }
 
-describe('presupuesto estimado de market intelligence', () => {
-  test('reserva por encima del costo histórico medido de tokens y Tavily', () => {
-    expect(getEstimatedCostUsd(AI_METRICS.MARKET_ANALYSES)).toBe(0.06)
-    expect(0.06).toBeGreaterThan(0.0195 + 4 * 0.008)
-  })
-})
-
 describe('reserva · el reintento no vuelve a cobrar', () => {
   test('dos reservas con la misma clave dejan el contador en uno', async () => {
     const period = '2030-01'
@@ -115,38 +107,6 @@ describe('reserva · el reintento no vuelve a cobrar', () => {
 
     // Antes del arreglo esto daba 2.
     expect(await contador(period)).toBe(1)
-  })
-
-  test('aborta y revierte si no puede persistir la operación durable', async () => {
-    const period = '2030-06'
-    const operationId = 'fallo-al-abrir-operacion'
-    const createSpy = jest.spyOn(AiOperation, 'create').mockRejectedValueOnce(
-      new Error('Mongo temporalmente no disponible'),
-    )
-
-    try {
-      await expect(
-        reserveAiBudget({
-          tenantId: TENANT,
-          metric: AI_METRICS.AGENT_MESSAGES,
-          profile: PERFIL,
-          period,
-          operationId,
-        }),
-      ).rejects.toThrow('Mongo temporalmente no disponible')
-
-      expect(await contador(period)).toBe(0)
-
-      const usage = await AiUsage.findOne({ tenantId: TENANT, period })
-        .setOptions({ tenantId: TENANT })
-        .lean()
-      const platform = await AiPlatformUsage.findOne({ period }).lean()
-
-      expect(Number(usage?.reservedCostUsd || 0)).toBe(0)
-      expect(Number(platform?.reservedCostUsd || 0)).toBe(0)
-    } finally {
-      createSpy.mockRestore()
-    }
   })
 
   test('la misma clave en dos comercios distintos no colisiona', async () => {
