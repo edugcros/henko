@@ -53,7 +53,7 @@
   "jest": {
     "testTimeout": 30000,
     "setupFiles": [
-      "<rootDir>/jest.env.js"
+      "<rootDir>/jest.env.cjs"
     ]
   },
   "dependencies": {

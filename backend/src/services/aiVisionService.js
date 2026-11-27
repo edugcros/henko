@@ -2261,7 +2261,7 @@ export async function analyzeImage(imageBuffer, mimeType, tenantId) {
     // cobramos un análisis que no entregó nada útil. Este catch solo
     // envuelve la llamada real a Gemini (la reserva de cuota está antes
     // del try), así que siempre corresponde devolverla acá.
-    refundAiBudget({
+    await refundAiBudget({
       tenantId: normalizedTenantId,
       metric: AI_METRICS.VISION,
       operationId,
