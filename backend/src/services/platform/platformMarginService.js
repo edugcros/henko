@@ -35,11 +35,9 @@ import {
 // de centavo (ej. $0.001/email) — redondear a 2 decimales antes de sumar
 // volumen puede colapsar el resultado a $0 incluso con volumen real
 // (confirmado: 2 envíos × $0.001 = $0.002, que round2 lleva a $0.00).
-/** @param {number} value @returns {number} */
 const round4 = value => Math.round(value * 10000) / 10000
 
 /** 'YYYY-MM' (mismo formato que getCurrentPeriod) → límites del mes en UTC. */
-/** @param {unknown} period @returns {{start: Date, end: Date} | null} */
 const parsePeriodRange = period => {
   const [yearStr, monthStr] = String(period || '').split('-')
   const year = Number(yearStr)
@@ -55,10 +53,6 @@ const parsePeriodRange = period => {
   }
 }
 
-/**
- * @param {string} [period] Mes del reporte en formato YYYY-MM.
- * @returns {Promise<object>} Reporte de margen estimado de plataforma.
- */
 export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const range = parsePeriodRange(period)
 
@@ -136,41 +130,23 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const fxAsOf =
     period === getCurrentPeriod() || !range ? new Date() : new Date(range.end.getTime() - 1)
   const fxQuote = await getUsdToArsQuote({ asOf: fxAsOf })
-  const usdToArs = Number(fxQuote?.rate)
-  if (!Number.isFinite(usdToArs) || usdToArs <= 0) {
-    throw new Error('No se puede calcular el margen: la cotización USD/ARS es inválida.')
-  }
-  /** @param {number} usd @returns {number} */
-  const aArs = usd => {
-    const amount = Number(usd)
-    if (!Number.isFinite(amount) || amount < 0) {
-      throw new Error('No se puede calcular el margen: se encontró un costo USD inválido.')
-    }
-    return Math.round(amount * usdToArs)
-  }
+  const usdToArs = fxQuote.rate
+  const aArs = usd => Math.round(usd * usdToArs)
 
   const tenantRows = tenants.map(tenant => {
     const tenantKey = String(tenant._id)
     const planPriceArs = getPlanMonthlyPriceArs(tenant.plan)
-    const subscriptionIsActive = tenant.subscriptionStatus === 'active'
-    // El precio de catálogo no equivale a ingreso: solo se estima ingreso
-    // para una suscripción cuyo estado figura activo. No sustituye un ledger
-    // de pagos acreditados; el importe real debe venir de conciliación.
-    const recognizedPlanRevenueArs =
-      subscriptionIsActive && planPriceArs !== null ? planPriceArs : 0
-    const aiCostUsd = Number(costByTenant.get(tenantKey) || 0)
+    const aiCostUsd = costByTenant.get(tenantKey) || 0
 
     const emailSends =
       (emailSendsByTenant.get(tenantKey) || 0) + (recoveryEmailByTenant.get(tenantKey) || 0)
     const whatsappSends = recoveryWhatsappByTenant.get(tenantKey) || 0
     const communicationsCostUsd = round4(
-      emailSends * Number(emailCostPerSend) + whatsappSends * Number(whatsappCostPerSend),
+      emailSends * emailCostPerSend + whatsappSends * whatsappCostPerSend,
     )
 
     const estimatedMarginArs =
-      planPriceArs === null
-        ? null
-        : recognizedPlanRevenueArs - aArs(aiCostUsd) - aArs(communicationsCostUsd)
+      planPriceArs === null ? null : planPriceArs - aArs(aiCostUsd) - aArs(communicationsCostUsd)
 
     return {
       tenantId: tenant._id,
@@ -179,8 +155,6 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       status: tenant.status,
       subscriptionStatus: tenant.subscriptionStatus,
       planPriceArs,
-      recognizedPlanRevenueArs,
-      revenueBasis: subscriptionIsActive ? 'active_subscription_status' : 'no_active_subscription',
       aiCostArs: aArs(aiCostUsd),
       emailSends,
       whatsappSends,
@@ -197,9 +171,9 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       // null cuando el plan no tiene precio cargado: sin ingreso no hay
       // porcentaje, y un cero ahí se leería como "no deja nada".
       marginPercent:
-        planPriceArs === null || recognizedPlanRevenueArs === 0
+        planPriceArs === null || planPriceArs === 0
           ? null
-          : Math.round((estimatedMarginArs / recognizedPlanRevenueArs) * 1000) / 10,
+          : Math.round((estimatedMarginArs / planPriceArs) * 1000) / 10,
 
       // Cuesta más de lo que paga. Es la única fila de este reporte sobre la
       // que hay que hacer algo, y sin marcarla se pierde entre las demás: en
@@ -213,18 +187,13 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
   const byPlan = tenantRows.reduce((acc, row) => {
     const key = row.plan
     if (!acc[key])
-      acc[key] = {
-        count: 0,
-        aiCostArs: 0,
-        communicationsCostArs: 0,
-        planRevenueArs: 0,
-        nominalPlanRevenueArs: 0,
-      }
+      acc[key] = { count: 0, aiCostArs: 0, communicationsCostArs: 0, planRevenueArs: 0 }
     acc[key].count += 1
     acc[key].aiCostArs += row.aiCostArs
     acc[key].communicationsCostArs += row.communicationsCostArs
-    acc[key].nominalPlanRevenueArs += row.planPriceArs ?? 0
-    acc[key].planRevenueArs += row.recognizedPlanRevenueArs
+    if (row.planPriceArs !== null) {
+      acc[key].planRevenueArs += row.planPriceArs
+    }
     return acc
   }, {})
 
@@ -283,20 +252,14 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
     // abrir esta pantalla, y contarlos a ojo sobre la tabla no escala.
     unprofitableCount: unprofitable.length,
     unprofitableLossArs: unprofitable.reduce((sum, row) => sum + row.estimatedMarginArs, 0),
-    // Ingreso estimado asociado a suscripciones activas; no es conciliación
-    // de pagos. Se informa por separado el valor nominal de catálogo.
-    totalPlanRevenueArs: tenantRows.reduce(
-      (sum, row) => sum + row.recognizedPlanRevenueArs,
-      0,
-    ),
-    totalNominalPlanRevenueArs: billable.reduce((sum, row) => sum + row.planPriceArs, 0),
+    totalPlanRevenueArs: billable.reduce((sum, row) => sum + row.planPriceArs, 0),
     totalAiCostArs: tenantRows.reduce((sum, row) => sum + row.aiCostArs, 0),
     totalCommunicationsCostArs,
     // Costos fijos de la plataforma entera — no prorrateados, ver nota.
     infraCostArs: aArs(infraCostUsd),
     storageCostArs: aArs(storageCostUsd),
     totalEstimatedMarginArs:
-      tenantRows.reduce((sum, row) => sum + (row.estimatedMarginArs ?? 0), 0) -
+      billable.reduce((sum, row) => sum + row.estimatedMarginArs, 0) -
       aArs(infraCostUsd) -
       aArs(storageCostUsd),
     // La tasa aplicada y su procedencia acompañan cada resultado en ARS.
@@ -331,9 +294,9 @@ export const getPlatformMarginReport = async (period = getCurrentPeriod()) => {
       'communicationsCostArs por comercio sí es medible (volumen real de envíos de email/WhatsApp). La tarifa por envío también es una estimación de precios públicos de SendGrid/Meta WhatsApp (ver aiPlanPolicy.js), configurable con EMAIL_COST_USD_PER_SEND / WHATSAPP_COST_USD_PER_SEND.',
       'Los costos originales se mantienen en USD. Para expresarlos en ARS se usa usdToArsRate y se informa fuente, código, tipo, fecha efectiva, fecha de captura y corte en totals. bcra_api identifica la cotización oficial BCRA REF (Comunicación A 3500, mayorista) y queda congelada por fecha efectiva; platform_setting es un override manual con historial, pero no una fuente externa verificada; environment y legacy_fallback no tienen historial de cambios demostrable y el margen en ARS debe leerse como estimación.',
       'planPriceArs null significa que ese plan todavía no tiene precio cargado en el panel — no se estima uno automáticamente, y mientras esté así el plan no se puede contratar.',
-      'totalPlanRevenueArs y recognizedPlanRevenueArs estiman ingreso usando subscriptionStatus === active; no son conciliación de pagos acreditados. Para ingreso contable real debe agregarse una fuente de pagos/ledger con importe, moneda, período, reembolsos y estado de acreditación. totalNominalPlanRevenueArs conserva el valor de catálogo de los planes configurados.',
+      'subscriptionStatus sí refleja cobro real: el alta cobra contra Mercado Pago y el webhook actualiza el estado en cada renovación, falla o baja.',
       'lifecycle.deletedInPeriodApprox es una aproximación (no hay campo deletedAt, se infiere de updatedAt) — no un dato exacto.',
-      'lifecycle.activeSubscriptionCount cuenta comercios con subscriptionStatus active. El estado de suscripción es una señal operativa; por sí solo no reemplaza la conciliación de pagos acreditados.',
+      'lifecycle.activeSubscriptionCount cuenta comercios con subscriptionStatus active. Esa nota decía que no existía cobro real ni un campo que se actualizara al cancelar: hoy el alta cobra contra Mercado Pago y deja el estado en active, y el webhook lo mantiene cuando el cobro se renueva, falla o se cancela.',
     ],
   }
 }

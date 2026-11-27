@@ -299,9 +299,6 @@ const openOperation = async ({
             startedAt: new Date(),
             failedAt: null,
             failureReason: null,
-            // Lo que reservó ESTE intento. Sin esto la operación quedaba con cero
-            // y la liquidación no encontraba nada que soltar: la plata seguía
-            // retenida hasta fin de mes a nombre de nadie.
             period,
             reservedCostUsd,
             reservedTenantCostUsd,
@@ -312,7 +309,6 @@ const openOperation = async ({
       )
         .setOptions({ tenantId })
         .lean()
-        .catch(() => null)
 
       if (reabierta) {
         logger.info('[AI OPERATION] Reintento de una operación sin cupo retenido', {
@@ -333,23 +329,31 @@ const openOperation = async ({
       const operation = await AiOperation.findOne({ tenantId, operationId })
         .setOptions({ tenantId })
         .lean()
-        .catch(() => null)
+
+      // Un duplicate key sin documento visible es una inconsistencia, no un
+      // replay válido. No se permite continuar sin poder identificar la reserva.
+      if (!operation) {
+        const inconsistency = new Error(
+          'La operación existe según el índice único pero no pudo recuperarse',
+        )
+        inconsistency.code = 'AI_OPERATION_RECOVERY_FAILED'
+        throw inconsistency
+      }
 
       return { fresh: false, operation }
     }
 
-    // FALLA ABIERTA. La base de contabilidad caída no puede ser el motivo por
-    // el que un comercio se queda sin poder usar la IA: es el mismo contrato
-    // que ya tenía el ledger. Se pierde la protección contra reintentos en esa
-    // ventana, y por eso se loguea en error y no en warn.
-    logger.error('[AI OPERATION] No se pudo abrir la operación, se sigue sin candado', {
+    // No se puede abrir una operación y continuar como si el candado existiera:
+    // eso deja una reserva financiera sin propietario recuperable y habilita
+    // cobros duplicados. El caller revierte las reservas previas y propaga el
+    // error para que el request falle de forma visible.
+    logger.error('[AI OPERATION] No se pudo abrir la operación; se aborta la reserva', {
       tenantId: String(tenantId),
       operationId,
       metric,
       error: error.message,
     })
-
-    return { fresh: true, operation: null }
+    throw error
   }
 }
 
@@ -471,25 +475,34 @@ const claimConsumption = async ({
     })
   } catch (error) {
     if (error?.code === 11000) {
-      logger.info('[AI OPERATION] Llamada ya registrada, no se cobra de nuevo', {
+      logger.info('[AI OPERATION] Llamada ya registrada; se reintenta liquidar la reserva', {
         tenantId: String(tenantId),
         operationId,
         callId,
         metric,
       })
 
+      // La fila durable puede haberse insertado antes de que fallara la
+      // liquidación. Un retry no debe limitarse a devolver false: debe poder
+      // completar el paso financiero que quedó pendiente.
+      await liquidarReserva({ tenantId, operationId, period })
+      closeOperation({
+        tenantId,
+        operationId,
+        status: AI_OPERATION_STATUS.COMPLETED,
+        actualModel,
+      })
       return false
     }
 
-    logger.error('[AI OPERATION] No se pudo registrar la llamada, se sigue sin candado', {
+    logger.error('[AI OPERATION] No se pudo registrar la llamada; consumo no contabilizado', {
       tenantId: String(tenantId),
       operationId,
       callId,
       metric,
       error: error.message,
     })
-
-    return true
+    throw error
   }
 
   // LA LIQUIDACIÓN.
@@ -549,7 +562,6 @@ const liquidarReserva = async ({ tenantId, operationId, period }) => {
   )
     .setOptions({ tenantId })
     .lean()
-    .catch(() => null)
 
   if (!operacion) return
 
@@ -1008,9 +1020,7 @@ const releaseTenantCost = async ({ tenantId, period, amount }) => {
         },
       },
     },
-  ])
-    .setOptions({ tenantId })
-    .catch(() => null)
+  ]).setOptions({ tenantId })
 }
 
 /**
@@ -1024,21 +1034,24 @@ const releaseTenantCost = async ({ tenantId, period, amount }) => {
 const releasePlatformCost = async ({ period, amount }) => {
   if (!(amount > 0)) return
 
-  await AiPlatformUsage.updateOne({ period }, [
-    {
-      $set: {
-        reservedCostUsd: {
-          $max: [0, { $subtract: [{ $ifNull: ['$reservedCostUsd', 0] }, amount] }],
+  try {
+    await AiPlatformUsage.updateOne({ period }, [
+      {
+        $set: {
+          reservedCostUsd: {
+            $max: [0, { $subtract: [{ $ifNull: ['$reservedCostUsd', 0] }, amount] }],
+          },
         },
       },
-    },
-  ]).catch(error => {
-    logger.warn('[AI BUDGET] No se pudo liberar la reserva financiera', {
+    ])
+  } catch (error) {
+    logger.error('[AI BUDGET] No se pudo liberar la reserva financiera', {
       period,
       amount,
       error: error.message,
     })
-  })
+    throw error
+  }
 }
 
 /**
@@ -2274,21 +2287,46 @@ export const reserveAiBudget = async ({
 
   // EL CANDADO. Antes de este punto no se tocó ningún contador; después de
   // este punto, el `$inc` solo corre si la operación es nueva.
-  const { fresh, operation } = await openOperation({
-    tenantId: id,
-    operationId,
-    period,
-    metric: normalizedMetric,
-    amount: reservationAmount,
-    feature,
-    provider,
-    requestedModel,
-    reservedCostUsd: reservedUsd,
-    // Los dos montos por separado: con techo global sin configurar el de
-    // plataforma es cero y el del comercio no, y liberar uno por el monto del
-    // otro deja plata comprometida para siempre.
-    reservedTenantCostUsd: reservedTenantUsd,
-  })
+  let operationResult
+  try {
+    operationResult = await openOperation({
+      tenantId: id,
+      operationId,
+      period,
+      metric: normalizedMetric,
+      amount: reservationAmount,
+      feature,
+      provider,
+      requestedModel,
+      reservedCostUsd: reservedUsd,
+      reservedTenantCostUsd: reservedTenantUsd,
+    })
+  } catch (operationError) {
+    // Las proyecciones ya reservaron dinero, pero todavía no hay una operación
+    // durable que permita al sweeper recuperarlo. Intentar revertir ambas.
+    const releases = await Promise.allSettled([
+      releasePlatformCost({ period, amount: reservedUsd }),
+      releaseTenantCost({ tenantId: id, period, amount: reservedTenantUsd }),
+    ])
+    const rollbackErrors = releases.filter(result => result.status === 'rejected')
+      .map(result => result.reason)
+
+    if (rollbackErrors.length) {
+      logger.error('[AI BUDGET] Falló el rollback de reservas sin operación durable', {
+        tenantId: id,
+        operationId,
+        rollbackErrors: rollbackErrors.map(error => error.message),
+      })
+      throw new AggregateError(
+        [operationError, ...rollbackErrors],
+        'No se pudo abrir la operación ni revertir todas las reservas financieras',
+      )
+    }
+
+    throw operationError
+  }
+
+  const { fresh } = operationResult
 
   // Reintento: este cobro ya ocurrió. Se devuelve permitido —porque la reserva
   // original SÍ se hizo y el llamador tiene derecho a seguir— pero sin sumar
