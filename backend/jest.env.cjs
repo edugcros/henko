@@ -1,3 +1,6 @@
+/* global process */
+
+// Configuración de entorno para Jest
 // 📁 jest.env.js
 //
 // Variables mínimas para que las pruebas puedan arrancar en un checkout limpio.
