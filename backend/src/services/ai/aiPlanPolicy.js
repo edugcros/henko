@@ -956,7 +956,11 @@ export const getPlatformMonthlyUsdBudget = () => {
 const ESTIMATED_COST_USD = Object.freeze({
   [AI_METRICS.AGENT_MESSAGES]: 0.01,
   [AI_METRICS.AGENT_TOKENS]: 0.01,
-  [AI_METRICS.MARKET_ANALYSES]: 0.01,
+  // Baseline conservador medido: ~USD 0,0195 de Gemini + 4 créditos
+  // Tavily (USD 0,032 a PAYG) = USD 0,0515. Se redondea hacia arriba.
+  // No reemplaza límites máximos de tokens/créditos; esos deben mantenerse
+  // acotados en las fuentes y el exceso se registra como gasto real.
+  [AI_METRICS.MARKET_ANALYSES]: 0.06,
   [AI_METRICS.MARKET_TOKENS]: 0.01,
   [AI_METRICS.VISION]: 0.05,
 })

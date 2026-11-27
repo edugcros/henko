@@ -248,6 +248,9 @@ export async function analyzeMarketDemand({
   }
 
   for (const [tool, quantity] of creditosPorHerramienta) {
+    // Si Tavily ya cobró pero no podemos persistir el consumo, no devolvemos
+    // un análisis como si la contabilidad estuviera completa. La llamada falla
+    // de forma visible y el error queda disponible para alerta/reconciliación.
     await recordToolSpend({
       tenantId,
       metric: AI_METRICS.MARKET_TOKENS,
@@ -256,13 +259,6 @@ export async function analyzeMarketDemand({
       profile,
       operationId: budget.operationId,
       provider: 'tavily',
-    }).catch(error => {
-      logger.warn('[marketIntelligence] No se pudo registrar el costo de la herramienta', {
-        tenantId: String(tenantId),
-        tool,
-        quantity,
-        error: error.message,
-      })
     })
   }
 
