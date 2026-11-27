@@ -31,6 +31,38 @@ import {
 import { getPlatformMarginReport } from '../services/platformService'
 import { PLAN_PRESENTATION } from '../constants/plans'
 
+/**
+ * @typedef {Object} PlatformMarginTenant
+ * @property {string} [tenantId]
+ * @property {string} [name]
+ * @property {string} [plan]
+ * @property {string} [status]
+ * @property {number|string|null} [planPriceArs]
+ * @property {number|string|null} [aiCostArs]
+ * @property {number|string|null} [communicationsCostArs]
+ * @property {number|string|null} [estimatedMarginArs]
+ * @property {number|string|null} [marginPercent]
+ * @property {boolean} [unprofitable]
+ */
+
+/**
+ * @typedef {Object} PlatformMarginReport
+ * @property {string} [period]
+ * @property {PlatformMarginTenant[]} [tenants]
+ * @property {Object<string, number|string|null>} [totals]
+ * @property {Object<string, number|string|null>} [lifecycle]
+ * @property {string[]} [notes]
+ */
+
+/**
+ * @typedef {Object} TileProps
+ * @property {string} title
+ * @property {import('react').ReactNode} value
+ * @property {string} [hint]
+ * @property {'default'|'danger'} [tone]
+ * @property {boolean} [big]
+ */
+
 const BRAND = {
   ink: '#050b1f',
   blue: '#0b6bff',
@@ -50,19 +82,30 @@ const PANEL_SX = { borderRadius: 4, borderColor: BRAND.line, boxShadow: 'none', 
 // corriera solo cada vez que se movía el cambio. Ahora se convierten los
 // COSTOS, que sí llegan en dólares, y el tipo de cambio usado viene en la
 // respuesta.
+/**
+ * @param {number|string|null|undefined} value
+ * @param {string} [sinDato]
+ */
 export const formatArs = (value, sinDato = '—') => {
   if (value === null || value === undefined) return sinDato
+
+  const numericValue = Number(value)
+
+  if (!Number.isFinite(numericValue)) return sinDato
 
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(value) || 0)
+  }).format(numericValue)
 }
 
 // Un plan sin precio no es «a medida»: es un plan al que el dueño todavía no le
 // cargó el precio en el panel, y mientras esté así no se puede contratar.
+/**
+ * @param {number|string|null|undefined} value
+ */
 const formatPlanPrice = value => formatArs(value, 'Sin precio cargado')
 
 const STATUS_LABELS = {
@@ -98,14 +141,20 @@ export const formatPeriod = period => {
 }
 
 /** Los últimos 12 meses, del actual hacia atrás, como 'YYYY-MM'. */
-export const buildPeriodOptions = (now = new Date(), count = 12) =>
-  Array.from({ length: count }, (_, index) => {
+export const buildPeriodOptions = (now = new Date(), count = 12) => {
+  const safeCount = Number.isInteger(count) && count > 0 ? count : 12
+
+  return Array.from({ length: safeCount }, (_, index) => {
     const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 15))
     const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 
     return { value, label: formatPeriod(value) }
   })
+}
 
+/**
+ * @param {TileProps} props
+ */
 const Tile = ({ title, value, hint, tone = 'default', big = false }) => (
   <Box sx={{ p: 2, minWidth: 0 }}>
     <Typography
@@ -142,6 +191,9 @@ const Tile = ({ title, value, hint, tone = 'default', big = false }) => (
   </Box>
 )
 
+/**
+ * @param {{title: string, children: import('react').ReactNode}} props
+ */
 const Section = ({ title, children }) => (
   <Box component="section" sx={{ mb: 4 }}>
     <Typography
@@ -154,6 +206,9 @@ const Section = ({ title, children }) => (
   </Box>
 )
 
+/**
+ * @param {{tenant: PlatformMarginTenant}} props
+ */
 const MarginCell = ({ tenant }) => (
   <Typography
     component="span"
@@ -168,6 +223,9 @@ const MarginCell = ({ tenant }) => (
   </Typography>
 )
 
+/**
+ * @param {PlatformMarginTenant} tenant
+ */
 const percentText = tenant =>
   // null = el plan no tiene precio cargado. Sin ingreso no hay porcentaje, y un
   // cero ahí se leería como "no deja nada".
@@ -175,6 +233,9 @@ const percentText = tenant =>
     ? '—'
     : `${tenant.marginPercent}%`
 
+/**
+ * @param {{tenant: PlatformMarginTenant}} props
+ */
 const TenantCard = ({ tenant }) => {
   const status = STATUS_LABELS[tenant.status]
 
@@ -245,6 +306,7 @@ export default function PlatformMarginPage() {
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
+  /** @type {[PlatformMarginReport|null, import('react').Dispatch<import('react').SetStateAction<PlatformMarginReport|null>>]} */
   const [report, setReport] = useState(null)
   const [onlyLosing, setOnlyLosing] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -269,7 +331,12 @@ export default function PlatformMarginPage() {
         if (err?.response?.status === 403) {
           setForbidden(true)
         } else {
-          setError(err?.response?.data?.message || 'No se pudo cargar el reporte de margen.')
+          const message = err?.response?.data?.message
+          setError(
+            typeof message === 'string' && message.trim()
+              ? message
+              : 'No se pudo cargar el reporte de margen.',
+          )
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -318,12 +385,19 @@ export default function PlatformMarginPage() {
     )
   }
 
-  const tenants = report?.tenants || []
-  const totals = report?.totals || {}
-  const lifecycle = report?.lifecycle || {}
-  const notes = report?.notes || []
+  const tenants = Array.isArray(report?.tenants) ? report.tenants : []
+  const totals = report?.totals && typeof report.totals === 'object' ? report.totals : {}
+  const lifecycle =
+    report?.lifecycle && typeof report.lifecycle === 'object' ? report.lifecycle : {}
+  const notes = Array.isArray(report?.notes) ? report.notes : []
   const losingCount = totals.unprofitableCount || 0
   const visibleTenants = onlyLosing ? tenants.filter(tenant => tenant.unprofitable) : tenants
+  const infraCostArs = Number(totals.infraCostArs ?? 0)
+  const storageCostArs = Number(totals.storageCostArs ?? 0)
+  const totalInfraCostArs =
+    Number.isFinite(infraCostArs) && Number.isFinite(storageCostArs)
+      ? infraCostArs + storageCostArs
+      : null
   const marginIsNegative = Number(totals.totalEstimatedMarginArs) < 0
   // Si el servidor devuelve un mes fuera de los últimos doce, igual tiene que poder elegirse.
   const periodOptions =
@@ -412,7 +486,7 @@ export default function PlatformMarginPage() {
           <Tile title="Comunicaciones" value={formatArs(totals.totalCommunicationsCostArs)} />
           <Tile
             title="Infra + storage (plataforma)"
-            value={formatArs((totals.infraCostArs || 0) + (totals.storageCostArs || 0))}
+            value={formatArs(totalInfraCostArs)}
           />
           <Tile
             title="Margen estimado"
