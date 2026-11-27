@@ -1056,7 +1056,7 @@ const releasePlatformCost = async ({ period, amount }) => {
 
 /**
  * Cuál de los dos techos se pasó, si alguno.
- *
+
  * DOS CONTROLES, NO UNO CON DOS NOMBRES
  *
  *   tokens → volumen. No depende de ningún precio, así que es la red cuando el
