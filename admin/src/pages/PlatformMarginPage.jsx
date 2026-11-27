@@ -484,10 +484,7 @@ export default function PlatformMarginPage() {
           <Tile title="Ingreso por planes" value={formatArs(totals.totalPlanRevenueArs)} />
           <Tile title="Costo de IA" value={formatArs(totals.totalAiCostArs)} />
           <Tile title="Comunicaciones" value={formatArs(totals.totalCommunicationsCostArs)} />
-          <Tile
-            title="Infra + storage (plataforma)"
-            value={formatArs(totalInfraCostArs)}
-          />
+          <Tile title="Infra + storage (plataforma)" value={formatArs(totalInfraCostArs)} />
           <Tile
             title="Margen estimado"
             value={formatArs(totals.totalEstimatedMarginArs)}
