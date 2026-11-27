@@ -31,10 +31,9 @@
 // Cargando primero el mismo archivo que cargará env.js, el `??=` de abajo
 // vuelve a significar lo que dice: rellenar huecos y nada más.
 
-import { existsSync } from 'node:fs'
-import path from 'node:path'
-
-import dotenv from 'dotenv'
+const { existsSync } = require('node:fs')
+const path = require('node:path')
+const dotenv = require('dotenv')
 
 // El mismo archivo que elige `config/env.js` para todo lo que no es producción.
 // En CI no existe y `existsSync` lo saltea sin ruido.
