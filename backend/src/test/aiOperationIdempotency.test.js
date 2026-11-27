@@ -22,6 +22,7 @@ import path from 'node:path'
 import process from 'node:process'
 import mongoose from 'mongoose'
 import { crearMongoEnMemoria } from './testDB.js'
+import { jest } from '@jest/globals'
 
 process.env.AI_AGENT_SECRET_ENCRYPTION_KEY = Buffer.alloc(32, 3).toString('base64url')
 
@@ -943,12 +944,18 @@ describe('visión · lo que se asienta', () => {
     })
     await asentar()
 
-    const fila = await AiConsumptionLedger.findOne({ tenantId: TENANT, operationId })
-      .setOptions({ tenantId: TENANT })
-      .lean()
+  const filas = await AiConsumptionLedger.find({
+    tenantId: TENANT,
+    operationId,
+    event: 'consumed',
+  })
+  .setOptions({ tenantId: TENANT })
+  .lean()
 
-    expect(fila.costUsd).toBe(0)
-    expect(fila.tenantProviderCostUsd).toBeCloseTo(0.0004, 8)
+expect(filas).toHaveLength(1)
+expect(filas[0].unit).toBe('tokens')
+expect(filas[0].costUsd).toBe(0)
+expect(filas[0].tenantProviderCostUsd).toBeCloseTo(0.0004, 8)
   })
 
   test('un consumo que llega después de devolver no reabre la operación', async () => {
