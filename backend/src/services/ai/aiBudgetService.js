@@ -2320,6 +2320,7 @@ export const reserveAiBudget = async ({
       throw new AggregateError(
         [operationError, ...rollbackErrors],
         'No se pudo abrir la operación ni revertir todas las reservas financieras',
+        { cause: operationError },
       )
     }
 
